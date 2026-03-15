@@ -7,62 +7,61 @@
 # AI spawns at    (1280, 240)  — top-right quadrant
 #
 # Layout intent:
-#   Two tall vertical walls (left/right of center) split the arena into
-#   three lanes, giving both players natural cover and navigation options.
-#   Four shorter blocks sit at the upper and lower mid-field to break lines
-#   of sight and create flanking opportunities.
+#   Two tall vertical stone walls (left/right of center) split the arena into
+#   three lanes.  Four shorter blocks of varying material sit at upper and
+#   lower mid-field to create flanking opportunities and destructible cover.
 #
 # Fields:
-#   x, y         — top-left corner of the obstacle in world space
+#   x, y            — top-left corner of the obstacle in world space
 #   width, height
-#   destructible — can bullets destroy this obstacle (false this milestone)
-#   reflective   — reserved for future non-reflective surface variant
+#   material_type   — key into data/configs/materials.yaml
+#   reflective      — reserved for future non-reflective surface variant
 
 obstacles:
-  # Left mid-lane wall — vertical cover, creates left corridor
+  # Left mid-lane wall — indestructible stone; permanent lane divider
   - x: 350
     y: 430
     width: 90
     height: 240
-    destructible: false
+    material_type: stone
     reflective: false
 
-  # Right mid-lane wall — mirror of left
+  # Right mid-lane wall — mirror of left; stone
   - x: 1160
     y: 430
     width: 90
     height: 240
-    destructible: false
+    material_type: stone
     reflective: false
 
-  # Upper-left block — cover near top-left quadrant
+  # Upper-left block — brick; takes several shots to destroy
   - x: 430
     y: 180
     width: 160
     height: 80
-    destructible: false
+    material_type: brick
     reflective: false
 
-  # Upper-right block — mirror of upper-left; AI spawns at (1280, 240), clear
+  # Upper-right block — brick; mirror of upper-left
   - x: 1010
     y: 180
     width: 160
     height: 80
-    destructible: false
+    material_type: brick
     reflective: false
 
-  # Lower-left block — cover near bottom-left quadrant
+  # Lower-left block — wood; fragile, goes down in a few hits
   - x: 430
     y: 940
     width: 160
     height: 80
-    destructible: false
+    material_type: wood
     reflective: false
 
-  # Lower-right block — mirror of lower-left
+  # Lower-right block — crate; very fragile, dies in ~1-2 shots
   - x: 1010
     y: 940
     width: 160
     height: 80
-    destructible: false
+    material_type: crate
     reflective: false

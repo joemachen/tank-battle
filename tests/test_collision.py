@@ -234,3 +234,53 @@ class TestBulletReflection:
         cs._bullets_vs_obstacles([bullet], [obs])
         assert bullet.is_alive
         assert bullet.bounces_remaining == 2
+
+
+# ---------------------------------------------------------------------------
+# Material system — take_damage() behaviour
+# ---------------------------------------------------------------------------
+
+_BRICK_CFG = {"display_name": "Brick", "hp": 150, "destructible": True,
+              "damage_filters": [], "color": [160, 75, 45]}
+
+_STONE_CFG = {"display_name": "Stone", "hp": 9999, "destructible": False,
+              "damage_filters": [], "color": [90, 85, 75]}
+
+_STEEL_CFG = {"display_name": "Reinforced Steel", "hp": 500, "destructible": True,
+              "damage_filters": ["explosive"], "color": [65, 80, 95]}
+
+_CRATE_CFG = {"display_name": "Crate", "hp": 40, "destructible": True,
+              "damage_filters": [], "color": [140, 110, 55]}
+
+
+class TestObstacleMaterials:
+    def test_bullet_damages_destructible_obstacle(self):
+        """Standard bullet reduces hp on a brick obstacle."""
+        obs = Obstacle(0, 100, 200, 100, material_type="brick", material_config=_BRICK_CFG)
+        obs.take_damage(25, damage_type="standard")
+        assert obs.hp == 125
+        assert obs.is_alive
+
+    def test_bullet_does_not_damage_indestructible_obstacle(self):
+        """Stone obstacle ignores all damage (destructible=False)."""
+        obs = Obstacle(0, 100, 200, 100, material_type="stone", material_config=_STONE_CFG)
+        obs.take_damage(25, damage_type="standard")
+        assert obs.hp == 9999
+        assert obs.is_alive
+
+    def test_damage_filter_blocks_wrong_damage_type(self):
+        """reinforced_steel only accepts 'explosive' — standard damage is blocked."""
+        obs = Obstacle(0, 100, 200, 100, material_type="reinforced_steel",
+                       material_config=_STEEL_CFG)
+        obs.take_damage(25, damage_type="standard")
+        assert obs.hp == 500   # unchanged
+        assert obs.is_alive
+
+    def test_obstacle_dies_when_hp_reaches_zero(self):
+        """Crate (hp=40) is destroyed after receiving enough standard damage."""
+        obs = Obstacle(0, 100, 200, 100, material_type="crate", material_config=_CRATE_CFG)
+        obs.take_damage(25, damage_type="standard")
+        assert obs.is_alive          # 40 - 25 = 15 hp remaining
+        obs.take_damage(25, damage_type="standard")
+        assert not obs.is_alive      # 15 - 25 → 0 hp → destroyed
+        assert obs.hp == 0

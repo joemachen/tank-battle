@@ -83,8 +83,9 @@ TANK_MOVEMENT_MARGIN: int = 29
 # ---------------------------------------------------------------------------
 # Obstacles
 # ---------------------------------------------------------------------------
-OBSTACLE_COLOR = (72, 68, 50)            # muted olive-brown — distinct from floor and tanks
-OBSTACLE_BORDER_COLOR = (110, 105, 80)   # lighter border for definition
+OBSTACLE_COLOR = (72, 68, 50)            # fallback fill; normally overridden by material color
+OBSTACLE_BORDER_COLOR = (110, 105, 80)   # 2px border drawn on top of material fill
+OBSTACLE_DAMAGED_COLOR = (28, 26, 22)    # lerp target when obstacle hp reaches 0
 
 # ---------------------------------------------------------------------------
 # File paths
@@ -92,6 +93,7 @@ OBSTACLE_BORDER_COLOR = (110, 105, 80)   # lighter border for definition
 DATA_DIR: str = "data"
 CONFIG_DIR: str = "data/configs"
 MAP_01: str = "data/maps/map_01.yaml"
+MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 SAVES_DIR: str = "saves"
 LOGS_DIR: str = "logs"
 LOG_FILE: str = "logs/tank_battle.log"

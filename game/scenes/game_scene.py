@@ -51,7 +51,7 @@ from game.utils.constants import (
     DEFAULT_WEAPON_TYPE,
     MAP_01,
     OBSTACLE_BORDER_COLOR,
-    OBSTACLE_COLOR,
+    OBSTACLE_DAMAGED_COLOR,
     SCENE_GAME_OVER,
     SCENE_MENU,
     TANK_BARREL_COLOR,
@@ -336,14 +336,32 @@ def _draw_arena(surface: pygame.Surface, camera: Camera) -> None:
     pygame.draw.rect(surface, ARENA_BORDER_COLOR, floor_rect, ARENA_BORDER_THICKNESS)
 
 
+def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
+    """Linearly interpolate between two RGB tuples by factor t in [0, 1]."""
+    t = max(0.0, min(1.0, t))
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t),
+    )
+
+
 def _draw_obstacles(surface: pygame.Surface, obstacles: list, camera: Camera) -> None:
-    """Render all active obstacles as filled rects with a 2px border in screen space."""
+    """
+    Render all active obstacles in screen space.
+
+    Fill color comes from the obstacle's material.  As HP falls, the fill
+    lerps toward OBSTACLE_DAMAGED_COLOR (near-black) giving visual feedback
+    that the obstacle is taking damage.  Border color is constant.
+    """
     for obs in obstacles:
         if not obs.is_alive:
             continue
         sx, sy = camera.world_to_screen(obs.x, obs.y)
         rect = pygame.Rect(int(sx), int(sy), int(obs.width), int(obs.height))
-        pygame.draw.rect(surface, OBSTACLE_COLOR, rect)
+        # hp_ratio=1.0 → full material color; hp_ratio=0.0 → OBSTACLE_DAMAGED_COLOR
+        fill = _lerp_color(obs.color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
+        pygame.draw.rect(surface, fill, rect)
         pygame.draw.rect(surface, OBSTACLE_BORDER_COLOR, rect, 2)
 
 

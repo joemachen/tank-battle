@@ -80,12 +80,13 @@ class CollisionSystem:
                     continue
                 if self._circle_vs_rect(bullet.position, BULLET_RADIUS, obs.rect):
                     if bullet.bounces_remaining > 0:
-                        # obs.reflective reserved for future non-reflective surface variant
+                        # obs.reflective reserved for future non-reflective surface variant.
+                        # Bouncing bullets still transfer kinetic energy to the obstacle.
+                        obs.take_damage(bullet.damage, damage_type="standard")
                         self._reflect_bullet(bullet, obs)
                     else:
                         bullet.destroy()
-                        if obs.destructible:
-                            obs.destroy()
+                        obs.take_damage(bullet.damage, damage_type="standard")
                     break
 
     def _reflect_bullet(self, bullet, obs) -> None:
