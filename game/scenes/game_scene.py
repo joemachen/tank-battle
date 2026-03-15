@@ -3,12 +3,14 @@ game/scenes/game_scene.py
 
 GameplayScene — the main in-game screen.
 
-Milestone v0.2 state:
+Milestone v0.3 state:
   - Single player-controlled tank loaded from tanks.yaml config
   - Top-down arena (world space 1600x1200) rendered with camera offset
   - Smooth camera follow with arena-boundary clamping
   - WASD movement and rotation using InputHandler → Tank controller interface
   - PhysicsSystem enforces arena bounds (world space)
+  - SPACEBAR fires bullets; fire_rate and stats from weapons.yaml
+  - Bullets travel, render, and despawn at arena boundary or max_range
   - ESC returns to main menu
 
 Coordinate systems:
@@ -17,20 +19,21 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 
 Not yet implemented (future milestones):
-  - Shooting and bullets
   - AI opponent
   - Collision with obstacles
+  - Damage / health system
   - HUD overlay
 """
 
 import pygame
 
+from game.entities.bullet import Bullet
 from game.entities.tank import Tank
 from game.scenes.base_scene import BaseScene
 from game.systems.input_handler import InputHandler
 from game.systems.physics import PhysicsSystem
 from game.utils.camera import Camera
-from game.utils.config_loader import get_tank_config
+from game.utils.config_loader import get_tank_config, get_weapon_config
 from game.utils.constants import (
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
@@ -39,8 +42,11 @@ from game.utils.constants import (
     ARENA_GRID_STEP,
     ARENA_HEIGHT,
     ARENA_WIDTH,
+    BULLET_COLOR,
+    BULLET_RADIUS,
     COLOR_BG,
     COLOR_WHITE,
+    DEFAULT_WEAPON_TYPE,
     SCENE_MENU,
     TANK_BARREL_COLOR,
     TANK_BARREL_HEIGHT,
@@ -50,7 +56,9 @@ from game.utils.constants import (
     TANK_DEFAULT_TYPE,
     TANK_PLAYER_COLOR,
     TANKS_CONFIG,
+    WEAPONS_CONFIG,
 )
+from game.utils.math_utils import heading_to_vec
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -74,6 +82,8 @@ class GameplayScene(BaseScene):
         self._input_handler: InputHandler | None = None
         self._physics: PhysicsSystem | None = None
         self._camera: Camera | None = None
+        self._weapon_config: dict = {}
+        self._bullets: list[Bullet] = []
 
         # Pre-build the tank surface once; rotated each frame in draw()
         self._tank_surf: pygame.Surface | None = None
@@ -99,6 +109,13 @@ class GameplayScene(BaseScene):
             controller=self._input_handler,
         )
 
+        # Load weapon config and override tank's fire_rate with weapon's
+        self._weapon_config = get_weapon_config(DEFAULT_WEAPON_TYPE, WEAPONS_CONFIG)
+        self._tank.fire_rate = float(
+            self._weapon_config.get("fire_rate", self._tank.fire_rate)
+        )
+
+        self._bullets = []
         self._physics = PhysicsSystem()
 
         # Camera starts snapped to the tank so there's no initial lerp pan
@@ -109,8 +126,8 @@ class GameplayScene(BaseScene):
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
 
         log.info(
-            "GameplayScene ready. Tank: %s  Spawn: (%.0f, %.0f)",
-            TANK_DEFAULT_TYPE, _SPAWN_X, _SPAWN_Y,
+            "GameplayScene ready. Tank: %s  Weapon: %s  Spawn: (%.0f, %.0f)",
+            TANK_DEFAULT_TYPE, DEFAULT_WEAPON_TYPE, _SPAWN_X, _SPAWN_Y,
         )
 
     def on_exit(self) -> None:
@@ -120,6 +137,8 @@ class GameplayScene(BaseScene):
         self._physics = None
         self._camera = None
         self._tank_surf = None
+        self._weapon_config = {}
+        self._bullets = []
 
     # ------------------------------------------------------------------
     # Update
@@ -134,11 +153,23 @@ class GameplayScene(BaseScene):
         if self._tank is None:
             return
 
-        # Tank.update() returns fire events — ignored until shooting milestone
-        self._tank.update(dt)
+        # Tank.update() returns fire events; spawn a bullet for each
+        for event in self._tank.update(dt):
+            if event[0] == "fire":
+                _, ex, ey, eangle = event
+                dx, dy = heading_to_vec(eangle)
+                # Spawn at barrel tip (TANK_BARREL_WIDTH px forward of tank center)
+                spawn_x = ex + dx * TANK_BARREL_WIDTH
+                spawn_y = ey + dy * TANK_BARREL_WIDTH
+                self._bullets.append(
+                    Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
+                )
 
-        # PhysicsSystem: no bullets yet, just arena clamping for the tank
-        self._physics.update(dt, tanks=[self._tank], bullets=[])
+        # PhysicsSystem: advance bullets and clamp tank to arena
+        self._physics.update(dt, tanks=[self._tank], bullets=self._bullets)
+
+        # Remove bullets destroyed by physics (boundary hit or max_range)
+        self._bullets = [b for b in self._bullets if b.is_alive]
 
         # Camera follows the player tank each frame
         self._camera.update(dt, self._tank.x, self._tank.y)
@@ -160,7 +191,10 @@ class GameplayScene(BaseScene):
         # 3. Player tank (placeholder geometry, rotated to facing angle)
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
-        # 4. Debug overlay — remove or gate behind a flag in a later milestone
+        # 4. Active bullets
+        _draw_bullets(surface, self._bullets, self._camera)
+
+        # 5. Debug overlay — remove or gate behind a flag in a later milestone
         _draw_debug(surface, self._tank, self._camera)
 
 
@@ -238,6 +272,15 @@ def _draw_tank(
     # Blit centered on the tank's screen-space position
     blit_rect = rotated.get_rect(center=(int(sx), int(sy)))
     surface.blit(rotated, blit_rect)
+
+
+def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:
+    """Render all active bullets as small filled circles in screen space."""
+    for bullet in bullets:
+        if not bullet.is_alive:
+            continue
+        sx, sy = camera.world_to_screen(bullet.x, bullet.y)
+        pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
 
 
 def _draw_debug(surface: pygame.Surface, tank: Tank, camera: Camera) -> None:
