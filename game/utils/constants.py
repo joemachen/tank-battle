@@ -35,10 +35,37 @@ DEFAULT_BULLET_SPEED: float = 400.0      # pixels per second
 DEFAULT_FIRE_RATE: float = 1.0           # shots per second
 
 # ---------------------------------------------------------------------------
+# Arena (world space — larger than the viewport)
+# ---------------------------------------------------------------------------
+ARENA_WIDTH: int = 1600                  # logical world units (pixels)
+ARENA_HEIGHT: int = 1200
+ARENA_FLOOR_COLOR = (28, 35, 28)         # dark muted green — ground
+ARENA_BORDER_COLOR = (70, 90, 70)        # lighter green border
+ARENA_BORDER_THICKNESS: int = 4
+
+# ---------------------------------------------------------------------------
+# Camera
+# ---------------------------------------------------------------------------
+CAMERA_LERP_SPEED: float = 6.0           # higher = snappier follow; lower = more lag
+
+# ---------------------------------------------------------------------------
+# Tank rendering (placeholder geometry — replaced by sprites later)
+# ---------------------------------------------------------------------------
+TANK_BODY_WIDTH: int = 40                # pixels
+TANK_BODY_HEIGHT: int = 30
+TANK_BARREL_WIDTH: int = 22              # extends right from center (angle=0)
+TANK_BARREL_HEIGHT: int = 8
+TANK_BARREL_COLOR = (55, 55, 55)
+TANK_PLAYER_COLOR = (100, 160, 80)       # player tank fill color (placeholder)
+
+# Default tank type loaded at game start
+TANK_DEFAULT_TYPE: str = "medium_tank"
+
+# ---------------------------------------------------------------------------
 # Game rules
 # ---------------------------------------------------------------------------
 DEFAULT_TANK_HEALTH: int = 100
-ARENA_PADDING: int = 32                  # min distance from edge for spawning
+ARENA_PADDING: int = 32                  # min distance from arena edge for spawning
 
 # ---------------------------------------------------------------------------
 # File paths
