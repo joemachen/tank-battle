@@ -42,6 +42,8 @@ ARENA_HEIGHT: int = 1200
 ARENA_FLOOR_COLOR = (28, 35, 28)         # dark muted green — ground
 ARENA_BORDER_COLOR = (70, 90, 70)        # lighter green border
 ARENA_BORDER_THICKNESS: int = 4
+ARENA_GRID_STEP: int = 100               # world units between grid lines
+ARENA_GRID_COLOR = (38, 48, 38)          # slightly lighter than floor; makes scrolling visible
 
 # ---------------------------------------------------------------------------
 # Camera

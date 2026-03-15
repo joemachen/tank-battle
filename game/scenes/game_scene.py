@@ -35,6 +35,8 @@ from game.utils.constants import (
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
     ARENA_FLOOR_COLOR,
+    ARENA_GRID_COLOR,
+    ARENA_GRID_STEP,
     ARENA_HEIGHT,
     ARENA_WIDTH,
     COLOR_BG,
@@ -191,12 +193,23 @@ def _build_tank_surface(body_color: tuple) -> pygame.Surface:
 
 
 def _draw_arena(surface: pygame.Surface, camera: Camera) -> None:
-    """Draw the arena floor and border in screen space."""
+    """Draw the arena floor, reference grid, and border in screen space."""
     # Top-left corner of the arena in screen space (world origin = 0, 0)
     ax, ay = camera.world_to_screen(0, 0)
+    ax_i, ay_i = int(ax), int(ay)
 
-    floor_rect = pygame.Rect(int(ax), int(ay), ARENA_WIDTH, ARENA_HEIGHT)
+    floor_rect = pygame.Rect(ax_i, ay_i, ARENA_WIDTH, ARENA_HEIGHT)
     pygame.draw.rect(surface, ARENA_FLOOR_COLOR, floor_rect)
+
+    # Reference grid — gives the player a scrolling visual reference so
+    # camera-follow movement doesn't look like an invisible wall
+    for wx in range(0, ARENA_WIDTH + 1, ARENA_GRID_STEP):
+        sx = ax_i + wx
+        pygame.draw.line(surface, ARENA_GRID_COLOR, (sx, ay_i), (sx, ay_i + ARENA_HEIGHT))
+    for wy in range(0, ARENA_HEIGHT + 1, ARENA_GRID_STEP):
+        sy = ay_i + wy
+        pygame.draw.line(surface, ARENA_GRID_COLOR, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
+
     pygame.draw.rect(surface, ARENA_BORDER_COLOR, floor_rect, ARENA_BORDER_THICKNESS)
 
 

@@ -77,6 +77,7 @@ class GameEngine:
         try:
             while self._running:
                 dt = self._clock.tick(FPS) / 1000.0  # convert ms → seconds
+                dt = min(dt, 0.05)  # cap at 50ms to prevent spiral-of-death on heavy frames
 
                 # — Event handling —
                 for event in pygame.event.get():
