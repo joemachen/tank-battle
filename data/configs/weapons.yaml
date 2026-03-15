@@ -5,8 +5,9 @@
 # Fields:
 #   damage       - HP removed per hit
 #   speed        - bullet travel speed in pixels/second
-#   fire_rate    - shots per second (overrides tank fire_rate if set)
+#   fire_rate    - shots per second (overrides tank fire_rate when equipped)
 #   max_bounces  - number of wall bounces before destruction (0 = no bounce)
+#   max_range    - maximum travel distance in pixels before auto-despawn
 #   description  - human-readable label
 
 standard_shell:
@@ -15,6 +16,7 @@ standard_shell:
   speed: 420
   fire_rate: 1.0
   max_bounces: 0
+  max_range: 1400
   description: "Standard issue. No frills."
 
 spread_shot:
@@ -23,6 +25,7 @@ spread_shot:
   speed: 380
   fire_rate: 0.8
   max_bounces: 0
+  max_range: 900
   spread_count: 3
   spread_angle: 18
   description: "Fires 3 shells in a spread. Lower per-shot damage."
@@ -33,6 +36,7 @@ bouncing_round:
   speed: 400
   fire_rate: 0.9
   max_bounces: 3
+  max_range: 2400
   description: "Ricochets off walls up to 3 times."
 
 homing_missile:
@@ -41,5 +45,6 @@ homing_missile:
   speed: 240
   fire_rate: 0.4
   max_bounces: 0
+  max_range: 2000
   tracking_strength: 2.5
   description: "Slow but tracks the nearest enemy. High damage."

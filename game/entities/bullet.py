@@ -5,7 +5,9 @@ Bullet entity. Fired by tanks; consumed by CollisionSystem.
 Weapon stats come from weapons.yaml config.
 """
 
-from game.utils.constants import DEFAULT_BULLET_SPEED
+import math
+
+from game.utils.constants import BULLET_DEFAULT_MAX_RANGE, DEFAULT_BULLET_SPEED
 from game.utils.logger import get_logger
 from game.utils.math_utils import heading_to_vec
 
@@ -37,17 +39,23 @@ class Bullet:
         self.damage: int = int(config.get("damage", 20))
         self.max_bounces: int = int(config.get("max_bounces", 0))
         self.bounces_remaining: int = self.max_bounces
+        self.max_range: float = float(config.get("max_range", BULLET_DEFAULT_MAX_RANGE))
         self.weapon_type: str = config.get("type", "standard_shell")
 
         self._dx, self._dy = heading_to_vec(self.angle)
+        self._distance_traveled: float = 0.0
         log.debug("Bullet spawned at (%.0f, %.0f) angle=%.1f type=%s", x, y, angle, self.weapon_type)
 
     def update(self, dt: float) -> None:
-        """Advance bullet position."""
+        """Advance bullet position; despawn if max_range exceeded."""
         if not self.is_alive:
             return
-        self.x += self._dx * self.speed * dt
-        self.y += self._dy * self.speed * dt
+        step = self.speed * dt
+        self.x += self._dx * step
+        self.y += self._dy * step
+        self._distance_traveled += step
+        if self._distance_traveled >= self.max_range:
+            self.destroy()
 
     def destroy(self) -> None:
         """Mark bullet for removal by CollisionSystem."""

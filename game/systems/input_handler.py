@@ -55,7 +55,8 @@ class InputHandler:
         if keys[self._keys["rotate_left"]]:
             rotate -= 1.0
 
-        fire = bool(keys[self._keys["fire"]])
+        # Left mouse button is a permanent secondary fire binding (not user-configurable)
+        fire = bool(keys[self._keys["fire"]]) or pygame.mouse.get_pressed()[0]
 
         return TankInput(throttle=throttle, rotate=rotate, fire=fire)
 

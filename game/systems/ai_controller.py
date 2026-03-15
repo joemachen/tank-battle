@@ -74,6 +74,11 @@ class AIController:
         """Called by the game when the AI tank is created so the controller can read self state."""
         self._owner = tank
 
+    @property
+    def state_name(self) -> str:
+        """Current AI state as a human-readable string. Use instead of accessing _state directly."""
+        return self._state.name
+
     def get_input(self) -> TankInput:
         """
         Evaluate current state and return control intent for this frame.

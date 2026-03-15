@@ -68,6 +68,14 @@ TANK_DEFAULT_TYPE: str = "medium_tank"
 # ---------------------------------------------------------------------------
 DEFAULT_TANK_HEALTH: int = 100
 ARENA_PADDING: int = 32                  # min distance from arena edge for spawning
+
+# ---------------------------------------------------------------------------
+# Weapons / Bullets
+# ---------------------------------------------------------------------------
+DEFAULT_WEAPON_TYPE: str = "standard_shell"
+BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
+BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
+BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29
@@ -114,7 +122,7 @@ SCENE_GAME_OVER: str = "game_over"
 # ---------------------------------------------------------------------------
 # AI
 # ---------------------------------------------------------------------------
-AI_DETECTION_RANGE: float = 400.0        # pixels — triggers PURSUE state
+AI_DETECTION_RANGE: float = 550.0        # pixels — triggers PURSUE state
 AI_ATTACK_RANGE: float = 250.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 

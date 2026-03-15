@@ -45,20 +45,30 @@ class CollisionSystem:
     # Collision pair handlers
     # ------------------------------------------------------------------
 
+    def check_bullet_vs_tank(self, bullet, tank) -> bool:
+        """
+        Check if a single bullet has hit a single tank and apply damage if so.
+        Returns True if a hit occurred (bullet destroyed, tank damaged).
+
+        Signature is v0.4-ready: GameplayScene will call this individually for
+        each (player_bullet, ai_tank) and (ai_bullet, player_tank) pair once
+        AI opponents exist. Currently invoked in batch via _bullets_vs_tanks().
+        """
+        if not bullet.is_alive or not tank.is_alive or tank is bullet.owner:
+            return False
+        if self._circles_overlap(bullet.position, BULLET_RADIUS, tank.position, TANK_RADIUS):
+            tank.take_damage(bullet.damage)
+            bullet.destroy()
+            log.debug("Bullet hit tank. Damage=%d, Tank HP=%d", bullet.damage, tank.health)
+            return True
+        return False
+
     def _bullets_vs_tanks(self, bullets: list, tanks: list) -> None:
         for bullet in bullets:
             if not bullet.is_alive:
                 continue
             for tank in tanks:
-                if not tank.is_alive or tank is bullet.owner:
-                    continue
-                if self._circles_overlap(bullet.position, BULLET_RADIUS, tank.position, TANK_RADIUS):
-                    tank.take_damage(bullet.damage)
-                    bullet.destroy()
-                    log.debug(
-                        "Bullet hit tank. Damage=%d, Tank HP=%d",
-                        bullet.damage, tank.health,
-                    )
+                if self.check_bullet_vs_tank(bullet, tank):
                     break
 
     def _bullets_vs_obstacles(self, bullets: list, obstacles: list) -> None:
