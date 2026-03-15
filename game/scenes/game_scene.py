@@ -3,15 +3,11 @@ game/scenes/game_scene.py
 
 GameplayScene — the main in-game screen.
 
-Milestone v0.3 state:
-  - Single player-controlled tank loaded from tanks.yaml config
-  - Top-down arena (world space 1600x1200) rendered with camera offset
-  - Smooth camera follow with arena-boundary clamping
-  - WASD movement and rotation using InputHandler → Tank controller interface
-  - PhysicsSystem enforces arena bounds (world space)
-  - SPACEBAR fires bullets; fire_rate and stats from weapons.yaml
-  - Bullets travel, render, and despawn at arena boundary or max_range
-  - ESC returns to main menu
+Milestone v0.4 state:
+  - Player tank + stationary AI (heavy_tank) on screen simultaneously
+  - Player fires bullets; CollisionSystem applies damage to AI tank
+  - AI tank death triggers transition to GameOverScene (VICTORY)
+  - Full drive → aim → shoot → kill loop validated
 
 Coordinate systems:
   World space  — all entity positions (x, y) live here. Origin at arena top-left.
@@ -19,22 +15,25 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 
 Not yet implemented (future milestones):
-  - AI opponent
-  - Collision with obstacles
-  - Damage / health system
-  - HUD overlay
+  - AI movement and firing (v0.5)
+  - Player health / death (v0.5)
+  - HUD health bars (v0.5)
+  - Obstacle walls
 """
 
 import pygame
 
 from game.entities.bullet import Bullet
-from game.entities.tank import Tank
+from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
+from game.systems.ai_controller import AIController
+from game.systems.collision import CollisionSystem
 from game.systems.input_handler import InputHandler
 from game.systems.physics import PhysicsSystem
 from game.utils.camera import Camera
-from game.utils.config_loader import get_tank_config, get_weapon_config
+from game.utils.config_loader import get_ai_config, get_tank_config, get_weapon_config
 from game.utils.constants import (
+    AI_DIFFICULTY_CONFIG,
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
     ARENA_FLOOR_COLOR,
@@ -45,8 +44,10 @@ from game.utils.constants import (
     BULLET_COLOR,
     BULLET_RADIUS,
     COLOR_BG,
+    COLOR_RED,
     COLOR_WHITE,
     DEFAULT_WEAPON_TYPE,
+    SCENE_GAME_OVER,
     SCENE_MENU,
     TANK_BARREL_COLOR,
     TANK_BARREL_HEIGHT,
@@ -58,14 +59,27 @@ from game.utils.constants import (
     TANKS_CONFIG,
     WEAPONS_CONFIG,
 )
-from game.utils.math_utils import heading_to_vec
 from game.utils.logger import get_logger
+from game.utils.math_utils import heading_to_vec
 
 log = get_logger(__name__)
 
-# Player spawn position — center of the arena (world space)
-_SPAWN_X: float = ARENA_WIDTH / 2.0
+# Spawn positions (world space)
+_SPAWN_X: float = ARENA_WIDTH / 2.0       # player — arena center
 _SPAWN_Y: float = ARENA_HEIGHT / 2.0
+_AI_SPAWN_X: float = ARENA_WIDTH * 0.80   # AI — top-right quadrant
+_AI_SPAWN_Y: float = ARENA_HEIGHT * 0.20
+
+
+class _PassiveAIController(AIController):
+    """
+    Stationary no-op controller for milestone v0.4 (feel-test only).
+    Returns zero input every frame so the AI tank never moves or fires.
+    Replace with the real AIController in v0.5 when movement AI is enabled.
+    """
+
+    def get_input(self) -> TankInput:
+        return TankInput()
 
 
 class GameplayScene(BaseScene):
@@ -80,13 +94,17 @@ class GameplayScene(BaseScene):
         # These are (re)created in on_enter so each new match starts fresh.
         self._tank: Tank | None = None
         self._input_handler: InputHandler | None = None
+        self._ai_tank: Tank | None = None
+        self._ai_controller: _PassiveAIController | None = None
         self._physics: PhysicsSystem | None = None
+        self._collision: CollisionSystem | None = None
         self._camera: Camera | None = None
         self._weapon_config: dict = {}
         self._bullets: list[Bullet] = []
 
-        # Pre-build the tank surface once; rotated each frame in draw()
+        # Pre-built surfaces (body + barrel); rotated each frame in draw()
         self._tank_surf: pygame.Surface | None = None
+        self._ai_tank_surf: pygame.Surface | None = None
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -115,28 +133,49 @@ class GameplayScene(BaseScene):
             self._weapon_config.get("fire_rate", self._tank.fire_rate)
         )
 
+        # AI tank — heavy_tank config, passive (stationary) controller this milestone
+        ai_difficulty = get_ai_config("medium", AI_DIFFICULTY_CONFIG)
+        self._ai_controller = _PassiveAIController(
+            config=ai_difficulty,
+            target_getter=lambda: self._tank,
+        )
+        ai_tank_config = get_tank_config("heavy_tank", TANKS_CONFIG)
+        self._ai_tank = Tank(
+            x=_AI_SPAWN_X,
+            y=_AI_SPAWN_Y,
+            config=ai_tank_config,
+            controller=self._ai_controller,
+        )
+        self._ai_controller.set_owner(self._ai_tank)
+
         self._bullets = []
         self._physics = PhysicsSystem()
+        self._collision = CollisionSystem()
 
         # Camera starts snapped to the tank so there's no initial lerp pan
         self._camera = Camera()
         self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
 
-        # Build the static tank surface (body + barrel; rotated each frame)
+        # Build tank surfaces (body + barrel; rotated each frame in draw())
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
+        self._ai_tank_surf = _build_tank_surface(COLOR_RED)
 
         log.info(
-            "GameplayScene ready. Tank: %s  Weapon: %s  Spawn: (%.0f, %.0f)",
-            TANK_DEFAULT_TYPE, DEFAULT_WEAPON_TYPE, _SPAWN_X, _SPAWN_Y,
+            "GameplayScene ready. Player: %s  AI: heavy_tank  Weapon: %s",
+            TANK_DEFAULT_TYPE, DEFAULT_WEAPON_TYPE,
         )
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
         self._tank = None
         self._input_handler = None
+        self._ai_tank = None
+        self._ai_controller = None
         self._physics = None
+        self._collision = None
         self._camera = None
         self._tank_surf = None
+        self._ai_tank_surf = None
         self._weapon_config = {}
         self._bullets = []
 
@@ -165,11 +204,32 @@ class GameplayScene(BaseScene):
                     Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
                 )
 
-        # PhysicsSystem: advance bullets and clamp tank to arena
-        self._physics.update(dt, tanks=[self._tank], bullets=self._bullets)
+        # AI tank update — passive this milestone (returns no events)
+        if self._ai_tank and self._ai_tank.is_alive:
+            self._ai_tank.update(dt)
+
+        # PhysicsSystem: advance bullets and clamp all tanks to arena
+        all_tanks = [t for t in (self._tank, self._ai_tank) if t is not None]
+        self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
 
         # Remove bullets destroyed by physics (boundary hit or max_range)
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # CollisionSystem: bullet hits, tank hits, etc.
+        if self._collision and self._ai_tank:
+            self._collision.update(
+                tanks=all_tanks,
+                bullets=self._bullets,
+                obstacles=[],
+                pickups=[],
+            )
+            # Prune bullets destroyed by collision
+            self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Check win condition: AI tank destroyed → game over (victory)
+        if self._ai_tank and not self._ai_tank.is_alive:
+            self.manager.switch_to(SCENE_GAME_OVER, won=True, score=100, xp_earned=50)
+            return
 
         # Camera follows the player tank each frame
         self._camera.update(dt, self._tank.x, self._tank.y)
@@ -188,14 +248,19 @@ class GameplayScene(BaseScene):
         # 2. Arena floor and border (world rect projected through camera)
         _draw_arena(surface, self._camera)
 
-        # 3. Player tank (placeholder geometry, rotated to facing angle)
+        # 3. AI tank (drawn before player so player renders on top if overlapping)
+        if self._ai_tank and self._ai_tank_surf:
+            _draw_tank(surface, self._ai_tank, self._ai_tank_surf, self._camera)
+
+        # 4. Player tank (placeholder geometry, rotated to facing angle)
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
-        # 4. Active bullets
+        # 5. Active bullets
         _draw_bullets(surface, self._bullets, self._camera)
 
-        # 5. Debug overlay — remove or gate behind a flag in a later milestone
-        _draw_debug(surface, self._tank, self._camera)
+        # 6. Debug overlay — remove or gate behind a flag in a later milestone
+        ai_state = self._ai_controller._state.name if self._ai_controller else "—"
+        _draw_debug(surface, self._tank, self._camera, self._ai_tank, ai_state)
 
 
 # ---------------------------------------------------------------------------
@@ -283,18 +348,30 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
         pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
 
 
-def _draw_debug(surface: pygame.Surface, tank: Tank, camera: Camera) -> None:
+def _draw_debug(
+    surface: pygame.Surface,
+    player_tank: Tank,
+    camera: Camera,
+    ai_tank: Tank | None = None,
+    ai_state: str = "—",
+) -> None:
     """
-    Lightweight debug overlay: world position and angle in the top-right corner.
-    TODO(milestone v0.4+): gate behind a DEBUG constant or remove.
+    Lightweight debug overlay: positions, health, and AI state.
+    TODO(milestone v0.5+): gate behind a DEBUG constant or remove.
     """
     font = pygame.font.SysFont(None, 22)
     lines = [
-        f"world  ({tank.x:6.1f}, {tank.y:6.1f})",
-        f"angle  {tank.angle % 360:5.1f}°",
-        f"cam    ({camera.x:6.1f}, {camera.y:6.1f})",
+        f"P  ({player_tank.x:6.1f}, {player_tank.y:6.1f})",
+        f"P  angle {player_tank.angle % 360:5.1f}°",
     ]
-    x = surface.get_width() - 210
+    if ai_tank is not None:
+        hp_pct = int(ai_tank.health / ai_tank.max_health * 100) if ai_tank.max_health else 0
+        lines += [
+            f"AI ({ai_tank.x:6.1f}, {ai_tank.y:6.1f})",
+            f"AI hp {ai_tank.health}/{ai_tank.max_health} ({hp_pct}%)  [{ai_state}]",
+        ]
+    lines.append(f"cam  ({camera.x:6.1f}, {camera.y:6.1f})")
+    x = surface.get_width() - 240
     y = 12
     for line in lines:
         txt = font.render(line, True, COLOR_WHITE)
