@@ -45,7 +45,20 @@ _STEER_ANGLE: float = 40.0       # degrees added to desired heading when dodging
 # ---------------------------------------------------------------------------
 # Recovery tuning
 # ---------------------------------------------------------------------------
-_RECOVERY_DURATION: float = 0.8  # seconds spent in reverse before resuming
+# Two-phase recovery prevents the reverse→forward→wall oscillation loop:
+#   Phase 1: reverse + full rotation  — backs the tank away from the obstacle
+#   Phase 2: forward + half rotation  — consolidates the new heading so the
+#            tank is pointing away from the wall before the state machine
+#            resumes, preventing it from immediately re-hitting the same wall
+_RECOVERY_PHASE1: float = 0.55   # seconds: reverse + full rotate
+_RECOVERY_PHASE2: float = 0.45   # seconds: forward + half rotate
+_RECOVERY_DURATION: float = _RECOVERY_PHASE1 + _RECOVERY_PHASE2  # 1.0s total
+
+# Post-recovery immunity: after recovery completes the stuck check is
+# suppressed for this many seconds.  Prevents tight re-trigger while the
+# tank still has residual wall proximity after phase 2.
+_POST_RECOVERY_IMMUNITY: float = 1.2
+
 _STUCK_WINDOW: float = 0.5       # rolling window for stuck detection (seconds)
 _STUCK_THRESHOLD: float = 10.0   # minimum displacement (px) to not be "stuck"
 
@@ -91,6 +104,8 @@ class AIController:
         self._recovery_timer: float = 0.0
         # Direction alternates each recovery to avoid spinning in place
         self._recovery_direction: float = 1.0
+        # Immunity window after recovery — prevents immediate re-trigger
+        self._recovery_immunity_timer: float = 0.0
 
         # Obstacle awareness — injected by the scene as a zero-arg callable
         # returning a list of live Obstacle instances.
@@ -135,6 +150,10 @@ class AIController:
         # Update stuck detector with the owner's current position
         self._stuck_detector.update(dt, self._owner.x, self._owner.y)
 
+        # Count down post-recovery immunity window
+        if self._recovery_immunity_timer > 0.0:
+            self._recovery_immunity_timer -= dt
+
         # Count down recovery timer; resume state machine when it expires
         if self._state == AIState.RECOVERY:
             self._recovery_timer -= dt
@@ -145,10 +164,12 @@ class AIController:
                 # Reset to PATROL; _update_state will re-evaluate next get_input()
                 self._state = AIState.PATROL
                 self._stuck_detector.reset()
+                # Suppress stuck re-trigger while tank clears residual wall proximity
+                self._recovery_immunity_timer = _POST_RECOVERY_IMMUNITY
                 log.debug(
                     "AI recovery complete — resuming state machine. "
-                    "Next recovery direction: %.0f",
-                    self._recovery_direction,
+                    "Next recovery direction: %.0f  immunity=%.1fs",
+                    self._recovery_direction, _POST_RECOVERY_IMMUNITY,
                 )
 
     # ------------------------------------------------------------------
@@ -172,10 +193,11 @@ class AIController:
         target = self._target_getter()
         self._update_state(target)
 
-        # Stuck check — only in states where the AI is actively trying to move.
-        # ATTACK deliberately stands still, so we exclude it to avoid false positives.
+        # Stuck check — only in movement states (not ATTACK — AI deliberately stands
+        # still to aim) and not while the post-recovery immunity window is active.
         if (
             self._stuck_detector.is_stuck
+            and self._recovery_immunity_timer <= 0.0
             and self._state in (AIState.PATROL, AIState.PURSUE, AIState.EVADE)
         ):
             self._enter_recovery()
@@ -272,8 +294,21 @@ class AIController:
         return TankInput(throttle=1.0, rotate=rotate, fire=False)
 
     def _recovery_input(self) -> TankInput:
-        """Reverse + rotate to break free from whatever the tank is stuck against."""
-        return TankInput(throttle=-1.0, rotate=self._recovery_direction, fire=False)
+        """
+        Two-phase recovery to prevent the reverse→forward→same-wall oscillation loop.
+
+        Phase 1 (_RECOVERY_PHASE1 seconds): full reverse + full rotation.
+            Backs the tank away from the obstacle and begins establishing a new heading.
+        Phase 2 (_RECOVERY_PHASE2 seconds): moderate forward + gentle rotation.
+            Consolidates the new heading so the tank is genuinely pointed away from the
+            wall before the normal state machine resumes.
+        """
+        if self._recovery_timer > _RECOVERY_PHASE2:
+            # Phase 1 — backing out
+            return TankInput(throttle=-1.0, rotate=self._recovery_direction, fire=False)
+        else:
+            # Phase 2 — rolling forward in the new heading
+            return TankInput(throttle=0.7, rotate=self._recovery_direction * 0.4, fire=False)
 
     # ------------------------------------------------------------------
     # Obstacle avoidance helper (Layer 3)
