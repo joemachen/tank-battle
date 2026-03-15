@@ -17,7 +17,7 @@ easy:
 
 medium:
   reaction_time: 0.40
-  accuracy: 0.72
+  accuracy: 0.60
   aggression: 0.55
   evasion_threshold: 0.35
 

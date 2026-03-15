@@ -122,7 +122,7 @@ SCENE_GAME_OVER: str = "game_over"
 # ---------------------------------------------------------------------------
 # AI
 # ---------------------------------------------------------------------------
-AI_DETECTION_RANGE: float = 400.0        # pixels — triggers PURSUE state
+AI_DETECTION_RANGE: float = 550.0        # pixels — triggers PURSUE state
 AI_ATTACK_RANGE: float = 250.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 
