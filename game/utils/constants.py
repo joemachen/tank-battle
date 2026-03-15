@@ -66,6 +66,9 @@ TANK_DEFAULT_TYPE: str = "medium_tank"
 # ---------------------------------------------------------------------------
 DEFAULT_TANK_HEALTH: int = 100
 ARENA_PADDING: int = 32                  # min distance from arena edge for spawning
+# half-diagonal of tank body (25px) + border thickness (4px)
+# TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
+TANK_MOVEMENT_MARGIN: int = 29
 
 # ---------------------------------------------------------------------------
 # File paths
