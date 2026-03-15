@@ -49,6 +49,9 @@ from game.utils.constants import (
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_WEAPON_TYPE,
+    MAP_01,
+    OBSTACLE_BORDER_COLOR,
+    OBSTACLE_DAMAGED_COLOR,
     SCENE_GAME_OVER,
     SCENE_MENU,
     TANK_BARREL_COLOR,
@@ -61,6 +64,7 @@ from game.utils.constants import (
     TANKS_CONFIG,
     WEAPONS_CONFIG,
 )
+from game.utils.map_loader import load_map
 from game.utils.logger import get_logger
 from game.utils.math_utils import heading_to_vec
 
@@ -93,6 +97,7 @@ class GameplayScene(BaseScene):
         self._hud: HUD | None = None
         self._weapon_config: dict = {}
         self._bullets: list[Bullet] = []
+        self._obstacles: list = []
 
         # Pre-built surfaces (body + barrel); rotated each frame in draw()
         self._tank_surf: pygame.Surface | None = None
@@ -141,6 +146,7 @@ class GameplayScene(BaseScene):
         self._ai_controller.set_owner(self._ai_tank)
 
         self._bullets = []
+        self._obstacles = load_map(MAP_01)
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
         self._hud = HUD()
@@ -168,6 +174,7 @@ class GameplayScene(BaseScene):
         self._collision = None
         self._camera = None
         self._hud = None
+        self._obstacles = []
         self._tank_surf = None
         self._ai_tank_surf = None
         self._weapon_config = {}
@@ -223,7 +230,7 @@ class GameplayScene(BaseScene):
             self._collision.update(
                 tanks=all_tanks,
                 bullets=self._bullets,
-                obstacles=[],
+                obstacles=self._obstacles,
                 pickups=[],
             )
             # Prune bullets destroyed by collision
@@ -258,21 +265,24 @@ class GameplayScene(BaseScene):
         # 2. Arena floor and border (world rect projected through camera)
         _draw_arena(surface, self._camera)
 
-        # 3. AI tank (drawn before player so player renders on top if overlapping)
+        # 3. Obstacles (drawn on floor, under tanks and bullets)
+        _draw_obstacles(surface, self._obstacles, self._camera)
+
+        # 4. AI tank (drawn before player so player renders on top if overlapping)
         if self._ai_tank and self._ai_tank_surf:
             _draw_tank(surface, self._ai_tank, self._ai_tank_surf, self._camera)
 
-        # 4. Player tank (placeholder geometry, rotated to facing angle)
+        # 5. Player tank (placeholder geometry, rotated to facing angle)
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
-        # 5. Active bullets
+        # 7. Active bullets
         _draw_bullets(surface, self._bullets, self._camera)
 
-        # 6. HUD — health bars for both tanks
+        # 8. HUD — health bars for both tanks
         if self._hud:
             self._hud.draw(surface, self._tank, self._ai_tank)
 
-        # 7. Debug overlay — remove or gate behind a flag in a later milestone
+        # 9. Debug overlay — remove or gate behind a flag in a later milestone
         ai_state = self._ai_controller.state_name if self._ai_controller else "—"
         _draw_debug(surface, self._tank, self._camera, self._ai_tank, ai_state)
 
@@ -324,6 +334,35 @@ def _draw_arena(surface: pygame.Surface, camera: Camera) -> None:
         pygame.draw.line(surface, ARENA_GRID_COLOR, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
 
     pygame.draw.rect(surface, ARENA_BORDER_COLOR, floor_rect, ARENA_BORDER_THICKNESS)
+
+
+def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
+    """Linearly interpolate between two RGB tuples by factor t in [0, 1]."""
+    t = max(0.0, min(1.0, t))
+    return (
+        int(c1[0] + (c2[0] - c1[0]) * t),
+        int(c1[1] + (c2[1] - c1[1]) * t),
+        int(c1[2] + (c2[2] - c1[2]) * t),
+    )
+
+
+def _draw_obstacles(surface: pygame.Surface, obstacles: list, camera: Camera) -> None:
+    """
+    Render all active obstacles in screen space.
+
+    Fill color comes from the obstacle's material.  As HP falls, the fill
+    lerps toward OBSTACLE_DAMAGED_COLOR (near-black) giving visual feedback
+    that the obstacle is taking damage.  Border color is constant.
+    """
+    for obs in obstacles:
+        if not obs.is_alive:
+            continue
+        sx, sy = camera.world_to_screen(obs.x, obs.y)
+        rect = pygame.Rect(int(sx), int(sy), int(obs.width), int(obs.height))
+        # hp_ratio=1.0 → full material color; hp_ratio=0.0 → OBSTACLE_DAMAGED_COLOR
+        fill = _lerp_color(obs.color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
+        pygame.draw.rect(surface, fill, rect)
+        pygame.draw.rect(surface, OBSTACLE_BORDER_COLOR, rect, 2)
 
 
 def _draw_tank(

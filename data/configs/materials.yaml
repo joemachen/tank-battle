@@ -1,0 +1,51 @@
+# data/configs/materials.yaml
+#
+# Material definitions for map obstacles.
+#
+# Fields:
+#   display_name     - human-readable label used in UI and logs
+#   hp               - hit points; use 9999 for effectively indestructible
+#   destructible     - if false, take_damage() is a no-op regardless of hp
+#   damage_filters   - damage types that can affect this material.
+#                      Empty list = all damage types apply.
+#                      ["explosive"] = only explosive damage counts.
+#                      Note: only "standard" damage type exists as of v0.6.
+#                      This field is wired now so filters work the moment new
+#                      damage types are added in future milestones.
+#   color            - [R, G, B] fill color used by the renderer.
+#                      Renderer lerps this toward near-black as hp falls.
+
+stone:
+  display_name: "Stone"
+  hp: 9999
+  destructible: false
+  damage_filters: []
+  color: [90, 85, 75]
+
+brick:
+  display_name: "Brick"
+  hp: 150
+  destructible: true
+  damage_filters: []
+  color: [160, 75, 45]
+
+wood:
+  display_name: "Wood"
+  hp: 60
+  destructible: true
+  damage_filters: []
+  color: [115, 82, 40]
+
+reinforced_steel:
+  display_name: "Reinforced Steel"
+  hp: 500
+  destructible: true
+  damage_filters: ["explosive"]
+  color: [65, 80, 95]
+
+crate:
+  display_name: "Crate"
+  hp: 40
+  destructible: true
+  damage_filters: []
+  color: [140, 110, 55]

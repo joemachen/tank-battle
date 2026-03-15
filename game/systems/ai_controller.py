@@ -142,6 +142,14 @@ class AIController:
         """Turn and move toward target."""
         if self._owner is None or target is None:
             return TankInput()
+        # TODO(v0.5/feature/ai-navigation): AI has no obstacle awareness.
+        # When a mid-lane wall lies between the AI and the player the tank
+        # presses directly into the obstacle and stalls.  Fix: pass the
+        # obstacle list into get_input() and apply a simple steering nudge
+        # when the AI detects an obstacle in its forward path (cast a narrow
+        # cone from the tank's position; if an obstacle rect intersects, add
+        # a rotation offset to steer around it).  Full A* pathfinding is a
+        # later milestone.  Tracked: feature/ai-navigation.
         desired_angle = angle_to(self._owner.position, target.position)
         diff = angle_difference(self._owner.angle, desired_angle)
         rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
