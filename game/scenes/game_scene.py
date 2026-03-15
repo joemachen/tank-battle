@@ -3,11 +3,13 @@ game/scenes/game_scene.py
 
 GameplayScene — the main in-game screen.
 
-Milestone v0.4 state:
-  - Player tank + stationary AI (heavy_tank) on screen simultaneously
-  - Player fires bullets; CollisionSystem applies damage to AI tank
-  - AI tank death triggers transition to GameOverScene (VICTORY)
-  - Full drive → aim → shoot → kill loop validated
+Milestone v0.5 state:
+  - Live AI opponent (medium difficulty): PATROL → PURSUE → ATTACK → EVADE
+  - AI moves, aims, and fires; player can die
+  - HUD: player health bar (bottom-left) + AI health bar (bottom-right)
+  - Player death → GameOverScene (DEFEATED)
+  - AI death → GameOverScene (VICTORY)
+  - Full bidirectional combat loop validated
 
 Coordinate systems:
   World space  — all entity positions (x, y) live here. Origin at arena top-left.
@@ -15,10 +17,9 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 
 Not yet implemented (future milestones):
-  - AI movement and firing (v0.5)
-  - Player health / death (v0.5)
-  - HUD health bars (v0.5)
   - Obstacle walls
+  - Match result calculator (score/XP are placeholders this milestone)
+  - Multiple player tank types
 """
 
 import pygame
@@ -30,6 +31,7 @@ from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
 from game.systems.input_handler import InputHandler
 from game.systems.physics import PhysicsSystem
+from game.ui.hud import HUD
 from game.utils.camera import Camera
 from game.utils.config_loader import get_ai_config, get_tank_config, get_weapon_config
 from game.utils.constants import (
@@ -71,17 +73,6 @@ _AI_SPAWN_X: float = ARENA_WIDTH * 0.80   # AI — top-right quadrant
 _AI_SPAWN_Y: float = ARENA_HEIGHT * 0.20
 
 
-class _PassiveAIController(AIController):
-    """
-    Stationary no-op controller for milestone v0.4 (feel-test only).
-    Returns zero input every frame so the AI tank never moves or fires.
-    Replace with the real AIController in v0.5 when movement AI is enabled.
-    """
-
-    def get_input(self) -> TankInput:
-        return TankInput()
-
-
 class GameplayScene(BaseScene):
     """
     Active gameplay screen. Owns all in-game entities and systems
@@ -95,10 +86,11 @@ class GameplayScene(BaseScene):
         self._tank: Tank | None = None
         self._input_handler: InputHandler | None = None
         self._ai_tank: Tank | None = None
-        self._ai_controller: _PassiveAIController | None = None
+        self._ai_controller: AIController | None = None
         self._physics: PhysicsSystem | None = None
         self._collision: CollisionSystem | None = None
         self._camera: Camera | None = None
+        self._hud: HUD | None = None
         self._weapon_config: dict = {}
         self._bullets: list[Bullet] = []
 
@@ -133,9 +125,9 @@ class GameplayScene(BaseScene):
             self._weapon_config.get("fire_rate", self._tank.fire_rate)
         )
 
-        # AI tank — heavy_tank config, passive (stationary) controller this milestone
+        # AI tank — heavy_tank config, live medium-difficulty controller
         ai_difficulty = get_ai_config("medium", AI_DIFFICULTY_CONFIG)
-        self._ai_controller = _PassiveAIController(
+        self._ai_controller = AIController(
             config=ai_difficulty,
             target_getter=lambda: self._tank,
         )
@@ -151,6 +143,7 @@ class GameplayScene(BaseScene):
         self._bullets = []
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
+        self._hud = HUD()
 
         # Camera starts snapped to the tank so there's no initial lerp pan
         self._camera = Camera()
@@ -161,7 +154,7 @@ class GameplayScene(BaseScene):
         self._ai_tank_surf = _build_tank_surface(COLOR_RED)
 
         log.info(
-            "GameplayScene ready. Player: %s  AI: heavy_tank  Weapon: %s",
+            "GameplayScene ready. Player: %s  AI: heavy_tank (medium)  Weapon: %s",
             TANK_DEFAULT_TYPE, DEFAULT_WEAPON_TYPE,
         )
 
@@ -174,6 +167,7 @@ class GameplayScene(BaseScene):
         self._physics = None
         self._collision = None
         self._camera = None
+        self._hud = None
         self._tank_surf = None
         self._ai_tank_surf = None
         self._weapon_config = {}
@@ -192,7 +186,7 @@ class GameplayScene(BaseScene):
         if self._tank is None:
             return
 
-        # Tank.update() returns fire events; spawn a bullet for each
+        # Player tank update — spawns bullets on fire events
         for event in self._tank.update(dt):
             if event[0] == "fire":
                 _, ex, ey, eangle = event
@@ -204,9 +198,18 @@ class GameplayScene(BaseScene):
                     Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
                 )
 
-        # AI tank update — passive this milestone (returns no events)
+        # AI tank update — live controller fires back this milestone
         if self._ai_tank and self._ai_tank.is_alive:
-            self._ai_tank.update(dt)
+            for event in self._ai_tank.update(dt):
+                if event[0] == "fire":
+                    _, ex, ey, eangle = event
+                    dx, dy = heading_to_vec(eangle)
+                    spawn_x = ex + dx * TANK_BARREL_WIDTH
+                    spawn_y = ey + dy * TANK_BARREL_WIDTH
+                    # TODO: use AI-specific weapon config in a later milestone
+                    self._bullets.append(
+                        Bullet(spawn_x, spawn_y, eangle, self._ai_tank, self._weapon_config)
+                    )
 
         # PhysicsSystem: advance bullets and clamp all tanks to arena
         all_tanks = [t for t in (self._tank, self._ai_tank) if t is not None]
@@ -226,8 +229,15 @@ class GameplayScene(BaseScene):
             # Prune bullets destroyed by collision
             self._bullets = [b for b in self._bullets if b.is_alive]
 
+        # Check lose condition: player tank destroyed → game over (defeat)
+        if not self._tank.is_alive:
+            # TODO: score and XP are placeholders; match result calculator comes in a later milestone
+            self.manager.switch_to(SCENE_GAME_OVER, won=False, score=0, xp_earned=10)
+            return
+
         # Check win condition: AI tank destroyed → game over (victory)
         if self._ai_tank and not self._ai_tank.is_alive:
+            # TODO: score and XP are placeholders; match result calculator comes in a later milestone
             self.manager.switch_to(SCENE_GAME_OVER, won=True, score=100, xp_earned=50)
             return
 
@@ -258,8 +268,12 @@ class GameplayScene(BaseScene):
         # 5. Active bullets
         _draw_bullets(surface, self._bullets, self._camera)
 
-        # 6. Debug overlay — remove or gate behind a flag in a later milestone
-        ai_state = self._ai_controller._state.name if self._ai_controller else "—"
+        # 6. HUD — health bars for both tanks
+        if self._hud:
+            self._hud.draw(surface, self._tank, self._ai_tank)
+
+        # 7. Debug overlay — remove or gate behind a flag in a later milestone
+        ai_state = self._ai_controller.state_name if self._ai_controller else "—"
         _draw_debug(surface, self._tank, self._camera, self._ai_tank, ai_state)
 
 
@@ -357,7 +371,7 @@ def _draw_debug(
 ) -> None:
     """
     Lightweight debug overlay: positions, health, and AI state.
-    TODO(milestone v0.5+): gate behind a DEBUG constant or remove.
+    TODO(milestone v0.6+): gate behind a DEBUG constant or remove.
     """
     font = pygame.font.SysFont(None, 22)
     lines = [

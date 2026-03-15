@@ -87,3 +87,21 @@ class TestAIStateTransitions:
         ctrl.set_owner(owner)
         ctrl.get_input()
         assert ctrl._state == AIState.PATROL
+
+    def test_evade_not_triggered_above_threshold(self):
+        """Health just above evasion_threshold must NOT trigger EVADE."""
+        # 41% health > 0.35 threshold — should be in ATTACK (target is within attack range)
+        owner = MockTank(x=0, y=0, health=41, max_health=100)
+        target = MockTank(x=AI_ATTACK_RANGE - 10, y=0)
+        ctrl = self._make_controller(owner, target, evasion_threshold=0.35)
+        ctrl.get_input()
+        assert ctrl._state == AIState.ATTACK
+
+    def test_state_name_property(self):
+        """state_name returns the current state as a string without private access."""
+        owner = MockTank(x=0, y=0)
+        target = MockTank(x=AI_DETECTION_RANGE + 100, y=0)
+        ctrl = self._make_controller(owner, target)
+        ctrl.get_input()
+        assert ctrl.state_name == "PATROL"
+        assert ctrl.state_name == ctrl._state.name

@@ -102,3 +102,22 @@ class TestCheckBulletVsTank:
         assert result is False
         assert bullet.is_alive          # bullet not destroyed
         assert tank.health == 100       # no damage
+
+    def test_ai_bullet_damages_player_not_ai(self):
+        """AI-owned bullet: immune to the AI tank, must damage the player tank."""
+        cs = CollisionSystem()
+        player_tank = _StubTank((100, 100), health=100)
+        ai_tank = _StubTank((100, 100), health=200)
+        bullet = _StubBullet((100, 100), owner=ai_tank, damage=25)
+
+        # Self-hit immunity: AI bullet must NOT hit the AI tank
+        result_self = cs.check_bullet_vs_tank(bullet, ai_tank)
+        assert result_self is False
+        assert bullet.is_alive
+        assert ai_tank.health == 200
+
+        # Cross-ownership: AI bullet MUST hit the player tank
+        result_cross = cs.check_bullet_vs_tank(bullet, player_tank)
+        assert result_cross is True
+        assert not bullet.is_alive
+        assert player_tank.health == 75
