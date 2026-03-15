@@ -1,13 +1,18 @@
 """
 tests/test_collision.py
 
-Unit tests for CollisionSystem geometry helpers and bullet-vs-tank logic.
+Unit tests for CollisionSystem geometry helpers, bullet-vs-tank logic,
+tank obstacle push-back, and bullet reflection.
 No pygame, no rendering — pure math and stub objects only.
 """
 
+import math
+
 import pytest
 
-from game.systems.collision import CollisionSystem
+from game.entities.bullet import Bullet
+from game.entities.obstacle import Obstacle
+from game.systems.collision import TANK_RADIUS, CollisionSystem
 
 
 # ---------------------------------------------------------------------------
@@ -121,3 +126,111 @@ class TestCheckBulletVsTank:
         assert result_cross is True
         assert not bullet.is_alive
         assert player_tank.health == 75
+
+
+# ---------------------------------------------------------------------------
+# Tank push-back from obstacles
+# ---------------------------------------------------------------------------
+
+class TestTankObstaclePushback:
+    def _make_cs(self):
+        return CollisionSystem()
+
+    def test_tank_pushed_out_from_left(self):
+        """Tank overlapping obstacle from the left is repositioned outside it."""
+        cs = self._make_cs()
+        # Tank center at (185, 150), TANK_RADIUS=22 → left edge at 163, inside obs left at 200
+        tank = _StubTank((185, 150))
+        obs = Obstacle(200, 100, 200, 100)  # x=[200,400], y=[100,200]
+        cs._tanks_vs_obstacles([tank], [obs])
+        assert not cs._circle_vs_rect(tank.position, TANK_RADIUS, obs.rect)
+
+    def test_tank_pushed_out_from_above(self):
+        """Tank overlapping obstacle from above is repositioned outside it."""
+        cs = self._make_cs()
+        # Tank center at (250, 185), TANK_RADIUS=22 → bottom edge at 207, inside obs top at 200
+        tank = _StubTank((250, 185))
+        obs = Obstacle(200, 200, 200, 100)  # x=[200,400], y=[200,300]
+        cs._tanks_vs_obstacles([tank], [obs])
+        assert not cs._circle_vs_rect(tank.position, TANK_RADIUS, obs.rect)
+
+    def test_dead_tank_not_pushed(self):
+        """A dead tank is not repositioned."""
+        cs = self._make_cs()
+        tank = _StubTank((185, 150))
+        tank.is_alive = False
+        obs = Obstacle(200, 100, 200, 100)
+        original_x = tank.x
+        cs._tanks_vs_obstacles([tank], [obs])
+        assert tank.x == original_x
+
+
+# ---------------------------------------------------------------------------
+# Bullet reflection off obstacles
+# ---------------------------------------------------------------------------
+
+def _make_bouncing_bullet(x: float, y: float, angle: float) -> Bullet:
+    """Construct a bouncing_round bullet for reflection tests (no pygame needed)."""
+    config = {
+        "type": "bouncing_round",
+        "speed": 400,
+        "damage": 20,
+        "max_bounces": 3,
+        "max_range": 2400,
+    }
+    return Bullet(x, y, angle, object(), config)
+
+
+class TestBulletReflection:
+    def test_reflect_off_horizontal_surface(self):
+        """Bullet traveling downward hitting top face of obstacle → _dy inverts."""
+        # Bullet at (50, 97) heading down (angle=90°); obs top face at y=100
+        bullet = _make_bouncing_bullet(50, 97, 90.0)
+        obs = Obstacle(0, 100, 200, 100)
+        cs = CollisionSystem()
+        original_dy = bullet._dy
+
+        cs._reflect_bullet(bullet, obs)
+
+        assert bullet._dy == pytest.approx(-original_dy)
+        assert bullet.bounces_remaining == 2
+
+    def test_reflect_off_vertical_surface(self):
+        """Bullet traveling right hitting left face of obstacle → _dx inverts."""
+        # Bullet at (97, 50) heading right (angle=0°); obs left face at x=100
+        bullet = _make_bouncing_bullet(97, 50, 0.0)
+        obs = Obstacle(100, 0, 100, 100)
+        cs = CollisionSystem()
+        original_dx = bullet._dx
+
+        cs._reflect_bullet(bullet, obs)
+
+        assert bullet._dx == pytest.approx(-original_dx)
+        assert bullet.bounces_remaining == 2
+
+    def test_reflect_updates_angle(self):
+        """After reflection, bullet.angle matches the new _dx/_dy direction."""
+        bullet = _make_bouncing_bullet(50, 97, 90.0)   # heading straight down
+        obs = Obstacle(0, 100, 200, 100)
+        CollisionSystem()._reflect_bullet(bullet, obs)
+        expected_angle = math.degrees(math.atan2(bullet._dy, bullet._dx))
+        assert bullet.angle == pytest.approx(expected_angle)
+
+    def test_no_bounce_remaining_destroys_bullet(self):
+        """Standard bullet (max_bounces=0) touching obstacle is destroyed, not reflected."""
+        config = {"type": "standard_shell", "speed": 420, "damage": 25,
+                  "max_bounces": 0, "max_range": 1400}
+        bullet = Bullet(50, 97, 90.0, object(), config)
+        obs = Obstacle(0, 100, 200, 100)
+        cs = CollisionSystem()
+        cs._bullets_vs_obstacles([bullet], [obs])
+        assert not bullet.is_alive
+
+    def test_bouncing_round_survives_first_hit(self):
+        """bouncing_round bullet survives its first obstacle hit (has bounces remaining)."""
+        bullet = _make_bouncing_bullet(50, 97, 90.0)
+        obs = Obstacle(0, 100, 200, 100)
+        cs = CollisionSystem()
+        cs._bullets_vs_obstacles([bullet], [obs])
+        assert bullet.is_alive
+        assert bullet.bounces_remaining == 2

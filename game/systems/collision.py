@@ -79,15 +79,54 @@ class CollisionSystem:
                 if not obs.is_alive:
                     continue
                 if self._circle_vs_rect(bullet.position, BULLET_RADIUS, obs.rect):
-                    if obs.reflective and bullet.bounces_remaining > 0:
-                        # TODO: calculate reflection vector in a later milestone
-                        bullet.bounces_remaining -= 1
-                        log.debug("Bullet reflected by obstacle.")
+                    if bullet.bounces_remaining > 0:
+                        # obs.reflective reserved for future non-reflective surface variant
+                        self._reflect_bullet(bullet, obs)
                     else:
                         bullet.destroy()
                         if obs.destructible:
                             obs.destroy()
                     break
+
+    def _reflect_bullet(self, bullet, obs) -> None:
+        """
+        Reflect a bouncing bullet off the face of an obstacle it has entered.
+
+        Determines the hit face from the overlap geometry:
+          - bullet x inside rect x-range → hit top or bottom face → invert _dy
+          - bullet y inside rect y-range → hit left or right face → invert _dx
+          - corner overlap → reflect along the axis with smaller penetration
+        """
+        bx, by = bullet.position
+        rx, ry, rw, rh = obs.rect
+
+        closest_x = max(rx, min(bx, rx + rw))
+        closest_y = max(ry, min(by, ry + rh))
+        dx = bx - closest_x   # 0 when bullet x is inside rect x-range
+        dy = by - closest_y   # 0 when bullet y is inside rect y-range
+
+        if dx == 0 and dy == 0:
+            # Bullet center fully inside rect — push out along nearest face
+            dist_to_left = bx - rx
+            dist_to_right = (rx + rw) - bx
+            dist_to_top = by - ry
+            dist_to_bottom = (ry + rh) - by
+            if min(dist_to_left, dist_to_right) < min(dist_to_top, dist_to_bottom):
+                bullet.reflect(1.0, 0.0)   # nearest face is vertical (left/right) → invert _dx
+            else:
+                bullet.reflect(0.0, 1.0)   # nearest face is horizontal (top/bottom) → invert _dy
+        elif dx == 0:
+            # Bullet x is within rect x-range → approached from top or bottom → invert _dy
+            bullet.reflect(0.0, 1.0)
+        elif dy == 0:
+            # Bullet y is within rect y-range → approached from left or right → invert _dx
+            bullet.reflect(1.0, 0.0)
+        else:
+            # Corner approach — reflect off the axis with the smaller gap (nearer face)
+            if abs(dx) < abs(dy):
+                bullet.reflect(1.0, 0.0)   # nearer to vertical face (left/right) → invert _dx
+            else:
+                bullet.reflect(0.0, 1.0)   # nearer to horizontal face (top/bottom) → invert _dy
 
     def _tanks_vs_obstacles(self, tanks: list, obstacles: list) -> None:
         for tank in tanks:
@@ -97,8 +136,46 @@ class CollisionSystem:
                 if not obs.is_alive:
                     continue
                 if self._circle_vs_rect(tank.position, TANK_RADIUS, obs.rect):
-                    # TODO: push tank out of obstacle in a later milestone
-                    pass
+                    self._push_tank_out(tank, obs)
+
+    def _push_tank_out(self, tank, obs) -> None:
+        """
+        Reposition tank so it no longer overlaps the obstacle.
+
+        When the tank center is outside the rect, push along the overlap
+        vector (closest-point → center) by the penetration depth.
+        When the center is inside the rect, push out along the nearest face.
+        """
+        tx, ty = tank.x, tank.y
+        rx, ry, rw, rh = obs.rect
+
+        closest_x = max(rx, min(tx, rx + rw))
+        closest_y = max(ry, min(ty, ry + rh))
+        dx = tx - closest_x
+        dy = ty - closest_y
+        dist_sq = dx * dx + dy * dy
+
+        if dist_sq > 0:
+            # Center outside rect — push along overlap vector
+            dist = math.sqrt(dist_sq)
+            penetration = TANK_RADIUS - dist
+            tank.x += (dx / dist) * penetration
+            tank.y += (dy / dist) * penetration
+        else:
+            # Center inside rect — push out to nearest face
+            overlap_left = tx - rx
+            overlap_right = (rx + rw) - tx
+            overlap_top = ty - ry
+            overlap_bottom = (ry + rh) - ty
+            min_ov = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+            if min_ov == overlap_left:
+                tank.x = rx - TANK_RADIUS
+            elif min_ov == overlap_right:
+                tank.x = rx + rw + TANK_RADIUS
+            elif min_ov == overlap_top:
+                tank.y = ry - TANK_RADIUS
+            else:
+                tank.y = ry + rh + TANK_RADIUS
 
     def _tanks_vs_pickups(self, tanks: list, pickups: list) -> None:
         for tank in tanks:

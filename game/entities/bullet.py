@@ -57,6 +57,26 @@ class Bullet:
         if self._distance_traveled >= self.max_range:
             self.destroy()
 
+    def reflect(self, normal_x: float, normal_y: float) -> None:
+        """
+        Reflect velocity off a surface with the given unit normal.
+        Uses standard reflection formula: v' = v - 2(v·n)n.
+        Decrements bounces_remaining and updates heading angle.
+
+        normal_x, normal_y represent the axis to reflect over:
+          (1, 0) → invert _dx  (vertical surface: left/right face)
+          (0, 1) → invert _dy  (horizontal surface: top/bottom face)
+        """
+        dot = self._dx * normal_x + self._dy * normal_y
+        self._dx -= 2.0 * dot * normal_x
+        self._dy -= 2.0 * dot * normal_y
+        self.angle = math.degrees(math.atan2(self._dy, self._dx))
+        self.bounces_remaining -= 1
+        log.debug(
+            "Bullet reflected. bounces_remaining=%d new_angle=%.1f",
+            self.bounces_remaining, self.angle,
+        )
+
     def destroy(self) -> None:
         """Mark bullet for removal by CollisionSystem."""
         self.is_alive = False

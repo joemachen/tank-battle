@@ -1,0 +1,68 @@
+# data/maps/map_01.yaml
+#
+# Map 01 — Symmetrical arena with two mid-lane walls and four corner blocks.
+#
+# Arena: 1600 x 1200 px
+# Player spawns at (800, 600)  — arena center
+# AI spawns at    (1280, 240)  — top-right quadrant
+#
+# Layout intent:
+#   Two tall vertical walls (left/right of center) split the arena into
+#   three lanes, giving both players natural cover and navigation options.
+#   Four shorter blocks sit at the upper and lower mid-field to break lines
+#   of sight and create flanking opportunities.
+#
+# Fields:
+#   x, y         — top-left corner of the obstacle in world space
+#   width, height
+#   destructible — can bullets destroy this obstacle (false this milestone)
+#   reflective   — reserved for future non-reflective surface variant
+
+obstacles:
+  # Left mid-lane wall — vertical cover, creates left corridor
+  - x: 350
+    y: 430
+    width: 90
+    height: 240
+    destructible: false
+    reflective: false
+
+  # Right mid-lane wall — mirror of left
+  - x: 1160
+    y: 430
+    width: 90
+    height: 240
+    destructible: false
+    reflective: false
+
+  # Upper-left block — cover near top-left quadrant
+  - x: 430
+    y: 180
+    width: 160
+    height: 80
+    destructible: false
+    reflective: false
+
+  # Upper-right block — mirror of upper-left; AI spawns at (1280, 240), clear
+  - x: 1010
+    y: 180
+    width: 160
+    height: 80
+    destructible: false
+    reflective: false
+
+  # Lower-left block — cover near bottom-left quadrant
+  - x: 430
+    y: 940
+    width: 160
+    height: 80
+    destructible: false
+    reflective: false
+
+  # Lower-right block — mirror of lower-left
+  - x: 1010
+    y: 940
+    width: 160
+    height: 80
+    destructible: false
+    reflective: false
