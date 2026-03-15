@@ -105,3 +105,39 @@ class TestAIStateTransitions:
         ctrl.get_input()
         assert ctrl.state_name == "PATROL"
         assert ctrl.state_name == ctrl._state.name
+
+    def test_recovery_entered_when_stuck(self):
+        """
+        AI transitions to RECOVERY when the stuck detector fires.
+        Target is in PURSUE range so the AI wants to move; tick() calls
+        at the same position fill the window with zero displacement.
+        """
+        owner = MockTank(x=0, y=0)
+        target = MockTank(x=AI_DETECTION_RANGE - 10, y=0)   # in PURSUE range
+        ctrl = self._make_controller(owner, target)
+        # Fill stuck window: owner stays at (0, 0) — zero displacement
+        # window=0.5s, dt=0.1 → 7 ticks gives ~0.7s of history (>= 80% fill)
+        for _ in range(7):
+            ctrl.tick(0.1)
+        ctrl.get_input()
+        assert ctrl._state == AIState.RECOVERY
+
+    def test_recovery_produces_reverse_input(self):
+        """_recovery_input() returns negative throttle (reversing)."""
+        owner = MockTank(x=0, y=0)
+        target = MockTank(x=AI_DETECTION_RANGE - 10, y=0)
+        ctrl = self._make_controller(owner, target)
+        for _ in range(7):
+            ctrl.tick(0.1)
+        tank_input = ctrl.get_input()
+        assert tank_input.throttle < 0.0
+
+    def test_recovery_state_name(self):
+        """state_name reports 'RECOVERY' while in the recovery sub-state."""
+        owner = MockTank(x=0, y=0)
+        target = MockTank(x=AI_DETECTION_RANGE - 10, y=0)
+        ctrl = self._make_controller(owner, target)
+        for _ in range(7):
+            ctrl.tick(0.1)
+        ctrl.get_input()
+        assert ctrl.state_name == "RECOVERY"

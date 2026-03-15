@@ -147,6 +147,11 @@ class GameplayScene(BaseScene):
 
         self._bullets = []
         self._obstacles = load_map(MAP_01)
+        # Give the AI live obstacle access for avoidance steering.
+        # Lambda reads self._obstacles at call time so it stays current after reloads.
+        self._ai_controller.set_obstacles_getter(
+            lambda: [o for o in self._obstacles if o.is_alive]
+        )
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
         self._hud = HUD()
@@ -205,8 +210,10 @@ class GameplayScene(BaseScene):
                     Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
                 )
 
-        # AI tank update — live controller fires back this milestone
+        # AI tank update — tick() advances stuck detection before the tank moves
         if self._ai_tank and self._ai_tank.is_alive:
+            if self._ai_controller:
+                self._ai_controller.tick(dt)
             for event in self._ai_tank.update(dt):
                 if event[0] == "fire":
                     _, ex, ey, eangle = event
