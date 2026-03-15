@@ -1,0 +1,28 @@
+# data/configs/ai_difficulty.yaml
+#
+# AI difficulty tiers. Each tier sets the behavior parameters
+# injected into AIController at instantiation.
+#
+# Fields:
+#   reaction_time      - seconds before AI reacts to state changes (lower = sharper)
+#   accuracy           - shot accuracy [0.0, 1.0] (higher = tighter aim)
+#   aggression         - fire probability per frame when in attack range [0.0, 1.0]
+#   evasion_threshold  - health_ratio below which AI enters EVADE state [0.0, 1.0]
+
+easy:
+  reaction_time: 0.80
+  accuracy: 0.45
+  aggression: 0.25
+  evasion_threshold: 0.20
+
+medium:
+  reaction_time: 0.40
+  accuracy: 0.72
+  aggression: 0.55
+  evasion_threshold: 0.35
+
+hard:
+  reaction_time: 0.15
+  accuracy: 0.92
+  aggression: 0.85
+  evasion_threshold: 0.55

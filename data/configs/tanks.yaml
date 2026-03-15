@@ -1,0 +1,43 @@
+# data/configs/tanks.yaml
+#
+# Tank type definitions. Adding a new tank requires ONLY adding an entry here.
+# No Python code changes needed.
+#
+# Fields:
+#   speed        - movement speed in pixels/second
+#   health       - starting and max HP
+#   turn_rate    - rotation speed in degrees/second
+#   fire_rate    - shots per second
+#   description  - human-readable label (used in UI and unlock screens)
+
+light_tank:
+  type: light_tank
+  speed: 200
+  health: 80
+  turn_rate: 180
+  fire_rate: 1.5
+  description: "Fast and agile, but fragile."
+
+medium_tank:
+  type: medium_tank
+  speed: 150
+  health: 120
+  turn_rate: 130
+  fire_rate: 1.0
+  description: "Balanced. Good all-rounder for new players."
+
+heavy_tank:
+  type: heavy_tank
+  speed: 90
+  health: 220
+  turn_rate: 80
+  fire_rate: 0.6
+  description: "Slow and heavily armored. Dominates in close range."
+
+scout_tank:
+  type: scout_tank
+  speed: 260
+  health: 60
+  turn_rate: 220
+  fire_rate: 2.0
+  description: "Extremely fast, very low health. Hit-and-run specialist."

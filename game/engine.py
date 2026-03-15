@@ -1,0 +1,102 @@
+"""
+game/engine.py
+
+GameEngine — owns the main loop.
+
+Responsibilities:
+  - Initialize pygame and the display surface
+  - Own the SceneManager
+  - Run the event/update/draw loop with delta time
+  - Shut down cleanly on exit or unhandled exception
+"""
+
+import traceback
+
+import pygame
+
+from game.scenes import SceneManager
+from game.scenes.game_over_scene import GameOverScene
+from game.scenes.game_scene import GameplayScene
+from game.scenes.menu_scene import MainMenuScene
+from game.scenes.settings_scene import SettingsScene
+from game.utils.constants import (
+    FPS,
+    SCENE_GAME,
+    SCENE_GAME_OVER,
+    SCENE_MENU,
+    SCENE_SETTINGS,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    TITLE,
+)
+from game.utils.logger import get_logger
+
+log = get_logger(__name__)
+
+
+class GameEngine:
+    """
+    The top-level game object. Instantiated once in main.py.
+
+    Usage:
+        engine = GameEngine()
+        engine.run()
+    """
+
+    def __init__(self) -> None:
+        pygame.init()
+        self._screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption(TITLE)
+        self._clock = pygame.time.Clock()
+        self._running: bool = False
+
+        self._scene_manager = SceneManager()
+        self._register_scenes()
+
+        log.info("GameEngine initialized. Resolution: %dx%d @ %d FPS", SCREEN_WIDTH, SCREEN_HEIGHT, FPS)
+
+    def _register_scenes(self) -> None:
+        sm = self._scene_manager
+        sm.register(SCENE_MENU, MainMenuScene(sm))
+        sm.register(SCENE_GAME, GameplayScene(sm))
+        sm.register(SCENE_SETTINGS, SettingsScene(sm))
+        sm.register(SCENE_GAME_OVER, GameOverScene(sm))
+        sm.switch_to(SCENE_MENU)
+        log.info("All scenes registered. Starting at: '%s'", SCENE_MENU)
+
+    def run(self) -> None:
+        """
+        Main game loop. Runs until the window is closed or self._running is False.
+
+        Delta time (dt) is in seconds. All movement/physics must use dt to
+        guarantee frame-rate independence.
+        """
+        self._running = True
+        log.info("Game loop started.")
+
+        try:
+            while self._running:
+                dt = self._clock.tick(FPS) / 1000.0  # convert ms → seconds
+
+                # — Event handling —
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self._running = False
+                        break
+                    self._scene_manager.handle_event(event)
+
+                # — Update —
+                self._scene_manager.update(dt)
+
+                # — Draw —
+                self._scene_manager.draw(self._screen)
+                pygame.display.flip()
+
+        except Exception:
+            log.critical("Unhandled exception in game loop:\n%s", traceback.format_exc())
+        finally:
+            self._shutdown()
+
+    def _shutdown(self) -> None:
+        log.info("Shutting down.")
+        pygame.quit()

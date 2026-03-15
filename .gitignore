@@ -42,6 +42,9 @@ saves/
 .DS_Store
 Thumbs.db
 
+# Claude Code metadata
+.claude/
+
 # Pygame / Windows artifacts
 *.bak
 *.tmp

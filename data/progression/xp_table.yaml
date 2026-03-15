@@ -1,0 +1,55 @@
+# data/progression/xp_table.yaml
+#
+# XP thresholds and unlock rewards per level.
+# To add a new level, append an entry — no code changes required.
+#
+# Fields:
+#   xp_required   - cumulative XP needed to reach this level
+#   unlocks       - list of tank/weapon IDs unlocked on reaching this level (empty list = none)
+
+levels:
+  - level: 1
+    xp_required: 0
+    unlocks: []
+
+  - level: 2
+    xp_required: 150
+    unlocks: []
+
+  - level: 3
+    xp_required: 350
+    unlocks:
+      - medium_tank
+
+  - level: 4
+    xp_required: 700
+    unlocks:
+      - spread_shot
+
+  - level: 5
+    xp_required: 1200
+    unlocks:
+      - heavy_tank
+
+  - level: 6
+    xp_required: 2000
+    unlocks:
+      - bouncing_round
+
+  - level: 7
+    xp_required: 3000
+    unlocks:
+      - scout_tank
+
+  - level: 8
+    xp_required: 4500
+    unlocks:
+      - homing_missile
+
+  - level: 9
+    xp_required: 6500
+    unlocks: []
+
+  - level: 10
+    xp_required: 9000
+    unlocks: []
