@@ -39,16 +39,23 @@ class CollisionSystem:
     def __init__(self) -> None:
         log.debug("CollisionSystem initialized.")
 
-    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list) -> None:
+    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list) -> list[str]:
         """
         Run all collision checks for the current frame.
         Called once per frame from GameplayScene.update().
+
+        Returns:
+            A list of audio event strings for the caller to play back.
+            Possible values: "bullet_hit_tank", "bullet_hit_obstacle",
+            "obstacle_destroy", "tank_collision".
         """
-        self._bullets_vs_tanks(bullets, tanks)
-        self._bullets_vs_obstacles(bullets, obstacles)
+        events: list[str] = []
+        events.extend(self._bullets_vs_tanks(bullets, tanks))
+        events.extend(self._bullets_vs_obstacles(bullets, obstacles))
         self._tanks_vs_obstacles(tanks, obstacles)
-        self._tanks_vs_tanks(tanks)
+        events.extend(self._tanks_vs_tanks(tanks))
         self._tanks_vs_pickups(tanks, pickups)
+        return events
 
     # ------------------------------------------------------------------
     # Collision pair handlers
@@ -72,15 +79,22 @@ class CollisionSystem:
             return True
         return False
 
-    def _bullets_vs_tanks(self, bullets: list, tanks: list) -> None:
+    def _bullets_vs_tanks(self, bullets: list, tanks: list) -> list[str]:
+        events: list[str] = []
         for bullet in bullets:
             if not bullet.is_alive:
                 continue
             for tank in tanks:
                 if self.check_bullet_vs_tank(bullet, tank):
+                    if tank.is_alive:
+                        events.append("bullet_hit_tank")
+                    else:
+                        events.append("tank_explosion")
                     break
+        return events
 
-    def _bullets_vs_obstacles(self, bullets: list, obstacles: list) -> None:
+    def _bullets_vs_obstacles(self, bullets: list, obstacles: list) -> list[str]:
+        events: list[str] = []
         for bullet in bullets:
             if not bullet.is_alive:
                 continue
@@ -88,6 +102,7 @@ class CollisionSystem:
                 if not obs.is_alive:
                     continue
                 if self._circle_vs_rect(bullet.position, BULLET_RADIUS, obs.rect):
+                    was_alive = obs.is_alive
                     if bullet.bounces_remaining > 0:
                         # obs.reflective reserved for future non-reflective surface variant.
                         # Bouncing bullets still transfer kinetic energy to the obstacle.
@@ -96,7 +111,12 @@ class CollisionSystem:
                     else:
                         bullet.destroy()
                         obs.take_damage(bullet.damage, damage_type="standard")
+                    if was_alive and not obs.is_alive:
+                        events.append("obstacle_destroy")
+                    else:
+                        events.append("bullet_hit_obstacle")
                     break
+        return events
 
     def _reflect_bullet(self, bullet, obs) -> None:
         """
@@ -187,7 +207,7 @@ class CollisionSystem:
             else:
                 tank.y = ry + rh + TANK_RADIUS
 
-    def _tanks_vs_tanks(self, tanks: list) -> None:
+    def _tanks_vs_tanks(self, tanks: list) -> list[str]:
         """
         Check every unique tank pair for overlap, push them apart, and apply
         collision damage to both.
@@ -195,6 +215,7 @@ class CollisionSystem:
         Only live tanks participate.  Damage is zero if relative speed is
         effectively zero (a slow nudge still scores 1 point via the floor).
         """
+        events: list[str] = []
         alive = [t for t in tanks if t.is_alive]
         for i in range(len(alive)):
             for j in range(i + 1, len(alive)):
@@ -205,6 +226,8 @@ class CollisionSystem:
                     continue  # no overlap
                 self._push_tanks_apart(a, b, dist_sq, combined)
                 self._apply_tank_collision_damage(a, b)
+                events.append("tank_collision")
+        return events
 
     def _push_tanks_apart(self, a, b, dist_sq: float, combined_r: float) -> None:
         """Push two overlapping tanks symmetrically along their separation axis."""

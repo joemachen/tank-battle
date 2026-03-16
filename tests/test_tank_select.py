@@ -21,6 +21,7 @@ import types
 _pygame_stub = types.ModuleType("pygame")
 _pygame_stub.SRCALPHA = 65536
 _pygame_stub.KEYDOWN = 768
+_pygame_stub.error = type("error", (Exception,), {})  # AudioManager uses pygame.error
 # Navigation / confirm keys
 _pygame_stub.K_LEFT = 276
 _pygame_stub.K_RIGHT = 275
@@ -83,8 +84,28 @@ class _FakeRect:
 
 _pygame_stub.Surface = _FakeSurface
 _pygame_stub.Rect = _FakeRect
+
+# mixer stub — AudioManager calls pygame.mixer.init / music / set_num_channels
+_mixer_mod = types.ModuleType("pygame.mixer")
+_mixer_mod.init = lambda *a, **kw: None
+_mixer_mod.set_num_channels = lambda *a, **kw: None
+
+class _FakeSound:
+    def set_volume(self, v): pass
+    def play(self): pass
+
+_mixer_mod.Sound = lambda *a, **kw: _FakeSound()
+_mixer_music_mod = types.ModuleType("pygame.mixer.music")
+_mixer_music_mod.fadeout = lambda *a, **kw: None
+_mixer_music_mod.load = lambda *a, **kw: None
+_mixer_music_mod.set_volume = lambda *a, **kw: None
+_mixer_music_mod.play = lambda *a, **kw: None
+_mixer_mod.music = _mixer_music_mod
+_pygame_stub.mixer = _mixer_mod
+
 sys.modules["pygame"] = _pygame_stub
 sys.modules["pygame.font"] = _font_mod
+sys.modules["pygame.mixer"] = _mixer_mod
 
 # ---------------------------------------------------------------------------
 # Now safe to import game modules

@@ -24,6 +24,7 @@ Selection is passed to GameplayScene via:
 import pygame
 
 from game.scenes.base_scene import BaseScene
+from game.ui.audio_manager import get_audio_manager
 from game.utils.config_loader import load_yaml
 from game.utils.constants import (
     COLOR_BG,
@@ -33,10 +34,13 @@ from game.utils.constants import (
     COLOR_RED,
     COLOR_WHITE,
     MAX_BAR_WIDTH,
+    MUSIC_MENU,
     SCENE_GAME,
     SCENE_MENU,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SFX_UI_CONFIRM,
+    SFX_UI_NAVIGATE,
     TANK_BARREL_COLOR,
     TANK_BARREL_HEIGHT,
     TANK_BARREL_WIDTH,
@@ -144,6 +148,8 @@ class TankSelectScene(BaseScene):
         self._opponent_idx = _DEFAULT_OPPONENT_IDX
         self._focused_row = _ROW_TANKS
 
+        get_audio_manager().play_music(MUSIC_MENU)
+
         log.info(
             "TankSelectScene entered. Unlocked: %s  cursor=%d",
             sorted(self._unlocked), self._tank_cursor,
@@ -172,9 +178,11 @@ class TankSelectScene(BaseScene):
         # UP / DOWN switches which row has focus
         if event.key == pygame.K_UP:
             self._focused_row = max(0, self._focused_row - 1)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
             return
         if event.key == pygame.K_DOWN:
             self._focused_row = min(_ROW_OPPONENTS, self._focused_row + 1)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
             return
 
         # LEFT / RIGHT navigate within the focused row
@@ -190,6 +198,7 @@ class TankSelectScene(BaseScene):
             self._difficulty_idx = (self._difficulty_idx + delta) % len(_DIFFICULTIES)
         elif self._focused_row == _ROW_OPPONENTS:
             self._opponent_idx = (self._opponent_idx + delta) % len(_OPPONENT_COUNTS)
+        get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     def _confirm_selection(self) -> None:
         selected = self._tank_data[self._tank_cursor]
@@ -203,6 +212,7 @@ class TankSelectScene(BaseScene):
             "TankSelectScene: confirmed tank=%s  difficulty=%s  opponents=%d",
             tank_type, difficulty, ai_count,
         )
+        get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         self.manager.switch_to(
             SCENE_GAME,
             tank_type=tank_type,

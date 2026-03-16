@@ -113,6 +113,24 @@ MASTER_VOLUME_DEFAULT: float = 1.0
 AUDIO_CHANNELS: int = 16
 MUSIC_FADEOUT_MS: int = 1000
 
+import os as _os
+_ASSET_ROOT = _os.path.join(_os.path.dirname(__file__), "..", "..", "assets")
+
+# SFX asset paths
+SFX_TANK_FIRE:           str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_fire.wav")
+SFX_BULLET_HIT_TANK:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_bullet_hit_tank.wav")
+SFX_BULLET_HIT_OBSTACLE: str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_bullet_hit_obstacle.wav")
+SFX_OBSTACLE_DESTROY:    str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_obstacle_destroy.wav")
+SFX_TANK_EXPLOSION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_explosion.wav")
+SFX_TANK_COLLISION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_collision.wav")
+SFX_UI_NAVIGATE:         str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_navigate.wav")
+SFX_UI_CONFIRM:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_confirm.wav")
+
+# Music asset paths
+MUSIC_MENU:      str = _os.path.join(_ASSET_ROOT, "music", "music_menu.wav")
+MUSIC_GAMEPLAY:  str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay.wav")
+MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav")
+
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------

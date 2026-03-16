@@ -27,6 +27,7 @@ from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
 from game.systems.input_handler import InputHandler
 from game.systems.physics import PhysicsSystem
+from game.ui.audio_manager import get_audio_manager
 from game.ui.hud import HUD
 from game.utils.camera import Camera
 from game.utils.config_loader import get_ai_config, get_tank_config, get_weapon_config
@@ -49,10 +50,17 @@ from game.utils.constants import (
     COLOR_WHITE,
     DEFAULT_WEAPON_TYPE,
     MAP_01,
+    MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
     OBSTACLE_DAMAGED_COLOR,
     SCENE_GAME_OVER,
     SCENE_MENU,
+    SFX_BULLET_HIT_OBSTACLE,
+    SFX_BULLET_HIT_TANK,
+    SFX_OBSTACLE_DESTROY,
+    SFX_TANK_COLLISION,
+    SFX_TANK_EXPLOSION,
+    SFX_TANK_FIRE,
     TANK_BARREL_COLOR,
     TANK_BARREL_HEIGHT,
     TANK_BARREL_WIDTH,
@@ -174,6 +182,8 @@ class GameplayScene(BaseScene):
         self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
 
+        get_audio_manager().play_music(MUSIC_GAMEPLAY)
+
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapon: %s",
             tank_type, ai_count, ai_difficulty_key, DEFAULT_WEAPON_TYPE,
@@ -203,15 +213,20 @@ class GameplayScene(BaseScene):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.manager.switch_to(SCENE_MENU)
+            elif event.key == pygame.K_m:
+                get_audio_manager().toggle_mute()
 
     def update(self, dt: float) -> None:
         if self._tank is None:
             return
 
+        audio = get_audio_manager()
+
         # Player tank update
         for event in self._tank.update(dt):
             if event[0] == "fire":
                 self._spawn_bullet(event, self._tank)
+                audio.play_sfx(SFX_TANK_FIRE)
 
         # AI tanks update (tick() for stuck detection before tank.update())
         for ai_tank, controller in zip(self._ai_tanks, self._ai_controllers):
@@ -221,6 +236,7 @@ class GameplayScene(BaseScene):
             for event in ai_tank.update(dt):
                 if event[0] == "fire":
                     self._spawn_bullet(event, ai_tank)
+                    audio.play_sfx(SFX_TANK_FIRE)
 
         # Physics: advance bullets, clamp all tanks to arena bounds
         all_tanks = [self._tank] + self._ai_tanks
@@ -228,13 +244,29 @@ class GameplayScene(BaseScene):
         self._bullets = [b for b in self._bullets if b.is_alive]
 
         # Collision: bullets, obstacles, tank-to-tank
-        self._collision.update(
+        audio_events = self._collision.update(
             tanks=all_tanks,
             bullets=self._bullets,
             obstacles=self._obstacles,
             pickups=[],
         )
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Map collision events → SFX (de-duplicate per frame to avoid spam)
+        _COLLISION_SFX = {
+            "bullet_hit_tank":     SFX_BULLET_HIT_TANK,
+            "tank_explosion":      SFX_TANK_EXPLOSION,
+            "bullet_hit_obstacle": SFX_BULLET_HIT_OBSTACLE,
+            "obstacle_destroy":    SFX_OBSTACLE_DESTROY,
+            "tank_collision":      SFX_TANK_COLLISION,
+        }
+        played: set[str] = set()
+        for ev in audio_events:
+            if ev not in played:
+                sfx_path = _COLLISION_SFX.get(ev)
+                if sfx_path:
+                    audio.play_sfx(sfx_path)
+                played.add(ev)
 
         # Win / lose checks
         if not self._tank.is_alive:
