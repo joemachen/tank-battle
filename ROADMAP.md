@@ -13,18 +13,18 @@ are completed or plans change.
 | v0.8.0  | Pre-match tank selection + locked tank system                         |
 | v0.9.0  | AI difficulty select + multiple AI opponents + tank collision damage  |
 | v0.10.0 | Audio — SFX + synthwave music per scene, M mute, procedural assets   |
+| v0.11.0 | Match result + XP persistence — stat screen, level-up, unlock flow   |
 ---
 ## 🔨 In Progress
-| Branch                   | Milestone                                              |
-|--------------------------|--------------------------------------------------------|
-| feature/xp-persistence   | v0.11 — Match result + XP persistence                 |
+| Branch                | Milestone                                              |
+|-----------------------|--------------------------------------------------------|
+| feature/menu-polish   | v0.12 — Main menu polish                              |
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
 *Get the base game feeling complete before expanding content.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.11   | Match result + XP persistence | Score calculator, XP award on match end, level-up notification, SaveManager writes after every match. Unlocks become meaningful here. |
 | v0.12   | Main menu polish       | Styled menu, animated transitions, game feels shippable from the front door. |
 | v0.13   | Settings screen        | Volume sliders, keybind config, resolution, difficulty default.       |
 ---
