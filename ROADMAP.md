@@ -4,25 +4,26 @@ shift based on feel-testing and priorities. Update this file when milestones
 are completed or plans change.
 ---
 ## ✅ Completed
-| Tag    | Milestone                                              |
-|--------|--------------------------------------------------------|
-| v0.1.0 | Tank + movement + camera + floor grid                  |
-| v0.5.0 | Live AI combat + player death + dual HUD               |
-| v0.6.0 | Arena obstacles + material system + bullet bounce      |
-| v0.7.0 | AI obstacle navigation + stuck recovery                |
-| v0.8.0 | Pre-match tank selection + locked tank system          |
+| Tag     | Milestone                                                             |
+|---------|-----------------------------------------------------------------------|
+| v0.1.0  | Tank + movement + camera + floor grid                                 |
+| v0.5.0  | Live AI combat + player death + dual HUD                              |
+| v0.6.0  | Arena obstacles + material system + bullet bounce                     |
+| v0.7.0  | AI obstacle navigation + stuck recovery                               |
+| v0.8.0  | Pre-match tank selection + locked tank system                         |
+| v0.9.0  | AI difficulty select + multiple AI opponents + tank collision damage  |
+| v0.10.0 | Audio — SFX + synthwave music per scene, M mute, procedural assets   |
 ---
 ## 🔨 In Progress
-| Branch                  | Milestone                                              |
-|-------------------------|--------------------------------------------------------|
-| feature/combat-upgrade  | v0.9 — AI difficulty select + multiple AI opponents + tank collision damage |
+| Branch                   | Milestone                                              |
+|--------------------------|--------------------------------------------------------|
+| feature/xp-persistence   | v0.11 — Match result + XP persistence                 |
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
 *Get the base game feeling complete before expanding content.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.10   | Audio                  | Fire SFX, hit SFX, destruction SFX, music per scene. Highest feel impact per hour of work. |
 | v0.11   | Match result + XP persistence | Score calculator, XP award on match end, level-up notification, SaveManager writes after every match. Unlocks become meaningful here. |
 | v0.12   | Main menu polish       | Styled menu, animated transitions, game feels shippable from the front door. |
 | v0.13   | Settings screen        | Volume sliders, keybind config, resolution, difficulty default.       |
