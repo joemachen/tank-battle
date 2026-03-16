@@ -3,23 +3,19 @@ game/scenes/game_scene.py
 
 GameplayScene — the main in-game screen.
 
-Milestone v0.5 state:
-  - Live AI opponent (medium difficulty): PATROL → PURSUE → ATTACK → EVADE
-  - AI moves, aims, and fires; player can die
-  - HUD: player health bar (bottom-left) + AI health bar (bottom-right)
-  - Player death → GameOverScene (DEFEATED)
-  - AI death → GameOverScene (VICTORY)
-  - Full bidirectional combat loop validated
+Milestone v0.9 state:
+  - Player picks tank type, AI difficulty, and opponent count from TankSelectScene
+  - 1–3 AI opponents (all heavy_tank, all target the player)
+  - Tank-to-tank collision pushes both apart and deals angle-based damage
+  - VICTORY when ALL AI tanks are dead; DEFEAT when player is dead
+  - HUD shows per-AI health bars stacked in the bottom-right corner
+  - Arena obstacles (materials, destructible, bounce)
+  - AI navigation: RECOVERY state, stuck detection, obstacle avoidance
 
 Coordinate systems:
   World space  — all entity positions (x, y) live here. Origin at arena top-left.
   Screen space — what gets drawn to the display surface. Derived by Camera.world_to_screen().
   Never mix the two; always convert explicitly via camera.world_to_screen().
-
-Not yet implemented (future milestones):
-  - Obstacle walls
-  - Match result calculator (score/XP are placeholders this milestone)
-  - Multiple player tank types
 """
 
 import pygame
@@ -38,6 +34,7 @@ from game.utils.constants import (
     AI_ATTACK_RANGE,
     AI_DETECTION_RANGE,
     AI_DIFFICULTY_CONFIG,
+    AI_SPAWN_POSITIONS,
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
     ARENA_FLOOR_COLOR,
@@ -72,27 +69,28 @@ from game.utils.math_utils import heading_to_vec
 
 log = get_logger(__name__)
 
-# Spawn positions (world space)
-_SPAWN_X: float = ARENA_WIDTH / 2.0       # player — arena center
+# Player spawn — arena centre
+_SPAWN_X: float = ARENA_WIDTH / 2.0
 _SPAWN_Y: float = ARENA_HEIGHT / 2.0
-_AI_SPAWN_X: float = ARENA_WIDTH * 0.80   # AI — top-right quadrant
-_AI_SPAWN_Y: float = ARENA_HEIGHT * 0.20
+
+# Maximum AI opponents supported
+_MAX_AI: int = 3
 
 
 class GameplayScene(BaseScene):
     """
-    Active gameplay screen. Owns all in-game entities and systems
+    Active gameplay screen.  Owns all in-game entities and systems
     for the current match.
     """
 
     def __init__(self, manager) -> None:
         super().__init__(manager)
-
-        # These are (re)created in on_enter so each new match starts fresh.
         self._tank: Tank | None = None
         self._input_handler: InputHandler | None = None
-        self._ai_tank: Tank | None = None
-        self._ai_controller: AIController | None = None
+        # Multi-AI support: parallel lists of tanks and their controllers
+        self._ai_tanks: list[Tank] = []
+        self._ai_controllers: list[AIController] = []
+        self._ai_surfs: list[pygame.Surface] = []
         self._physics: PhysicsSystem | None = None
         self._collision: CollisionSystem | None = None
         self._camera: Camera | None = None
@@ -100,10 +98,7 @@ class GameplayScene(BaseScene):
         self._weapon_config: dict = {}
         self._bullets: list[Bullet] = []
         self._obstacles: list = []
-
-        # Pre-built surfaces (body + barrel); rotated each frame in draw()
         self._tank_surf: pygame.Surface | None = None
-        self._ai_tank_surf: pygame.Surface | None = None
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -111,18 +106,23 @@ class GameplayScene(BaseScene):
 
     def on_enter(self, **kwargs) -> None:
         """
-        (Re)initialize all entities and systems.
+        (Re)initialise all entities and systems.
         Called each time the player enters the gameplay scene, so a
         rematch starts with a clean state without relaunching the game.
         """
         self._input_handler = InputHandler()
 
-        # Resolve player tank type — passed as kwarg from TankSelectScene,
-        # fallback to TANK_DEFAULT_TYPE if called without a selection.
+        # Resolve player tank type from TankSelectScene kwarg
         tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)
-        log.info("GameplayScene: player tank type = '%s'", tank_type)
+        ai_difficulty_key = kwargs.get("ai_difficulty", "medium")
+        ai_count = max(1, min(_MAX_AI, int(kwargs.get("ai_count", 1))))
 
-        # Load tank stats from data/configs/tanks.yaml
+        log.info(
+            "GameplayScene: tank=%s  difficulty=%s  opponents=%d",
+            tank_type, ai_difficulty_key, ai_count,
+        )
+
+        # Player tank
         tank_config = get_tank_config(tank_type, TANKS_CONFIG)
         self._tank = Tank(
             x=_SPAWN_X,
@@ -130,65 +130,68 @@ class GameplayScene(BaseScene):
             config=tank_config,
             controller=self._input_handler,
         )
-
-        # Load weapon config and override tank's fire_rate with weapon's
         self._weapon_config = get_weapon_config(DEFAULT_WEAPON_TYPE, WEAPONS_CONFIG)
         self._tank.fire_rate = float(
             self._weapon_config.get("fire_rate", self._tank.fire_rate)
         )
 
-        # AI tank — heavy_tank config, live medium-difficulty controller
-        ai_difficulty = get_ai_config("medium", AI_DIFFICULTY_CONFIG)
-        self._ai_controller = AIController(
-            config=ai_difficulty,
-            target_getter=lambda: self._tank,
-        )
-        ai_tank_config = get_tank_config("heavy_tank", TANKS_CONFIG)
-        self._ai_tank = Tank(
-            x=_AI_SPAWN_X,
-            y=_AI_SPAWN_Y,
-            config=ai_tank_config,
-            controller=self._ai_controller,
-        )
-        self._ai_controller.set_owner(self._ai_tank)
-
+        # Obstacles — loaded once per match
         self._bullets = []
         self._obstacles = load_map(MAP_01)
-        # Give the AI live obstacle access for avoidance steering.
-        # Lambda reads self._obstacles at call time so it stays current after reloads.
-        self._ai_controller.set_obstacles_getter(
-            lambda: [o for o in self._obstacles if o.is_alive]
-        )
+
+        # AI tanks — all heavy_tank, shared difficulty, independent controllers
+        ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
+        ai_tank_config = get_tank_config("heavy_tank", TANKS_CONFIG)
+        self._ai_tanks = []
+        self._ai_controllers = []
+        self._ai_surfs = []
+
+        live_obstacles = lambda: [o for o in self._obstacles if o.is_alive]  # noqa: E731
+
+        for i in range(ai_count):
+            sx, sy = AI_SPAWN_POSITIONS[i % len(AI_SPAWN_POSITIONS)]
+            controller = AIController(
+                config=ai_difficulty,
+                target_getter=lambda t=self._tank: t,
+            )
+            ai_tank = Tank(
+                x=float(sx),
+                y=float(sy),
+                config=ai_tank_config,
+                controller=controller,
+            )
+            controller.set_owner(ai_tank)
+            controller.set_obstacles_getter(live_obstacles)
+            self._ai_tanks.append(ai_tank)
+            self._ai_controllers.append(controller)
+            self._ai_surfs.append(_build_tank_surface(COLOR_RED))
+
+        # Systems
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
         self._hud = HUD()
-
-        # Camera starts snapped to the tank so there's no initial lerp pan
         self._camera = Camera()
         self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
-
-        # Build tank surfaces (body + barrel; rotated each frame in draw())
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
-        self._ai_tank_surf = _build_tank_surface(COLOR_RED)
 
         log.info(
-            "GameplayScene ready. Player: %s  AI: heavy_tank (medium)  Weapon: %s",
-            TANK_DEFAULT_TYPE, DEFAULT_WEAPON_TYPE,
+            "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapon: %s",
+            tank_type, ai_count, ai_difficulty_key, DEFAULT_WEAPON_TYPE,
         )
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
         self._tank = None
         self._input_handler = None
-        self._ai_tank = None
-        self._ai_controller = None
+        self._ai_tanks = []
+        self._ai_controllers = []
+        self._ai_surfs = []
         self._physics = None
         self._collision = None
         self._camera = None
         self._hud = None
         self._obstacles = []
         self._tank_surf = None
-        self._ai_tank_surf = None
         self._weapon_config = {}
         self._bullets = []
 
@@ -205,155 +208,113 @@ class GameplayScene(BaseScene):
         if self._tank is None:
             return
 
-        # Player tank update — spawns bullets on fire events
+        # Player tank update
         for event in self._tank.update(dt):
             if event[0] == "fire":
-                _, ex, ey, eangle = event
-                dx, dy = heading_to_vec(eangle)
-                # Spawn at barrel tip (TANK_BARREL_WIDTH px forward of tank center)
-                spawn_x = ex + dx * TANK_BARREL_WIDTH
-                spawn_y = ey + dy * TANK_BARREL_WIDTH
-                self._bullets.append(
-                    Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
-                )
+                self._spawn_bullet(event, self._tank)
 
-        # AI tank update — tick() advances stuck detection before the tank moves
-        if self._ai_tank and self._ai_tank.is_alive:
-            if self._ai_controller:
-                self._ai_controller.tick(dt)
-            for event in self._ai_tank.update(dt):
+        # AI tanks update (tick() for stuck detection before tank.update())
+        for ai_tank, controller in zip(self._ai_tanks, self._ai_controllers):
+            if not ai_tank.is_alive:
+                continue
+            controller.tick(dt)
+            for event in ai_tank.update(dt):
                 if event[0] == "fire":
-                    _, ex, ey, eangle = event
-                    dx, dy = heading_to_vec(eangle)
-                    spawn_x = ex + dx * TANK_BARREL_WIDTH
-                    spawn_y = ey + dy * TANK_BARREL_WIDTH
-                    # TODO: use AI-specific weapon config in a later milestone
-                    self._bullets.append(
-                        Bullet(spawn_x, spawn_y, eangle, self._ai_tank, self._weapon_config)
-                    )
+                    self._spawn_bullet(event, ai_tank)
 
-        # PhysicsSystem: advance bullets and clamp all tanks to arena
-        all_tanks = [t for t in (self._tank, self._ai_tank) if t is not None]
+        # Physics: advance bullets, clamp all tanks to arena bounds
+        all_tanks = [self._tank] + self._ai_tanks
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
-
-        # Remove bullets destroyed by physics (boundary hit or max_range)
         self._bullets = [b for b in self._bullets if b.is_alive]
 
-        # CollisionSystem: bullet hits, tank hits, etc.
-        if self._collision and self._ai_tank:
-            self._collision.update(
-                tanks=all_tanks,
-                bullets=self._bullets,
-                obstacles=self._obstacles,
-                pickups=[],
-            )
-            # Prune bullets destroyed by collision
-            self._bullets = [b for b in self._bullets if b.is_alive]
+        # Collision: bullets, obstacles, tank-to-tank
+        self._collision.update(
+            tanks=all_tanks,
+            bullets=self._bullets,
+            obstacles=self._obstacles,
+            pickups=[],
+        )
+        self._bullets = [b for b in self._bullets if b.is_alive]
 
-        # Check lose condition: player tank destroyed → game over (defeat)
+        # Win / lose checks
         if not self._tank.is_alive:
-            # TODO: score and XP are placeholders; match result calculator comes in a later milestone
             self.manager.switch_to(SCENE_GAME_OVER, won=False, score=0, xp_earned=10)
             return
 
-        # Check win condition: AI tank destroyed → game over (victory)
-        if self._ai_tank and not self._ai_tank.is_alive:
-            # TODO: score and XP are placeholders; match result calculator comes in a later milestone
+        if all(not t.is_alive for t in self._ai_tanks):
             self.manager.switch_to(SCENE_GAME_OVER, won=True, score=100, xp_earned=50)
             return
 
-        # Camera follows the player tank each frame
         self._camera.update(dt, self._tank.x, self._tank.y)
+
+    def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
+        _, ex, ey, eangle = event
+        dx, dy = heading_to_vec(eangle)
+        bx = ex + dx * TANK_BARREL_WIDTH
+        by = ey + dy * TANK_BARREL_WIDTH
+        self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
 
     # ------------------------------------------------------------------
     # Draw
     # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface) -> None:
-        # 1. Clear display with out-of-arena background color
         surface.fill(COLOR_BG)
-
         if self._camera is None or self._tank is None:
             return
 
-        # 2. Arena floor and border (world rect projected through camera)
         _draw_arena(surface, self._camera)
-
-        # 3. Obstacles (drawn on floor, under tanks and bullets)
         _draw_obstacles(surface, self._obstacles, self._camera)
 
-        # 4. AI tank (drawn before player so player renders on top if overlapping)
-        if self._ai_tank and self._ai_tank_surf:
-            _draw_tank(surface, self._ai_tank, self._ai_tank_surf, self._camera)
+        # AI tanks drawn before player (player renders on top if overlapping)
+        for ai_tank, ai_surf in zip(self._ai_tanks, self._ai_surfs):
+            _draw_tank(surface, ai_tank, ai_surf, self._camera)
 
-        # 5. Player tank (placeholder geometry, rotated to facing angle)
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
-
-        # 7. Active bullets
         _draw_bullets(surface, self._bullets, self._camera)
 
-        # 8. HUD — health bars for both tanks
         if self._hud:
-            self._hud.draw(surface, self._tank, self._ai_tank)
+            self._hud.draw(surface, self._tank, self._ai_tanks)
 
-        # 9. Debug overlay — remove or gate behind a flag in a later milestone
-        ai_state = self._ai_controller.state_name if self._ai_controller else "—"
-        _draw_debug(surface, self._tank, self._camera, self._ai_tank, ai_state)
-        if self._ai_tank and self._ai_tank.is_alive:
-            _draw_ai_overlay(surface, self._ai_tank, self._camera)
+        # Debug overlay — first AI used for state label
+        first_ai = self._ai_tanks[0] if self._ai_tanks else None
+        first_ctrl = self._ai_controllers[0] if self._ai_controllers else None
+        ai_state = first_ctrl.state_name if first_ctrl else "—"
+        _draw_debug(surface, self._tank, self._camera, first_ai, ai_state)
+        for ai_tank in self._ai_tanks:
+            if ai_tank.is_alive:
+                _draw_ai_overlay(surface, ai_tank, self._camera)
 
 
 # ---------------------------------------------------------------------------
 # Module-level drawing helpers
-# (pure draw functions — no scene state, easily moved to a renderer later)
 # ---------------------------------------------------------------------------
 
 def _build_tank_surface(body_color: tuple) -> pygame.Surface:
-    """
-    Build a canonical tank surface facing right (angle = 0).
-    The surface is centered on the tank pivot so pygame.transform.rotate
-    rotates around the correct point.
-
-    Layout (TANK_BODY_WIDTH × TANK_BODY_HEIGHT surface):
-      - Body:   full surface rect, rounded corners
-      - Barrel: right half of surface, vertically centered, dark gray
-    """
     surf = pygame.Surface((TANK_BODY_WIDTH, TANK_BODY_HEIGHT), pygame.SRCALPHA)
-
-    # Body
     pygame.draw.rect(surf, body_color, (0, 0, TANK_BODY_WIDTH, TANK_BODY_HEIGHT), border_radius=5)
-
-    # Barrel — extends right from the center pivot (angle=0 = facing right)
     barrel_x = TANK_BODY_WIDTH // 2
     barrel_y = (TANK_BODY_HEIGHT - TANK_BARREL_HEIGHT) // 2
-    pygame.draw.rect(surf, TANK_BARREL_COLOR, (barrel_x, barrel_y, TANK_BARREL_WIDTH, TANK_BARREL_HEIGHT))
-
+    pygame.draw.rect(surf, TANK_BARREL_COLOR,
+                     (barrel_x, barrel_y, TANK_BARREL_WIDTH, TANK_BARREL_HEIGHT))
     return surf
 
 
 def _draw_arena(surface: pygame.Surface, camera: Camera) -> None:
-    """Draw the arena floor, reference grid, and border in screen space."""
-    # Top-left corner of the arena in screen space (world origin = 0, 0)
     ax, ay = camera.world_to_screen(0, 0)
     ax_i, ay_i = int(ax), int(ay)
-
     floor_rect = pygame.Rect(ax_i, ay_i, ARENA_WIDTH, ARENA_HEIGHT)
     pygame.draw.rect(surface, ARENA_FLOOR_COLOR, floor_rect)
-
-    # Reference grid — gives the player a scrolling visual reference so
-    # camera-follow movement doesn't look like an invisible wall
     for wx in range(0, ARENA_WIDTH + 1, ARENA_GRID_STEP):
         sx = ax_i + wx
         pygame.draw.line(surface, ARENA_GRID_COLOR, (sx, ay_i), (sx, ay_i + ARENA_HEIGHT))
     for wy in range(0, ARENA_HEIGHT + 1, ARENA_GRID_STEP):
         sy = ay_i + wy
         pygame.draw.line(surface, ARENA_GRID_COLOR, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
-
     pygame.draw.rect(surface, ARENA_BORDER_COLOR, floor_rect, ARENA_BORDER_THICKNESS)
 
 
 def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
-    """Linearly interpolate between two RGB tuples by factor t in [0, 1]."""
     t = max(0.0, min(1.0, t))
     return (
         int(c1[0] + (c2[0] - c1[0]) * t),
@@ -363,19 +324,11 @@ def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
 
 
 def _draw_obstacles(surface: pygame.Surface, obstacles: list, camera: Camera) -> None:
-    """
-    Render all active obstacles in screen space.
-
-    Fill color comes from the obstacle's material.  As HP falls, the fill
-    lerps toward OBSTACLE_DAMAGED_COLOR (near-black) giving visual feedback
-    that the obstacle is taking damage.  Border color is constant.
-    """
     for obs in obstacles:
         if not obs.is_alive:
             continue
         sx, sy = camera.world_to_screen(obs.x, obs.y)
         rect = pygame.Rect(int(sx), int(sy), int(obs.width), int(obs.height))
-        # hp_ratio=1.0 → full material color; hp_ratio=0.0 → OBSTACLE_DAMAGED_COLOR
         fill = _lerp_color(obs.color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
         pygame.draw.rect(surface, fill, rect)
         pygame.draw.rect(surface, OBSTACLE_BORDER_COLOR, rect, 2)
@@ -387,29 +340,15 @@ def _draw_tank(
     tank_surf: pygame.Surface,
     camera: Camera,
 ) -> None:
-    """
-    Rotate the tank surface to its current facing angle and blit at its
-    screen-space position.
-
-    Angle convention:
-      World:  0° = facing right (+x), clockwise positive (y-down coordinate system)
-      pygame: transform.rotate() is counter-clockwise for positive angles
-      Therefore: pygame_angle = -tank.angle
-    """
     if not tank.is_alive:
         return
-
     sx, sy = camera.world_to_screen(tank.x, tank.y)
-
-    # Rotate canonical (angle=0, facing right) surface to match tank heading
     rotated = pygame.transform.rotate(tank_surf, -tank.angle)
-    # Blit centered on the tank's screen-space position
     blit_rect = rotated.get_rect(center=(int(sx), int(sy)))
     surface.blit(rotated, blit_rect)
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:
-    """Render all active bullets as small filled circles in screen space."""
     for bullet in bullets:
         if not bullet.is_alive:
             continue
@@ -424,10 +363,6 @@ def _draw_debug(
     ai_tank: Tank | None = None,
     ai_state: str = "—",
 ) -> None:
-    """
-    Lightweight debug overlay: positions, health, and AI state.
-    TODO(milestone v0.6+): gate behind a DEBUG constant or remove.
-    """
     font = pygame.font.SysFont(None, 22)
     lines = [
         f"P  ({player_tank.x:6.1f}, {player_tank.y:6.1f})",
@@ -453,31 +388,14 @@ def _draw_ai_overlay(
     ai_tank: Tank,
     camera: Camera,
 ) -> None:
-    """
-    Debug-only overlay: AI awareness zone rings drawn around the AI tank.
-
-    Outer ring — AI_DETECTION_RANGE, yellow  — PURSUE state triggers inside here
-    Inner ring — AI_ATTACK_RANGE,    red     — ATTACK state triggers inside here
-
-    Both rings are 1px outlines rendered on an SRCALPHA surface so they blend
-    semi-transparently over the scene without obscuring gameplay elements.
-    Labels are drawn directly on the main surface (no alpha needed for text).
-
-    World unit == screen pixel at all zoom levels (camera has no scale factor),
-    so the range constants can be used as pixel radii directly.
-    """
     sx, sy = camera.world_to_screen(ai_tank.x, ai_tank.y)
     cx, cy = int(sx), int(sy)
     det_r = int(AI_DETECTION_RANGE)
     atk_r = int(AI_ATTACK_RANGE)
-
-    # --- Rings (SRCALPHA for transparency) ---
     overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    pygame.draw.circle(overlay, (255, 220, 0, 55), (cx, cy), det_r, 1)   # yellow detect ring
-    pygame.draw.circle(overlay, (220, 50, 47, 55), (cx, cy), atk_r, 1)   # red attack ring
+    pygame.draw.circle(overlay, (255, 220, 0, 55), (cx, cy), det_r, 1)
+    pygame.draw.circle(overlay, (220, 50, 47, 55), (cx, cy), atk_r, 1)
     surface.blit(overlay, (0, 0))
-
-    # --- Labels (solid — drawn directly onto surface) ---
     font = pygame.font.SysFont(None, 18)
     lbl_detect = font.render("DETECT", True, (200, 180, 0))
     lbl_attack = font.render("ATTACK", True, (200, 70, 70))

@@ -164,6 +164,27 @@ AI_DETECTION_RANGE: float = 550.0        # pixels — triggers PURSUE state
 AI_ATTACK_RANGE: float = 250.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 
+# Predefined AI spawn positions in world space — all far from arena center
+AI_SPAWN_POSITIONS: list = [
+    (ARENA_WIDTH - 200, 200),            # top-right
+    (200, 200),                          # top-left
+    (ARENA_WIDTH - 200, ARENA_HEIGHT - 200),  # bottom-right
+]
+
+# ---------------------------------------------------------------------------
+# Tank-to-Tank Collision Damage
+# ---------------------------------------------------------------------------
+# Base damage by impact geometry (angle between struck tank's facing and
+# the vector from struck tank → striking tank)
+COLLISION_DAMAGE_FRONT: int = 5          # 0–45°  — nose-to-nose nudge
+COLLISION_DAMAGE_SIDE: int = 20          # 45–135° — T-bone
+COLLISION_DAMAGE_REAR: int = 12          # 135–180° — rear-end
+
+# Speed scaling: relative speed / COLLISION_SPEED_SCALE, capped at
+# COLLISION_SPEED_CAP so a head-on charge doesn't one-shot anything.
+COLLISION_SPEED_SCALE: float = 150.0
+COLLISION_SPEED_CAP: float = 1.5
+
 # ---------------------------------------------------------------------------
 # Persistence defaults
 # ---------------------------------------------------------------------------

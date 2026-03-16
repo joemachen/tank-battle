@@ -284,3 +284,88 @@ class TestObstacleMaterials:
         obs.take_damage(25, damage_type="standard")
         assert not obs.is_alive      # 15 - 25 → 0 hp → destroyed
         assert obs.hp == 0
+
+
+# ---------------------------------------------------------------------------
+# Tank-to-Tank Collision Damage
+# ---------------------------------------------------------------------------
+
+class _StubTank2:
+    """Extended stub with vx/vy and angle for collision damage tests."""
+    def __init__(self, x: float, y: float, angle: float = 0.0,
+                 health: int = 100, vx: float = 0.0, vy: float = 0.0):
+        self.x = x
+        self.y = y
+        self.angle = angle
+        self.health = health
+        self.max_health = health
+        self.is_alive = True
+        self.vx = vx
+        self.vy = vy
+
+    @property
+    def position(self):
+        return (self.x, self.y)
+
+    def take_damage(self, amount: int) -> None:
+        self.health -= amount
+        if self.health <= 0:
+            self.is_alive = False
+
+
+class TestTankToTankCollisionDamage:
+    """Verify _impact_damage returns the correct base value for each zone."""
+
+    def test_front_hit_returns_front_damage(self):
+        """Striker directly in front of struck (diff ≈ 0°) → COLLISION_DAMAGE_FRONT."""
+        from game.utils.constants import COLLISION_DAMAGE_FRONT
+        # Struck faces right (angle=0); striker is to the right → bearing=0° → diff=0°
+        struck = _StubTank2(x=0, y=0, angle=0.0)
+        striker = _StubTank2(x=50, y=0, angle=0.0)
+        dmg = CollisionSystem._impact_damage(striker, struck)
+        assert dmg == COLLISION_DAMAGE_FRONT
+
+    def test_side_hit_returns_side_damage(self):
+        """Striker perpendicular to struck (diff ≈ 90°) → COLLISION_DAMAGE_SIDE."""
+        from game.utils.constants import COLLISION_DAMAGE_SIDE
+        # Struck faces right (angle=0); striker is directly above → bearing=270° → diff≈90°
+        struck = _StubTank2(x=0, y=0, angle=0.0)
+        striker = _StubTank2(x=0, y=-50, angle=0.0)   # y-up = bearing -90° = 270° → diff 90°
+        dmg = CollisionSystem._impact_damage(striker, struck)
+        assert dmg == COLLISION_DAMAGE_SIDE
+
+    def test_rear_hit_returns_rear_damage(self):
+        """Striker directly behind struck (diff ≈ 180°) → COLLISION_DAMAGE_REAR."""
+        from game.utils.constants import COLLISION_DAMAGE_REAR
+        # Struck faces right (angle=0); striker is to the left → bearing=180° → diff=180°
+        struck = _StubTank2(x=0, y=0, angle=0.0)
+        striker = _StubTank2(x=-50, y=0, angle=0.0)
+        dmg = CollisionSystem._impact_damage(striker, struck)
+        assert dmg == COLLISION_DAMAGE_REAR
+
+    def test_dead_tank_skipped_in_tank_vs_tank(self):
+        """A dead tank must not participate in tank-vs-tank collision."""
+        cs = CollisionSystem()
+        a = _StubTank2(x=0, y=0, angle=0.0, health=100)
+        b = _StubTank2(x=10, y=0, angle=0.0, health=100)  # overlapping
+        b.is_alive = False
+        a_health_before = a.health
+        cs._tanks_vs_tanks([a, b])
+        assert a.health == a_health_before  # a must not be damaged
+
+    def test_push_back_separates_overlapping_tanks(self):
+        """After push-back, two overlapping tanks must not overlap."""
+        import math
+        cs = CollisionSystem()
+        from game.systems.collision import TANK_RADIUS
+        # Place them 5px apart (combined radius = 44px) so they definitely overlap
+        a = _StubTank2(x=0, y=0, angle=0.0, vx=100, vy=0)
+        b = _StubTank2(x=5, y=0, angle=0.0, vx=-100, vy=0)
+        cs._tanks_vs_tanks([a, b])
+        dist = math.hypot(b.x - a.x, b.y - a.y)
+        assert dist >= TANK_RADIUS * 2 - 0.01   # allow tiny float tolerance
+
+    def test_side_hit_deals_more_damage_than_front(self):
+        """COLLISION_DAMAGE_SIDE must exceed COLLISION_DAMAGE_FRONT."""
+        from game.utils.constants import COLLISION_DAMAGE_FRONT, COLLISION_DAMAGE_SIDE
+        assert COLLISION_DAMAGE_SIDE > COLLISION_DAMAGE_FRONT

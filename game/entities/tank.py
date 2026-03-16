@@ -73,6 +73,11 @@ class Tank:
         self.is_alive: bool = True
         self.tank_type: str = config.get("type", "unknown")
 
+        # World-space velocity vector (pixels/second).
+        # Computed at the end of update() from the movement delta this frame.
+        self.vx: float = 0.0
+        self.vy: float = 0.0
+
         log.debug(
             "Tank created at (%.0f, %.0f) type=%s hp=%d spd=%.0f",
             x, y, self.tank_type, self.max_health, self.speed,
@@ -99,9 +104,15 @@ class Tank:
         self.angle += intent.rotate * self.turn_rate * dt
 
         # Movement along facing direction
+        prev_x, prev_y = self.x, self.y
         dx, dy = heading_to_vec(self.angle)
         self.x += dx * intent.throttle * self.speed * dt
         self.y += dy * intent.throttle * self.speed * dt
+
+        # Velocity (world-space px/s) — used by CollisionSystem for damage scaling
+        if dt > 0:
+            self.vx = (self.x - prev_x) / dt
+            self.vy = (self.y - prev_y) / dt
 
         # Fire cooldown
         if self._fire_cooldown > 0:

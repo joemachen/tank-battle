@@ -1,11 +1,11 @@
 """
 game/ui/hud.py
 
-HUD — renders in-game overlay: health bars for player and AI tank.
+HUD — renders in-game overlay: health bars for player and AI tank(s).
 
 Layout:
   Player bar — bottom-left corner
-  AI bar     — bottom-right corner (mirrored)
+  AI bars    — bottom-right corner, stacked vertically (one per live AI tank)
   Each bar has the tank's type label drawn above it.
 
 HUD pulls all data at draw time — no entity references are stored here.
@@ -26,8 +26,10 @@ from game.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-_LABEL_HEIGHT: int = 20    # pixels reserved above each bar for the type label
-_HP_TEXT_HEIGHT: int = 18  # pixels reserved below each bar for HP numbers
+_LABEL_HEIGHT: int = 20    # pixels above each bar for the type label
+_HP_TEXT_HEIGHT: int = 18  # pixels below each bar for HP numbers
+# Vertical stride between stacked AI bars (bar + label + gap)
+_AI_BAR_STRIDE: int = HUD_BAR_HEIGHT + _LABEL_HEIGHT + 8
 
 
 class HUD:
@@ -47,32 +49,45 @@ class HUD:
         if self._small_font is None:
             self._small_font = pygame.font.SysFont(None, 18)
 
-    def draw(self, surface: pygame.Surface, player_tank, ai_tank=None) -> None:
+    def draw(self, surface: pygame.Surface, player_tank, ai_tanks=None) -> None:
         """
-        Render HUD health bars. Call after all scene elements are drawn.
+        Render HUD health bars.
 
         Args:
             surface:     target display surface
             player_tank: player Tank entity (always drawn)
-            ai_tank:     AI Tank entity or None (drawn when present)
+            ai_tanks:    a single Tank, a list of Tanks, or None
         """
         self._ensure_fonts()
 
         sw = surface.get_width()
         sh = surface.get_height()
 
-        # Vertical position: bar sits HUD_MARGIN above screen bottom,
-        # label sits above the bar
+        # Player bar — bottom-left
         bar_y = sh - HUD_MARGIN - HUD_BAR_HEIGHT
         label_y = bar_y - _LABEL_HEIGHT
-
-        # Player bar — bottom-left
         self._draw_health_bar(surface, player_tank, HUD_MARGIN, bar_y, label_y)
 
-        # AI bar — bottom-right (x anchored so bar right edge = screen right - margin)
-        if ai_tank is not None:
-            ai_x = sw - HUD_MARGIN - HUD_BAR_WIDTH
-            self._draw_health_bar(surface, ai_tank, ai_x, bar_y, label_y)
+        # Normalise ai_tanks to a list (supports single Tank for backwards compat)
+        if ai_tanks is None:
+            tanks = []
+        elif hasattr(ai_tanks, "is_alive"):
+            tanks = [ai_tanks]
+        else:
+            tanks = [t for t in ai_tanks if t is not None]
+
+        # Stack AI bars from the bottom-right upward; dead tanks are omitted
+        ai_x = sw - HUD_MARGIN - HUD_BAR_WIDTH
+        row = 0
+        for tank in tanks:
+            if not tank.is_alive:
+                continue
+            t_bar_y = sh - HUD_MARGIN - HUD_BAR_HEIGHT - row * _AI_BAR_STRIDE
+            t_label_y = t_bar_y - _LABEL_HEIGHT
+            if t_label_y < 0:
+                break  # no vertical space left
+            self._draw_health_bar(surface, tank, ai_x, t_bar_y, t_label_y)
+            row += 1
 
     def _draw_health_bar(
         self,
@@ -83,20 +98,16 @@ class HUD:
         label_y: int,
     ) -> None:
         """Draw a single health bar with a type label above it."""
-        # Tank type label above bar
         label = self._font.render(tank.tank_type, True, COLOR_WHITE)
         surface.blit(label, (x, label_y))
 
-        # Background bar
         pygame.draw.rect(surface, COLOR_GRAY, (x, y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT))
 
-        # Fill bar — color shifts to red when health is critical
         fill_w = int(HUD_BAR_WIDTH * tank.health_ratio)
         fill_color = COLOR_GREEN if tank.health_ratio > 0.4 else COLOR_RED
         if fill_w > 0:
             pygame.draw.rect(surface, fill_color, (x, y, fill_w, HUD_BAR_HEIGHT))
 
-        # HP numbers to the right of the bar
         hp_text = self._small_font.render(
             f"{tank.health}/{tank.max_health}", True, COLOR_WHITE
         )
