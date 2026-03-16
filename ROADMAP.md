@@ -14,18 +14,18 @@ are completed or plans change.
 | v0.9.0  | AI difficulty select + multiple AI opponents + tank collision damage  |
 | v0.10.0 | Audio — SFX + synthwave music per scene, M mute, procedural assets   |
 | v0.11.0 | Match result + XP persistence — stat screen, level-up, unlock flow   |
+| v0.12.0 | Main menu polish — perspective grid, glow title, fade transition      |
 ---
 ## 🔨 In Progress
-| Branch                | Milestone                                              |
-|-----------------------|--------------------------------------------------------|
-| feature/menu-polish   | v0.12 — Main menu polish                              |
+| Branch             | Milestone                                              |
+|--------------------|--------------------------------------------------------|
+| feature/settings   | v0.13 — Settings screen                               |
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
 *Get the base game feeling complete before expanding content.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.12   | Main menu polish       | Styled menu, animated transitions, game feels shippable from the front door. |
 | v0.13   | Settings screen        | Volume sliders, keybind config, resolution, difficulty default.       |
 ---
 ### Phase 2 — Content Expansion
