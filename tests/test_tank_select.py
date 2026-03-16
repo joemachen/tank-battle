@@ -228,12 +228,12 @@ class TestLockedState:
         assert scene.manager.last_switch is None
 
     def test_unlocked_tank_confirms_correctly(self):
-        """Confirm on an unlocked tank switches to SCENE_GAME with correct kwarg."""
-        from game.utils.constants import SCENE_GAME
+        """Confirm on an unlocked tank switches to SCENE_WEAPON_SELECT with correct kwarg."""
+        from game.utils.constants import SCENE_WEAPON_SELECT
         scene = _make_scene(unlocked=["light_tank", "medium_tank"])
         scene._tank_cursor = 1  # medium_tank
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_WEAPON_SELECT
         assert scene.manager.last_kwargs.get("tank_type") == "medium_tank"
 
     def test_is_locked_returns_true_for_locked_tank(self):
@@ -341,81 +341,53 @@ class TestGameplaySceneTankType:
 
 
 # ---------------------------------------------------------------------------
-# 4. Difficulty and opponent-count kwargs
+# 4. Opponent-count kwarg
 # ---------------------------------------------------------------------------
 
 class TestTankSelectKwargs:
     """
-    Verify that TankSelectScene passes difficulty and ai_count kwargs to
-    GameplayScene, and that defaults apply when the values are unchanged.
+    Verify that TankSelectScene passes ai_count to GameplayScene and that
+    ai_difficulty is NOT forwarded (GameplayScene reads it from settings.json).
     """
 
-    def _scene_with_selection(self, tank_cursor, diff_idx=None, opp_idx=None):
-        """Return a scene primed with a specific cursor / row selection."""
-        from game.scenes.tank_select_scene import (
-            TankSelectScene, _DIFFICULTIES, _DEFAULT_DIFFICULTY_IDX,
-            _DEFAULT_OPPONENT_IDX,
-        )
+    def _scene_with_selection(self, tank_cursor, opp_idx=None):
+        """Return a scene primed with a specific cursor / opponent selection."""
+        from game.scenes.tank_select_scene import TankSelectScene, _DEFAULT_OPPONENT_IDX
         scene = TankSelectScene(_FakeManager())
         scene._save_manager.load_profile = lambda: {
             "unlocked_tanks": ["light_tank", "medium_tank"]
         }
-        # Patch load_settings so tests aren't affected by live saves/settings.json
-        scene._save_manager.load_settings = lambda: {"ai_difficulty": "medium"}
         scene.on_enter()
         scene._tank_cursor = tank_cursor
-        if diff_idx is not None:
-            scene._difficulty_idx = diff_idx
         if opp_idx is not None:
             scene._opponent_idx = opp_idx
         return scene
-
-    def test_default_difficulty_is_medium(self):
-        scene = self._scene_with_selection(tank_cursor=0)
-        assert scene.selected_difficulty == "medium"
 
     def test_default_opponent_count_is_one(self):
         scene = self._scene_with_selection(tank_cursor=0)
         assert scene.selected_opponent_count == 1
 
-    def test_difficulty_kwarg_forwarded(self):
-        """Hard difficulty is passed to GameplayScene."""
-        from game.scenes.tank_select_scene import _DIFFICULTIES
-        from game.utils.constants import SCENE_GAME
-        scene = self._scene_with_selection(
-            tank_cursor=0,  # light_tank (unlocked)
-            diff_idx=_DIFFICULTIES.index("hard"),
-        )
-        scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
-        assert scene.manager.last_kwargs.get("ai_difficulty") == "hard"
-
     def test_opponent_count_kwarg_forwarded(self):
-        """Opponent count 3 is passed to GameplayScene."""
+        """Opponent count 3 is passed to WeaponSelectScene."""
         from game.scenes.tank_select_scene import _OPPONENT_COUNTS
-        from game.utils.constants import SCENE_GAME
+        from game.utils.constants import SCENE_WEAPON_SELECT
         scene = self._scene_with_selection(
             tank_cursor=1,  # medium_tank (unlocked)
             opp_idx=_OPPONENT_COUNTS.index(3),
         )
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_WEAPON_SELECT
         assert scene.manager.last_kwargs.get("ai_count") == 3
 
-    def test_easy_difficulty_forwarded(self):
-        from game.scenes.tank_select_scene import _DIFFICULTIES
-        from game.utils.constants import SCENE_GAME
-        scene = self._scene_with_selection(
-            tank_cursor=1,
-            diff_idx=_DIFFICULTIES.index("easy"),
-        )
+    def test_ai_difficulty_not_in_kwargs(self):
+        """ai_difficulty must NOT be forwarded — GameplayScene reads settings.json."""
+        scene = self._scene_with_selection(tank_cursor=0)
         scene._confirm_selection()
-        assert scene.manager.last_kwargs.get("ai_difficulty") == "easy"
+        assert "ai_difficulty" not in scene.manager.last_kwargs
 
     def test_defaults_sent_when_unchanged(self):
-        """Confirming without touching selectors sends medium difficulty + 1 opponent."""
+        """Confirming without touching the selector sends 1 opponent."""
         from game.utils.constants import SCENE_GAME
         scene = self._scene_with_selection(tank_cursor=0)
         scene._confirm_selection()
-        assert scene.manager.last_kwargs.get("ai_difficulty") == "medium"
         assert scene.manager.last_kwargs.get("ai_count") == 1

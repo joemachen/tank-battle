@@ -4,21 +4,26 @@ game/scenes/tank_select_scene.py
 TankSelectScene — pre-match tank selection screen.
 
 Flow:
-    MainMenuScene (ENTER) → TankSelectScene → (confirm) → GameplayScene
+    MainMenuScene (ENTER) → TankSelectScene → (confirm) → WeaponSelectScene
+                                           → (ESC)     → MainMenuScene
 
-Layout (three interactive rows, navigated separately):
+Layout (two interactive rows, navigated separately):
     Row 0 — Tank cards  (LEFT/RIGHT or A/D)
-    Row 1 — Difficulty  (LEFT/RIGHT when row focused; UP/DOWN switches row)
-    Row 2 — Opponents   (LEFT/RIGHT when row focused; UP/DOWN switches row)
+    Row 1 — Opponents   (LEFT/RIGHT when row focused; UP/DOWN switches row)
 
 Controls:
     UP / DOWN   — switch focus between rows
     LEFT / RIGHT (or A / D on tank row) — navigate within focused row
-    ENTER / SPACE — confirm and start match
+    ENTER / SPACE — confirm and proceed to weapon select
     ESC — return to main menu
 
-Selection is passed to GameplayScene via:
-    switch_to(SCENE_GAME, tank_type=…, ai_difficulty=…, ai_count=…)
+AI difficulty is read from settings.json by GameplayScene on on_enter().
+
+Selection is passed to WeaponSelectScene via:
+    switch_to(SCENE_WEAPON_SELECT, tank_type=…, ai_count=…)
+
+Back-navigation from WeaponSelectScene passes from_weapon_select=True so
+cursor and opponent state are preserved without a full reset.
 """
 
 import pygame
@@ -36,8 +41,8 @@ from game.utils.constants import (
     COLOR_WHITE,
     MAX_BAR_WIDTH,
     MUSIC_MENU,
-    SCENE_GAME,
     SCENE_MENU,
+    SCENE_WEAPON_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     SFX_UI_CONFIRM,
@@ -78,17 +83,10 @@ _STATS: list = [
 # Selector rows (below the cards)
 _ROW_Y: int = _CARD_TOP + _CARD_H + 22   # top of first selector row
 _ROW_H: int = 42                          # height of each selector row
-_ROW_GAP: int = 10                        # gap between selector rows
 
 # Row indices
 _ROW_TANKS: int = 0
-_ROW_DIFFICULTY: int = 1
-_ROW_OPPONENTS: int = 2
-
-_DIFFICULTIES: list = ["easy", "medium", "hard"]
-_DIFFICULTY_LABELS: dict = {"easy": "Easy", "medium": "Medium", "hard": "Hard"}
-_DEFAULT_DIFFICULTY: str = "medium"
-_DEFAULT_DIFFICULTY_IDX: int = _DIFFICULTIES.index(_DEFAULT_DIFFICULTY)
+_ROW_OPPONENTS: int = 1
 
 _OPPONENT_COUNTS: list = [1, 2, 3]
 _DEFAULT_OPPONENT_IDX: int = 0   # 1 opponent by default
@@ -118,7 +116,6 @@ class TankSelectScene(BaseScene):
         self._tank_data: list[dict] = []
         self._unlocked: set[str] = set()
         self._tank_cursor: int = 0          # index into _tank_data
-        self._difficulty_idx: int = _DEFAULT_DIFFICULTY_IDX
         self._opponent_idx: int = _DEFAULT_OPPONENT_IDX
         self._focused_row: int = _ROW_TANKS  # which row has keyboard focus
         self._player_level: int = 1          # loaded from profile on on_enter
@@ -148,20 +145,16 @@ class TankSelectScene(BaseScene):
             if lvl is not None:
                 self._unlock_levels[t] = lvl
 
-        # Cursor on first unlocked tank
-        self._tank_cursor = 0
-        for i, td in enumerate(self._tank_data):
-            if td["type"] in self._unlocked:
-                self._tank_cursor = i
-                break
+        # When returning from WeaponSelectScene, preserve cursor and opponent state.
+        # On any other entry (fresh from menu), reset to defaults.
+        if not kwargs.get("from_weapon_select", False):
+            self._tank_cursor = 0
+            for i, td in enumerate(self._tank_data):
+                if td["type"] in self._unlocked:
+                    self._tank_cursor = i
+                    break
+            self._opponent_idx = _DEFAULT_OPPONENT_IDX
 
-        # Reset selector rows — use saved AI difficulty default if available
-        _saved_diff = self._save_manager.load_settings().get("ai_difficulty", "").lower()
-        if _saved_diff in _DIFFICULTIES:
-            self._difficulty_idx = _DIFFICULTIES.index(_saved_diff)
-        else:
-            self._difficulty_idx = _DEFAULT_DIFFICULTY_IDX
-        self._opponent_idx = _DEFAULT_OPPONENT_IDX
         self._focused_row = _ROW_TANKS
 
         get_audio_manager().play_music(MUSIC_MENU)
@@ -210,8 +203,6 @@ class TankSelectScene(BaseScene):
         delta = -1 if left else 1
         if self._focused_row == _ROW_TANKS:
             self._tank_cursor = (self._tank_cursor + delta) % len(self._tank_data)
-        elif self._focused_row == _ROW_DIFFICULTY:
-            self._difficulty_idx = (self._difficulty_idx + delta) % len(_DIFFICULTIES)
         elif self._focused_row == _ROW_OPPONENTS:
             self._opponent_idx = (self._opponent_idx + delta) % len(_OPPONENT_COUNTS)
         get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
@@ -222,17 +213,15 @@ class TankSelectScene(BaseScene):
         if tank_type not in self._unlocked:
             log.debug("TankSelectScene: '%s' is locked — ignoring confirm.", tank_type)
             return
-        difficulty = _DIFFICULTIES[self._difficulty_idx]
         ai_count = _OPPONENT_COUNTS[self._opponent_idx]
         log.info(
-            "TankSelectScene: confirmed tank=%s  difficulty=%s  opponents=%d",
-            tank_type, difficulty, ai_count,
+            "TankSelectScene: confirmed tank=%s  opponents=%d",
+            tank_type, ai_count,
         )
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         self.manager.switch_to(
-            SCENE_GAME,
+            SCENE_WEAPON_SELECT,
             tank_type=tank_type,
-            ai_difficulty=difficulty,
             ai_count=ai_count,
         )
 
@@ -252,7 +241,6 @@ class TankSelectScene(BaseScene):
         self._draw_header(surface)
         self._draw_level_badge(surface)
         self._draw_cards(surface)
-        self._draw_difficulty_row(surface)
         self._draw_opponent_row(surface)
         self._draw_footer(surface)
 
@@ -357,23 +345,9 @@ class TankSelectScene(BaseScene):
             unlock_lvl = self._unlock_levels.get(td.get("type", ""))
             self._draw_locked_overlay(surface, rect, unlock_lvl)
 
-    def _draw_difficulty_row(self, surface: pygame.Surface) -> None:
-        """Difficulty selector row — three pill-shaped option buttons."""
-        row_y = _ROW_Y
-        is_focused = (self._focused_row == _ROW_DIFFICULTY)
-        self._draw_selector_row(
-            surface,
-            label="Difficulty",
-            options=[_DIFFICULTY_LABELS[d] for d in _DIFFICULTIES],
-            selected_idx=self._difficulty_idx,
-            row_y=row_y,
-            is_focused=is_focused,
-            active_color=COLOR_GREEN,
-        )
-
     def _draw_opponent_row(self, surface: pygame.Surface) -> None:
         """Opponent count selector row."""
-        row_y = _ROW_Y + _ROW_H + _ROW_GAP
+        row_y = _ROW_Y
         is_focused = (self._focused_row == _ROW_OPPONENTS)
         self._draw_selector_row(
             surface,
@@ -520,10 +494,6 @@ class TankSelectScene(BaseScene):
     def can_select(self, tank_type: str) -> bool:
         types = [td.get("type") for td in self._tank_data]
         return tank_type in types and tank_type in self._unlocked
-
-    @property
-    def selected_difficulty(self) -> str:
-        return _DIFFICULTIES[self._difficulty_idx]
 
     @property
     def selected_opponent_count(self) -> int:

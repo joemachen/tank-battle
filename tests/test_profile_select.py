@@ -9,6 +9,7 @@ Unit tests for ProfileSelectScene behaviour:
   - Active profile reassignment after delete
 
 All tests are pure-logic; no pygame display required.
+The pygame stub is installed by conftest.py before this module is imported.
 The scene is instantiated with a stub manager and its SaveManager
 is replaced with an in-process _TestSaveManager (defined here) that
 operates inside tmp_path so production saves are never touched.
@@ -18,7 +19,7 @@ import json
 import os
 
 import pytest
-import pygame
+import pygame  # provided by conftest.py stub when pygame is not installed
 
 from game.utils.constants import (
     DEFAULT_PROFILE,
@@ -26,13 +27,6 @@ from game.utils.constants import (
     MAX_PROFILES,
     PROFILE_NAME_MAX_LEN,
 )
-
-# ---------------------------------------------------------------------------
-# Minimal pygame initialisation (headless)
-# ---------------------------------------------------------------------------
-
-pygame.init()
-pygame.display.set_mode((1, 1), pygame.NOFRAME)
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +122,11 @@ class _TestSaveManager:
 # Helpers to build scene under test
 # ---------------------------------------------------------------------------
 
+def _make_event(key, unicode=""):
+    """Create a minimal KEYDOWN event object."""
+    return pygame.event.Event(pygame.KEYDOWN, key=key, unicode=unicode)
+
+
 def _make_scene(tmp_path):
     """Instantiate ProfileSelectScene with stub manager + isolated SaveManager."""
     from game.scenes.profile_select_scene import ProfileSelectScene
@@ -197,13 +196,11 @@ class TestNameValidation:
         scene, save, mgr = _make_scene(tmp_path)
         scene._entry_slot = 0
         scene._entry_name = ""   # blank
-        # Simulate pressing ENTER in name-entry mode
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, unicode="\r")
         scene._mode = "name_entry"
-        scene._handle_name_entry(event)
+        scene._handle_name_entry(_make_event(pygame.K_RETURN, "\r"))
         scene._refresh_index()
         idx = save.load_profiles_index()
-        # Name should be "Player 1" (slot 0+1)
+        # Name should be "Player 1" (slot 0 + 1)
         created_name = idx.get("profiles", {}).get("0", {}).get("name", "")
         assert created_name == "Player 1"
 
@@ -212,8 +209,7 @@ class TestNameValidation:
         scene._entry_slot = 1
         scene._entry_name = "   "
         scene._mode = "name_entry"
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, unicode="\r")
-        scene._handle_name_entry(event)
+        scene._handle_name_entry(_make_event(pygame.K_RETURN, "\r"))
         scene._refresh_index()
         idx = save.load_profiles_index()
         created_name = idx.get("profiles", {}).get("1", {}).get("name", "")
@@ -226,26 +222,21 @@ class TestNameValidation:
         # Type PROFILE_NAME_MAX_LEN + 3 extra chars
         long_input = "A" * (PROFILE_NAME_MAX_LEN + 3)
         for ch in long_input:
-            event = pygame.event.Event(
-                pygame.KEYDOWN, key=ord(ch), unicode=ch
-            )
-            scene._handle_name_entry(event)
+            scene._handle_name_entry(_make_event(ord(ch), ch))
         assert len(scene._entry_name) == PROFILE_NAME_MAX_LEN
 
     def test_backspace_removes_last_char(self, tmp_path):
         scene, _, _ = _make_scene(tmp_path)
         scene._mode = "name_entry"
         scene._entry_name = "ABC"
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_BACKSPACE, unicode="")
-        scene._handle_name_entry(event)
+        scene._handle_name_entry(_make_event(pygame.K_BACKSPACE, ""))
         assert scene._entry_name == "AB"
 
     def test_esc_cancels_name_entry(self, tmp_path):
         scene, _, _ = _make_scene(tmp_path)
         scene._mode = "name_entry"
         scene._entry_name = "Partial"
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, unicode="")
-        scene._handle_name_entry(event)
+        scene._handle_name_entry(_make_event(pygame.K_ESCAPE, ""))
         assert scene._mode == "select"
         assert scene._entry_name == ""
 
@@ -311,8 +302,7 @@ class TestDeleteProfile:
         scene._refresh_index()
         scene._mode = "confirm_delete"
         scene._delete_slot = 2
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_y, unicode="y")
-        scene._handle_delete_confirm(event)
+        scene._handle_delete_confirm(_make_event(pygame.K_y, "y"))
         scene._refresh_index()
         assert not scene._is_occupied(2)
 
@@ -322,8 +312,7 @@ class TestDeleteProfile:
         scene._refresh_index()
         scene._mode = "confirm_delete"
         scene._delete_slot = 0
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, unicode="")
-        scene._handle_delete_confirm(event)
+        scene._handle_delete_confirm(_make_event(pygame.K_ESCAPE, ""))
         assert scene._mode == "select"
         scene._refresh_index()
         assert scene._is_occupied(0)
@@ -340,8 +329,7 @@ class TestEscGuard:
         # Patch fade to track calls
         started = []
         scene._fade.start = lambda: started.append(True)
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, unicode="")
-        scene._handle_select(event)
+        scene._handle_select(_make_event(pygame.K_ESCAPE, ""))
         assert not started, "ESC should be blocked when no profiles exist"
 
     def test_esc_allowed_when_profile_exists(self, tmp_path):
@@ -350,6 +338,5 @@ class TestEscGuard:
         scene._refresh_index()
         started = []
         scene._fade.start = lambda: started.append(True)
-        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, unicode="")
-        scene._handle_select(event)
+        scene._handle_select(_make_event(pygame.K_ESCAPE, ""))
         assert started, "ESC should trigger fade when at least one profile exists"
