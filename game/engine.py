@@ -19,12 +19,14 @@ from game.scenes.game_over_scene import GameOverScene
 from game.scenes.game_scene import GameplayScene
 from game.scenes.menu_scene import MainMenuScene
 from game.scenes.settings_scene import SettingsScene
+from game.scenes.tank_select_scene import TankSelectScene
 from game.utils.constants import (
     FPS,
     SCENE_GAME,
     SCENE_GAME_OVER,
     SCENE_MENU,
     SCENE_SETTINGS,
+    SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TITLE,
@@ -58,6 +60,7 @@ class GameEngine:
     def _register_scenes(self) -> None:
         sm = self._scene_manager
         sm.register(SCENE_MENU, MainMenuScene(sm))
+        sm.register(SCENE_TANK_SELECT, TankSelectScene(sm))
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))

@@ -7,14 +7,20 @@ Main menu screen. Stub — full UI implemented in a later milestone.
 import pygame
 
 from game.scenes.base_scene import BaseScene
-from game.utils.constants import COLOR_BG, COLOR_WHITE, SCENE_GAME, SCENE_SETTINGS, TITLE
+from game.utils.constants import (
+    COLOR_BG,
+    COLOR_WHITE,
+    SCENE_SETTINGS,
+    SCENE_TANK_SELECT,
+    TITLE,
+)
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
 
 
 class MainMenuScene(BaseScene):
-    """Displays the main menu and routes to game or settings."""
+    """Displays the main menu and routes to tank selection or settings."""
 
     def on_enter(self, **kwargs) -> None:
         log.info("Main menu entered.")
@@ -22,7 +28,7 @@ class MainMenuScene(BaseScene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
-                self.manager.switch_to(SCENE_GAME)
+                self.manager.switch_to(SCENE_TANK_SELECT)
             elif event.key == pygame.K_s:
                 self.manager.switch_to(SCENE_SETTINGS)
 

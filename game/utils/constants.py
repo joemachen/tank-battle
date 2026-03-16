@@ -121,9 +121,38 @@ HUD_BAR_WIDTH: int = 160
 HUD_BAR_HEIGHT: int = 16
 
 # ---------------------------------------------------------------------------
+# Tank Selection screen
+# ---------------------------------------------------------------------------
+# Per-tank card fill colors (must differ from TANK_PLAYER_COLOR)
+TANK_COLOR_LIGHT:  tuple = COLOR_BLUE    # light_tank
+TANK_COLOR_MEDIUM: tuple = COLOR_GREEN   # medium_tank
+TANK_COLOR_HEAVY:  tuple = COLOR_YELLOW  # heavy_tank
+TANK_COLOR_SCOUT:  tuple = COLOR_WHITE   # scout_tank
+
+# Tank type → card color lookup used by TankSelectScene
+TANK_SELECT_COLORS: dict = {
+    "light_tank":  COLOR_BLUE,
+    "medium_tank": COLOR_GREEN,
+    "heavy_tank":  COLOR_YELLOW,
+    "scout_tank":  COLOR_WHITE,
+}
+
+# Stat bar max width in pixels (normalized 0.0–1.0 × this value)
+MAX_BAR_WIDTH: int = 120
+
+# Reference maxima used for normalization (derived from tanks.yaml peak values)
+TANK_STAT_MAX: dict = {
+    "speed":     260.0,   # scout_tank
+    "health":    220.0,   # heavy_tank
+    "turn_rate": 220.0,   # scout_tank
+    "fire_rate": 2.0,     # scout_tank
+}
+
+# ---------------------------------------------------------------------------
 # Scene names (registered with SceneManager by these keys)
 # ---------------------------------------------------------------------------
 SCENE_MENU: str = "menu"
+SCENE_TANK_SELECT: str = "tank_select"
 SCENE_GAME: str = "game"
 SCENE_SETTINGS: str = "settings"
 SCENE_GAME_OVER: str = "game_over"
@@ -141,7 +170,7 @@ AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 DEFAULT_PROFILE: dict = {
     "xp": 0,
     "level": 1,
-    "unlocked_tanks": ["light_tank"],
+    "unlocked_tanks": ["light_tank", "medium_tank"],
     "unlocked_weapons": ["standard_shell"],
     "total_matches": 0,
     "wins": 0,
