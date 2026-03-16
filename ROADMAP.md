@@ -15,24 +15,25 @@ are completed or plans change.
 | v0.10.0 | Audio — SFX + synthwave music per scene, M mute, procedural assets   |
 | v0.11.0 | Match result + XP persistence — stat screen, level-up, unlock flow   |
 | v0.12.0 | Main menu polish — perspective grid, glow title, fade transition      |
+| v0.13.0 | Settings screen — audio sliders, keybinds, resolution, AI difficulty  |
 ---
 ## 🔨 In Progress
-| Branch             | Milestone                                              |
-|--------------------|--------------------------------------------------------|
-| feature/settings   | v0.13 — Settings screen                               |
+| Branch                    | Milestone                                              |
+|---------------------------|--------------------------------------------------------|
+| feature/profile-selection | v0.13.5 — Profile selection (multi-save)              |
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
 *Get the base game feeling complete before expanding content.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.13   | Settings screen        | Volume sliders, keybind config, resolution, difficulty default.       |
+| v0.13.5 | Profile selection      | Multi-save slot picker, SaveManager refactor. Slotted between v0.13 and v0.14 per roadmap note. |
 ---
 ### Phase 2 — Content Expansion
 *More things to do and unlock.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.14   | Weapon selection       | Pre-match weapon picker, same pattern as tank select. All 4 weapons already in weapons.yaml. Primary slot only. *(Note: Profile selection (multi-save) to be slotted between v0.13 and v0.14 as a dedicated milestone. SaveManager refactor required.)* |
+| v0.14   | Weapon selection       | Pre-match weapon picker, same pattern as tank select. All 4 weapons already in weapons.yaml. Primary slot only. |
 | v0.15   | Secondary + tertiary weapons | Each tank has up to 3 weapon slots. Tab or Q/E to cycle. Weapon slots defined per tank type in tanks.yaml. |
 | v0.16   | Multiple maps          | Map select screen, 2–3 maps with distinct layouts in data/maps/. MapLoader already handles this. |
 | v0.17   | Destructible obstacles | Material system already supports it — needs visual destruction feedback (flash, crumble). |
