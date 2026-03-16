@@ -37,6 +37,12 @@ _pygame_stub.K_UP = 273
 _pygame_stub.K_DOWN = 274
 _pygame_stub.K_LSHIFT = 304
 _pygame_stub.K_RSHIFT = 303
+# Additional keys used by ProfileSelectScene (v0.13.5)
+_pygame_stub.K_DELETE = 127
+_pygame_stub.K_F2 = 271
+_pygame_stub.K_BACKSPACE = 8
+_pygame_stub.K_y = 121
+_pygame_stub.K_n = 110
 
 # event stub
 _event_mod = types.ModuleType("pygame.event")

@@ -14,9 +14,10 @@ Visual design:
 Navigation:
   UP / DOWN (or W / S)  — move cursor
   ENTER / SPACE         — confirm selection
-  PLAY     → fade to black → TankSelectScene
-  SETTINGS → SettingsScene (stub)
-  QUIT     → pygame.QUIT event (clean exit)
+  PLAY           → fade to black → TankSelectScene
+  SETTINGS       → SettingsScene
+  SWITCH PROFILE → ProfileSelectScene
+  QUIT           → pygame.QUIT event (clean exit)
 """
 
 import pygame
@@ -34,6 +35,7 @@ from game.utils.constants import (
     MENU_FADE_DURATION,
     MENU_TITLE_ANIM_DURATION,
     MUSIC_MENU,
+    SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
     SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
@@ -55,7 +57,7 @@ _TITLE_Y: int = 155                # title centre y (pixels from top)
 _TITLE_FONT_SIZE: int = 112
 _TITLE_SLIDE_OFFSET: int = 70      # pixels above final pos at animation start
 
-_ITEMS: list[str] = ["PLAY", "SETTINGS", "QUIT"]
+_ITEMS: list[str] = ["PLAY", "SETTINGS", "SWITCH PROFILE", "QUIT"]
 _ITEM_FONT_SIZE: int = 52
 _ITEMS_Y_START: int = 320          # centre y of first item
 _ITEMS_SPACING: int = 64
@@ -148,6 +150,8 @@ class MainMenuScene(BaseScene):
             self._fade.start()
         elif item == "SETTINGS":
             self.manager.switch_to(SCENE_SETTINGS)
+        elif item == "SWITCH PROFILE":
+            self.manager.switch_to(SCENE_PROFILE_SELECT)
         elif item == "QUIT":
             pygame.event.post(pygame.event.Event(pygame.QUIT))
 

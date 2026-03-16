@@ -18,6 +18,7 @@ from game.scenes import SceneManager
 from game.scenes.game_over_scene import GameOverScene
 from game.scenes.game_scene import GameplayScene
 from game.scenes.menu_scene import MainMenuScene
+from game.scenes.profile_select_scene import ProfileSelectScene
 from game.scenes.settings_scene import SettingsScene
 from game.scenes.tank_select_scene import TankSelectScene
 from game.utils.constants import (
@@ -25,6 +26,7 @@ from game.utils.constants import (
     SCENE_GAME,
     SCENE_GAME_OVER,
     SCENE_MENU,
+    SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
     SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
@@ -59,13 +61,14 @@ class GameEngine:
 
     def _register_scenes(self) -> None:
         sm = self._scene_manager
+        sm.register(SCENE_PROFILE_SELECT, ProfileSelectScene(sm))
         sm.register(SCENE_MENU, MainMenuScene(sm))
         sm.register(SCENE_TANK_SELECT, TankSelectScene(sm))
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))
-        sm.switch_to(SCENE_MENU)
-        log.info("All scenes registered. Starting at: '%s'", SCENE_MENU)
+        sm.switch_to(SCENE_PROFILE_SELECT)
+        log.info("All scenes registered. Starting at: '%s'", SCENE_PROFILE_SELECT)
 
     def run(self) -> None:
         """
