@@ -35,6 +35,8 @@ from game.ui.hud import HUD
 from game.utils.camera import Camera
 from game.utils.config_loader import get_ai_config, get_tank_config, get_weapon_config
 from game.utils.constants import (
+    AI_ATTACK_RANGE,
+    AI_DETECTION_RANGE,
     AI_DIFFICULTY_CONFIG,
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
@@ -147,6 +149,11 @@ class GameplayScene(BaseScene):
 
         self._bullets = []
         self._obstacles = load_map(MAP_01)
+        # Give the AI live obstacle access for avoidance steering.
+        # Lambda reads self._obstacles at call time so it stays current after reloads.
+        self._ai_controller.set_obstacles_getter(
+            lambda: [o for o in self._obstacles if o.is_alive]
+        )
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
         self._hud = HUD()
@@ -205,8 +212,10 @@ class GameplayScene(BaseScene):
                     Bullet(spawn_x, spawn_y, eangle, self._tank, self._weapon_config)
                 )
 
-        # AI tank update — live controller fires back this milestone
+        # AI tank update — tick() advances stuck detection before the tank moves
         if self._ai_tank and self._ai_tank.is_alive:
+            if self._ai_controller:
+                self._ai_controller.tick(dt)
             for event in self._ai_tank.update(dt):
                 if event[0] == "fire":
                     _, ex, ey, eangle = event
@@ -285,6 +294,8 @@ class GameplayScene(BaseScene):
         # 9. Debug overlay — remove or gate behind a flag in a later milestone
         ai_state = self._ai_controller.state_name if self._ai_controller else "—"
         _draw_debug(surface, self._tank, self._camera, self._ai_tank, ai_state)
+        if self._ai_tank and self._ai_tank.is_alive:
+            _draw_ai_overlay(surface, self._ai_tank, self._camera)
 
 
 # ---------------------------------------------------------------------------
@@ -430,3 +441,40 @@ def _draw_debug(
         txt = font.render(line, True, COLOR_WHITE)
         surface.blit(txt, (x, y))
         y += 20
+
+
+def _draw_ai_overlay(
+    surface: pygame.Surface,
+    ai_tank: Tank,
+    camera: Camera,
+) -> None:
+    """
+    Debug-only overlay: AI awareness zone rings drawn around the AI tank.
+
+    Outer ring — AI_DETECTION_RANGE, yellow  — PURSUE state triggers inside here
+    Inner ring — AI_ATTACK_RANGE,    red     — ATTACK state triggers inside here
+
+    Both rings are 1px outlines rendered on an SRCALPHA surface so they blend
+    semi-transparently over the scene without obscuring gameplay elements.
+    Labels are drawn directly on the main surface (no alpha needed for text).
+
+    World unit == screen pixel at all zoom levels (camera has no scale factor),
+    so the range constants can be used as pixel radii directly.
+    """
+    sx, sy = camera.world_to_screen(ai_tank.x, ai_tank.y)
+    cx, cy = int(sx), int(sy)
+    det_r = int(AI_DETECTION_RANGE)
+    atk_r = int(AI_ATTACK_RANGE)
+
+    # --- Rings (SRCALPHA for transparency) ---
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    pygame.draw.circle(overlay, (255, 220, 0, 55), (cx, cy), det_r, 1)   # yellow detect ring
+    pygame.draw.circle(overlay, (220, 50, 47, 55), (cx, cy), atk_r, 1)   # red attack ring
+    surface.blit(overlay, (0, 0))
+
+    # --- Labels (solid — drawn directly onto surface) ---
+    font = pygame.font.SysFont(None, 18)
+    lbl_detect = font.render("DETECT", True, (200, 180, 0))
+    lbl_attack = font.render("ATTACK", True, (200, 70, 70))
+    surface.blit(lbl_detect, (cx - lbl_detect.get_width() // 2, cy - det_r - 14))
+    surface.blit(lbl_attack, (cx - lbl_attack.get_width() // 2, cy - atk_r - 14))
