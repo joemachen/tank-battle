@@ -22,6 +22,14 @@ MENU_TITLE_ANIM_DURATION: float = 0.8   # seconds for title slide-in / fade-in
 MENU_FADE_DURATION: float = 0.3         # seconds for scene-exit fade to black
 
 # ---------------------------------------------------------------------------
+# Settings Screen
+# ---------------------------------------------------------------------------
+SUPPORTED_RESOLUTIONS: list = [(1280, 720), (1600, 900), (1920, 1080)]
+SETTINGS_SLIDER_WIDTH: int = 200        # width of slider bar in pixels
+SETTINGS_STEP_VOLUME: float = 0.05     # volume adjustment per LEFT/RIGHT key press
+SETTINGS_SECTION_COLOR: tuple = (181, 137, 0)  # COLOR_YELLOW — section header accent
+
+# ---------------------------------------------------------------------------
 # Colors  (R, G, B)
 # ---------------------------------------------------------------------------
 COLOR_BLACK = (0, 0, 0)

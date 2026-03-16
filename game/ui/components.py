@@ -17,10 +17,14 @@ import pygame
 
 from game.utils.constants import (
     COLOR_BLUE,
+    COLOR_GREEN,
+    COLOR_NEON_PINK,
     MENU_FADE_DURATION,
     MENU_GRID_SPEED,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SETTINGS_SLIDER_WIDTH,
+    SETTINGS_STEP_VOLUME,
 )
 
 
@@ -166,3 +170,285 @@ class FadeTransition:
     def is_complete(self) -> bool:
         """True after the fade finished and the callback fired."""
         return self._fired
+
+
+# ---------------------------------------------------------------------------
+# Settings-screen components (shared layout constants)
+# ---------------------------------------------------------------------------
+
+# All setting components assume their draw() is called with the same x
+# (the left edge of the label column).  Controls begin _CTRL_OFFSET_PX
+# pixels to the right, giving a consistent two-column layout.
+_CTRL_OFFSET_PX: int = 360   # label column width in pixels
+_COMP_ROW_H: int = 30        # assumed row height — used for vertical centering
+_BAR_H: int = 10             # slider track height
+
+_COLOR_SEL: tuple = COLOR_NEON_PINK         # selected label / value
+_COLOR_DIM: tuple = (153, 153, 153)         # unselected label
+_COLOR_VAL: tuple = (210, 210, 210)         # unselected value (brighter than label)
+_COLOR_ARROW_OFF: tuple = (70, 70, 75)      # dimmed < > arrows
+
+# Module-level font cache — avoids repeated SysFont calls at draw time
+_font_cache: dict = {}
+
+
+def _get_font(size: int) -> pygame.font.Font:
+    if size not in _font_cache:
+        _font_cache[size] = pygame.font.SysFont(None, size)
+    return _font_cache[size]
+
+
+# ---------------------------------------------------------------------------
+# SliderComponent
+# ---------------------------------------------------------------------------
+
+class SliderComponent:
+    """
+    Horizontal percentage slider.
+
+    draw(surface, x, y, selected):
+        Renders label at (x, y) and a filled bar + percentage at
+        (x + _CTRL_OFFSET_PX, y), vertically centred within _COMP_ROW_H.
+
+    LEFT / RIGHT:   decrement / increment value by SETTINGS_STEP_VOLUME.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        min_val: float,
+        max_val: float,
+        current_val: float,
+        width: int = SETTINGS_SLIDER_WIDTH,
+    ) -> None:
+        self._label = label
+        self._min = float(min_val)
+        self._max = float(max_val)
+        self._value = max(self._min, min(self._max, float(current_val)))
+        self._width = width
+
+    # -- Input --
+
+    def handle_input(self, key: int) -> bool:
+        """Adjust value on LEFT/RIGHT.  Returns True if value changed."""
+        if key == pygame.K_LEFT:
+            new = max(self._min, self._value - SETTINGS_STEP_VOLUME)
+            if new != self._value:
+                self._value = round(new, 10)
+                return True
+        elif key == pygame.K_RIGHT:
+            new = min(self._max, self._value + SETTINGS_STEP_VOLUME)
+            if new != self._value:
+                self._value = round(new, 10)
+                return True
+        return False
+
+    # -- Draw --
+
+    def draw(self, surface: pygame.Surface, x: int, y: int, selected: bool) -> None:
+        font = _get_font(24)
+        lbl_color = _COLOR_SEL if selected else _COLOR_DIM
+        val_color = _COLOR_SEL if selected else _COLOR_VAL
+
+        ty = y + (_COMP_ROW_H - font.get_linesize()) // 2   # vertically centred
+
+        # Label
+        lbl = font.render(self._label, True, lbl_color)
+        surface.blit(lbl, (x, ty))
+
+        # Bar
+        bx = x + _CTRL_OFFSET_PX
+        bar_y = y + (_COMP_ROW_H - _BAR_H) // 2
+        ratio = (
+            (self._value - self._min) / (self._max - self._min)
+            if self._max > self._min else 0.0
+        )
+        track = pygame.Rect(bx, bar_y, self._width, _BAR_H)
+        pygame.draw.rect(surface, (45, 45, 50), track, border_radius=3)
+        fill_w = int(self._width * ratio)
+        if fill_w > 0:
+            fill_color = _COLOR_SEL if selected else COLOR_GREEN
+            pygame.draw.rect(surface, fill_color,
+                             pygame.Rect(bx, bar_y, fill_w, _BAR_H), border_radius=3)
+        pygame.draw.rect(surface, (70, 70, 75), track, 1, border_radius=3)
+
+        # Percentage
+        pct = font.render(f"{int(round(self._value * 100))}%", True, val_color)
+        surface.blit(pct, (bx + self._width + 10, ty))
+
+    # -- Property --
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    @value.setter
+    def value(self, v: float) -> None:
+        self._value = max(self._min, min(self._max, float(v)))
+
+
+# ---------------------------------------------------------------------------
+# CycleComponent
+# ---------------------------------------------------------------------------
+
+class CycleComponent:
+    """
+    Left/right cycling selector: < OPTION >.
+
+    draw(surface, x, y, selected):
+        Renders label at (x, y) and  < VALUE >  in the control column.
+
+    LEFT / RIGHT:   cycle backward / forward through options list (wraps).
+    """
+
+    def __init__(self, label: str, options: list, current_index: int = 0) -> None:
+        self._label = label
+        self._options = list(options)
+        self._index = max(0, min(len(self._options) - 1, current_index))
+
+    # -- Input --
+
+    def handle_input(self, key: int) -> bool:
+        if key == pygame.K_LEFT:
+            self._index = (self._index - 1) % len(self._options)
+            return True
+        elif key == pygame.K_RIGHT:
+            self._index = (self._index + 1) % len(self._options)
+            return True
+        return False
+
+    # -- Draw --
+
+    def draw(self, surface: pygame.Surface, x: int, y: int, selected: bool) -> None:
+        font = _get_font(24)
+        lbl_color   = _COLOR_SEL if selected else _COLOR_DIM
+        arrow_color = _COLOR_SEL if selected else _COLOR_ARROW_OFF
+        val_color   = _COLOR_SEL if selected else _COLOR_VAL
+
+        ty = y + (_COMP_ROW_H - font.get_linesize()) // 2
+
+        # Label
+        lbl = font.render(self._label, True, lbl_color)
+        surface.blit(lbl, (x, ty))
+
+        # < VALUE > — centred in a 180px control slot
+        cx = x + _CTRL_OFFSET_PX
+        slot_w = 180
+
+        left_s  = font.render("<", True, arrow_color)
+        right_s = font.render(">", True, arrow_color)
+        val_s   = font.render(str(self._options[self._index]), True, val_color)
+
+        surface.blit(left_s, (cx, ty))
+        vx = cx + left_s.get_width() + 8 + (slot_w - val_s.get_width()) // 2
+        surface.blit(val_s, (vx, ty))
+        surface.blit(right_s, (cx + left_s.get_width() + 8 + slot_w + 4, ty))
+
+    # -- Properties --
+
+    @property
+    def value(self) -> str:
+        return str(self._options[self._index])
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+    @index.setter
+    def index(self, i: int) -> None:
+        self._index = max(0, min(len(self._options) - 1, i))
+
+
+# ---------------------------------------------------------------------------
+# KeybindComponent
+# ---------------------------------------------------------------------------
+
+class KeybindComponent:
+    """
+    Interactive key-rebind row.
+
+    Normal state : shows current key name (e.g. "W").
+    Listening state : shows "Press any key…" after ENTER is pressed.
+    ESC while listening : cancels without changing the bind.
+
+    The parent scene is responsible for conflict checking.  After
+    try_bind() returns a key name, call commit() to apply it, or do
+    nothing to discard.
+    """
+
+    # Keys that cannot be used as binds (modifier-only presses)
+    _IGNORE_KEYS: frozenset = frozenset((
+        pygame.K_LSHIFT, pygame.K_RSHIFT,
+        pygame.K_LCTRL,  pygame.K_RCTRL,
+        pygame.K_LALT,   pygame.K_RALT,
+        pygame.K_LMETA,  pygame.K_RMETA,
+        pygame.K_CAPSLOCK, pygame.K_NUMLOCK,
+    ))
+
+    def __init__(self, label: str, action: str, current_key: str) -> None:
+        self._label = label
+        self._action = action
+        self._key_name = current_key   # stored as pygame.key.name() string (lowercase)
+        self._listening = False
+
+    # -- Lifecycle --
+
+    def activate_listen(self) -> None:
+        self._listening = True
+
+    def cancel_listen(self) -> None:
+        self._listening = False
+
+    def try_bind(self, key: int) -> str | None:
+        """
+        Called by the scene when a key is pressed while this component is
+        listening.  Returns the proposed key-name string, or None if the
+        key should be ignored (ESC, modifier-only).  Does NOT commit.
+        """
+        if key == pygame.K_ESCAPE:
+            self._listening = False
+            return None
+        if key in self._IGNORE_KEYS:
+            return None
+        self._listening = False
+        return pygame.key.name(key)
+
+    def commit(self, key_name: str) -> None:
+        """Apply an accepted key name (after conflict check passed)."""
+        self._key_name = key_name
+
+    # -- Draw --
+
+    def draw(self, surface: pygame.Surface, x: int, y: int, selected: bool) -> None:
+        font = _get_font(24)
+        lbl_color = _COLOR_SEL if selected else _COLOR_DIM
+        ty = y + (_COMP_ROW_H - font.get_linesize()) // 2
+
+        # Label
+        lbl = font.render(self._label, True, lbl_color)
+        surface.blit(lbl, (x, ty))
+
+        # Value or listening prompt
+        cx = x + _CTRL_OFFSET_PX
+        if self._listening:
+            val_s = font.render("Press any key…", True, COLOR_NEON_PINK)
+        else:
+            display = self._key_name.upper() if len(self._key_name) == 1 else self._key_name.capitalize()
+            val_color = _COLOR_SEL if selected else _COLOR_VAL
+            val_s = font.render(display, True, val_color)
+        surface.blit(val_s, (cx, ty))
+
+    # -- Properties --
+
+    @property
+    def value(self) -> str:
+        """Current key name as stored in settings (lowercase)."""
+        return self._key_name
+
+    @property
+    def action(self) -> str:
+        return self._action
+
+    @property
+    def is_listening(self) -> bool:
+        return self._listening
