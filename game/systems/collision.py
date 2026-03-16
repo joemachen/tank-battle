@@ -7,11 +7,19 @@ Collision pairs handled:
   - Bullet  ↔ Tank     (damage)
   - Bullet  ↔ Obstacle (bounce or destroy)
   - Tank    ↔ Obstacle (push back)
+  - Tank    ↔ Tank     (push back + collision damage)
   - Tank    ↔ Pickup   (apply effect)
 """
 
 import math
 
+from game.utils.constants import (
+    COLLISION_DAMAGE_FRONT,
+    COLLISION_DAMAGE_REAR,
+    COLLISION_DAMAGE_SIDE,
+    COLLISION_SPEED_CAP,
+    COLLISION_SPEED_SCALE,
+)
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -39,6 +47,7 @@ class CollisionSystem:
         self._bullets_vs_tanks(bullets, tanks)
         self._bullets_vs_obstacles(bullets, obstacles)
         self._tanks_vs_obstacles(tanks, obstacles)
+        self._tanks_vs_tanks(tanks)
         self._tanks_vs_pickups(tanks, pickups)
 
     # ------------------------------------------------------------------
@@ -177,6 +186,93 @@ class CollisionSystem:
                 tank.y = ry - TANK_RADIUS
             else:
                 tank.y = ry + rh + TANK_RADIUS
+
+    def _tanks_vs_tanks(self, tanks: list) -> None:
+        """
+        Check every unique tank pair for overlap, push them apart, and apply
+        collision damage to both.
+
+        Only live tanks participate.  Damage is zero if relative speed is
+        effectively zero (a slow nudge still scores 1 point via the floor).
+        """
+        alive = [t for t in tanks if t.is_alive]
+        for i in range(len(alive)):
+            for j in range(i + 1, len(alive)):
+                a, b = alive[i], alive[j]
+                dist_sq = (b.x - a.x) ** 2 + (b.y - a.y) ** 2
+                combined = TANK_RADIUS * 2
+                if dist_sq >= combined * combined:
+                    continue  # no overlap
+                self._push_tanks_apart(a, b, dist_sq, combined)
+                self._apply_tank_collision_damage(a, b)
+
+    def _push_tanks_apart(self, a, b, dist_sq: float, combined_r: float) -> None:
+        """Push two overlapping tanks symmetrically along their separation axis."""
+        dist = math.sqrt(dist_sq) if dist_sq > 0 else 0.001
+        nx = (b.x - a.x) / dist
+        ny = (b.y - a.y) / dist
+        penetration = combined_r - dist
+        half = penetration / 2.0
+        a.x -= nx * half
+        a.y -= ny * half
+        b.x += nx * half
+        b.y += ny * half
+
+    def _apply_tank_collision_damage(self, a, b) -> None:
+        """
+        Calculate and apply bidirectional collision damage.
+
+        For each tank, determine whether the *other* tank is hitting it from
+        the front, side, or rear based on the angle between the struck tank's
+        facing direction and the vector from the struck tank → striking tank.
+
+        Both tanks take damage: the struck tank takes full base damage, the
+        striking tank takes half (ramming costs you too).
+
+        Relative speed scales the damage, capped to prevent one-shot kills.
+        """
+        # Relative speed = magnitude of velocity difference (px/s)
+        rel_vx = a.vx - b.vx
+        rel_vy = a.vy - b.vy
+        rel_speed = math.hypot(rel_vx, rel_vy)
+        speed_factor = min(rel_speed / COLLISION_SPEED_SCALE, COLLISION_SPEED_CAP)
+
+        # Compute base damage for both impact directions
+        dmg_on_b = self._impact_damage(a, b)   # a is the striker, b is struck
+        dmg_on_a = self._impact_damage(b, a)   # b is the striker, a is struck
+
+        # Apply with speed scaling; floor at 1
+        b.take_damage(max(1, int(dmg_on_b * speed_factor)))
+        a.take_damage(max(1, int(dmg_on_a * speed_factor)))
+
+        log.debug(
+            "Tank collision: speed_factor=%.2f  dmg_on_a=%d  dmg_on_b=%d",
+            speed_factor, dmg_on_a, dmg_on_b,
+        )
+
+    @staticmethod
+    def _impact_damage(striker, struck) -> int:
+        """
+        Base damage dealt TO struck FROM striker.
+
+        Impact angle = angle between struck's facing vector and the vector
+        from struck → striker.  Small angle = head-on front hit (low damage);
+        90° = T-bone (high damage); 180° = rear-end (medium damage).
+        """
+        # Vector from struck → striker
+        dx = striker.x - struck.x
+        dy = striker.y - struck.y
+        bearing = math.degrees(math.atan2(dy, dx))
+
+        # Difference from struck tank's facing angle
+        diff = abs((bearing - struck.angle + 180) % 360 - 180)
+
+        if diff <= 45.0:
+            return COLLISION_DAMAGE_FRONT
+        elif diff <= 135.0:
+            return COLLISION_DAMAGE_SIDE
+        else:
+            return COLLISION_DAMAGE_REAR
 
     def _tanks_vs_pickups(self, tanks: list, pickups: list) -> None:
         for tank in tanks:

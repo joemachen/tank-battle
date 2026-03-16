@@ -6,25 +6,20 @@ TankSelectScene — pre-match tank selection screen.
 Flow:
     MainMenuScene (ENTER) → TankSelectScene → (confirm) → GameplayScene
 
-Layout:
-    Four cards displayed horizontally, centred on screen.
-    LEFT / RIGHT (or A / D) navigate between cards.
-    ENTER or SPACE confirms and starts the match.
-    ESC cancels and returns to the main menu.
+Layout (three interactive rows, navigated separately):
+    Row 0 — Tank cards  (LEFT/RIGHT or A/D)
+    Row 1 — Difficulty  (LEFT/RIGHT when row focused; UP/DOWN switches row)
+    Row 2 — Opponents   (LEFT/RIGHT when row focused; UP/DOWN switches row)
 
-Each card shows:
-    - Tank type name
-    - Single-sentence description
-    - A small placeholder sprite (rect + barrel indicator)
-    - Four stat bars: Speed, Health, Turn, Fire Rate
-      (normalised relative to the per-stat maximum across all tank types)
-    - LOCKED overlay (padlock label + reduced opacity) for unavailable tanks
+Controls:
+    UP / DOWN   — switch focus between rows
+    LEFT / RIGHT (or A / D on tank row) — navigate within focused row
+    ENTER / SPACE — confirm and start match
+    ESC — return to main menu
 
-Locked state is determined by SaveManager — no writes happen here.
-Selection is passed to GameplayScene via switch_to(SCENE_GAME, tank_type=…).
+Selection is passed to GameplayScene via:
+    switch_to(SCENE_GAME, tank_type=…, ai_difficulty=…, ai_count=…)
 """
-
-import math
 
 import pygame
 
@@ -34,12 +29,12 @@ from game.utils.constants import (
     COLOR_BG,
     COLOR_DARK_GRAY,
     COLOR_GRAY,
+    COLOR_GREEN,
     COLOR_RED,
     COLOR_WHITE,
     MAX_BAR_WIDTH,
     SCENE_GAME,
     SCENE_MENU,
-    SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TANK_BARREL_COLOR,
@@ -57,32 +52,47 @@ from game.utils.save_manager import SaveManager
 log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Layout constants (all in screen pixels, not exported to constants.py —
-# they are internal to this scene only)
+# Layout constants (internal to this scene)
 # ---------------------------------------------------------------------------
 _CARD_W: int = 220
 _CARD_H: int = 360
-_CARD_GAP: int = 30          # horizontal gap between cards
-_CARD_TOP: int = 130         # y position of card top edge
-_CARD_RADIUS: int = 10       # rounded-corner radius
+_CARD_GAP: int = 30
+_CARD_TOP: int = 110
+_CARD_RADIUS: int = 10
+_SELECTED_BORDER_W: int = 3
 
-_SELECTED_BORDER_W: int = 3  # border thickness for the active card
-_LOCKED_ALPHA: int = 80      # surface alpha for locked card content overlay
-
-_STAT_BAR_H: int = 10        # height of each stat bar
-_STAT_ROW_GAP: int = 22      # vertical distance between stat rows
-_STATS: list = [             # (display label, tanks.yaml key)
+_STAT_BAR_H: int = 10
+_STAT_ROW_GAP: int = 22
+_STATS: list = [
     ("Speed",     "speed"),
     ("Health",    "health"),
     ("Turn",      "turn_rate"),
     ("Fire Rate", "fire_rate"),
 ]
 
+# Selector rows (below the cards)
+_ROW_Y: int = _CARD_TOP + _CARD_H + 22   # top of first selector row
+_ROW_H: int = 42                          # height of each selector row
+_ROW_GAP: int = 10                        # gap between selector rows
+
+# Row indices
+_ROW_TANKS: int = 0
+_ROW_DIFFICULTY: int = 1
+_ROW_OPPONENTS: int = 2
+
+_DIFFICULTIES: list = ["easy", "medium", "hard"]
+_DIFFICULTY_LABELS: dict = {"easy": "Easy", "medium": "Medium", "hard": "Hard"}
+_DEFAULT_DIFFICULTY: str = "medium"
+_DEFAULT_DIFFICULTY_IDX: int = _DIFFICULTIES.index(_DEFAULT_DIFFICULTY)
+
+_OPPONENT_COUNTS: list = [1, 2, 3]
+_DEFAULT_OPPONENT_IDX: int = 0   # 1 opponent by default
+
 # Display order of tank types — matches the 4-card layout left-to-right
 _TANK_ORDER: list = ["light_tank", "medium_tank", "heavy_tank", "scout_tank"]
 
 # ---------------------------------------------------------------------------
-# Module-level helper
+# Module-level helper (exported for tests)
 # ---------------------------------------------------------------------------
 
 def _normalise(value: float, stat_key: str) -> float:
@@ -94,21 +104,23 @@ def _normalise(value: float, stat_key: str) -> float:
 
 
 class TankSelectScene(BaseScene):
-    """Pre-match tank selection UI."""
+    """Pre-match tank and match-settings selection UI."""
 
     def __init__(self, manager) -> None:
         super().__init__(manager)
         self._save_manager: SaveManager = SaveManager()
-        self._tank_data: list[dict] = []      # ordered list of tank config dicts
+        self._tank_data: list[dict] = []
         self._unlocked: set[str] = set()
-        self._cursor: int = 0                 # index into _tank_data
+        self._tank_cursor: int = 0          # index into _tank_data
+        self._difficulty_idx: int = _DEFAULT_DIFFICULTY_IDX
+        self._opponent_idx: int = _DEFAULT_OPPONENT_IDX
+        self._focused_row: int = _ROW_TANKS  # which row has keyboard focus
 
     # ------------------------------------------------------------------
     # Scene lifecycle
     # ------------------------------------------------------------------
 
     def on_enter(self, **kwargs) -> None:
-        # Reload data every entry so unlocks gained mid-session are reflected.
         all_tanks = load_yaml(TANKS_CONFIG)
         self._tank_data = []
         for t in _TANK_ORDER:
@@ -120,16 +132,21 @@ class TankSelectScene(BaseScene):
         profile = self._save_manager.load_profile()
         self._unlocked = set(profile.get("unlocked_tanks", []))
 
-        # Start cursor on the first unlocked tank
-        self._cursor = 0
+        # Cursor on first unlocked tank
+        self._tank_cursor = 0
         for i, td in enumerate(self._tank_data):
             if td["type"] in self._unlocked:
-                self._cursor = i
+                self._tank_cursor = i
                 break
+
+        # Reset selector rows to defaults each time we enter
+        self._difficulty_idx = _DEFAULT_DIFFICULTY_IDX
+        self._opponent_idx = _DEFAULT_OPPONENT_IDX
+        self._focused_row = _ROW_TANKS
 
         log.info(
             "TankSelectScene entered. Unlocked: %s  cursor=%d",
-            sorted(self._unlocked), self._cursor,
+            sorted(self._unlocked), self._tank_cursor,
         )
 
     def on_exit(self) -> None:
@@ -143,35 +160,62 @@ class TankSelectScene(BaseScene):
         if event.type != pygame.KEYDOWN:
             return
 
-        if event.key in (pygame.K_LEFT, pygame.K_a):
-            self._cursor = (self._cursor - 1) % len(self._tank_data)
-
-        elif event.key in (pygame.K_RIGHT, pygame.K_d):
-            self._cursor = (self._cursor + 1) % len(self._tank_data)
-
-        elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-            self._confirm_selection()
-
-        elif event.key == pygame.K_ESCAPE:
+        if event.key == pygame.K_ESCAPE:
             log.info("TankSelectScene: ESC — returning to main menu.")
             self.manager.switch_to(SCENE_MENU)
+            return
+
+        if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+            self._confirm_selection()
+            return
+
+        # UP / DOWN switches which row has focus
+        if event.key == pygame.K_UP:
+            self._focused_row = max(0, self._focused_row - 1)
+            return
+        if event.key == pygame.K_DOWN:
+            self._focused_row = min(_ROW_OPPONENTS, self._focused_row + 1)
+            return
+
+        # LEFT / RIGHT navigate within the focused row
+        left = event.key in (pygame.K_LEFT, pygame.K_a)
+        right = event.key in (pygame.K_RIGHT, pygame.K_d)
+        if not (left or right):
+            return
+
+        delta = -1 if left else 1
+        if self._focused_row == _ROW_TANKS:
+            self._tank_cursor = (self._tank_cursor + delta) % len(self._tank_data)
+        elif self._focused_row == _ROW_DIFFICULTY:
+            self._difficulty_idx = (self._difficulty_idx + delta) % len(_DIFFICULTIES)
+        elif self._focused_row == _ROW_OPPONENTS:
+            self._opponent_idx = (self._opponent_idx + delta) % len(_OPPONENT_COUNTS)
 
     def _confirm_selection(self) -> None:
-        """Validate that the current card is unlocked, then start the match."""
-        selected = self._tank_data[self._cursor]
+        selected = self._tank_data[self._tank_cursor]
         tank_type = selected.get("type", "medium_tank")
         if tank_type not in self._unlocked:
             log.debug("TankSelectScene: '%s' is locked — ignoring confirm.", tank_type)
             return
-        log.info("TankSelectScene: confirmed '%s' — switching to game.", tank_type)
-        self.manager.switch_to(SCENE_GAME, tank_type=tank_type)
+        difficulty = _DIFFICULTIES[self._difficulty_idx]
+        ai_count = _OPPONENT_COUNTS[self._opponent_idx]
+        log.info(
+            "TankSelectScene: confirmed tank=%s  difficulty=%s  opponents=%d",
+            tank_type, difficulty, ai_count,
+        )
+        self.manager.switch_to(
+            SCENE_GAME,
+            tank_type=tank_type,
+            ai_difficulty=difficulty,
+            ai_count=ai_count,
+        )
 
     # ------------------------------------------------------------------
     # Update
     # ------------------------------------------------------------------
 
     def update(self, dt: float) -> None:
-        pass  # No animations this milestone
+        pass
 
     # ------------------------------------------------------------------
     # Draw
@@ -181,20 +225,22 @@ class TankSelectScene(BaseScene):
         surface.fill(COLOR_BG)
         self._draw_header(surface)
         self._draw_cards(surface)
+        self._draw_difficulty_row(surface)
+        self._draw_opponent_row(surface)
         self._draw_footer(surface)
 
     def _draw_header(self, surface: pygame.Surface) -> None:
         font = pygame.font.SysFont(None, 52)
         heading = font.render("Select Your Tank", True, COLOR_WHITE)
-        surface.blit(heading, heading.get_rect(center=(SCREEN_WIDTH // 2, 60)))
+        surface.blit(heading, heading.get_rect(center=(SCREEN_WIDTH // 2, 55)))
 
     def _draw_footer(self, surface: pygame.Surface) -> None:
-        font = pygame.font.SysFont(None, 28)
+        font = pygame.font.SysFont(None, 26)
         hint = font.render(
-            "◄ ► / A D  Navigate     ENTER / SPACE  Confirm     ESC  Back",
+            "▲ ▼  Switch Row     ◄ ►  Navigate     ENTER  Confirm     ESC  Back",
             True, COLOR_GRAY,
         )
-        surface.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 36)))
+        surface.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 26)))
 
     def _draw_cards(self, surface: pygame.Surface) -> None:
         n = len(self._tank_data)
@@ -204,10 +250,15 @@ class TankSelectScene(BaseScene):
         for i, td in enumerate(self._tank_data):
             card_x = start_x + i * (_CARD_W + _CARD_GAP)
             card_rect = pygame.Rect(card_x, _CARD_TOP, _CARD_W, _CARD_H)
-            is_selected = (i == self._cursor)
+            is_selected = (i == self._tank_cursor) and (self._focused_row == _ROW_TANKS)
+            is_focused_row = (self._focused_row == _ROW_TANKS)
             tank_type = td.get("type", "")
             is_locked = tank_type not in self._unlocked
             color = TANK_SELECT_COLORS.get(tank_type, COLOR_GRAY)
+
+            # Dim cards when a different row has focus
+            if not is_focused_row:
+                color = _dim_color(color)
 
             self._draw_card(surface, card_rect, td, color, is_selected, is_locked)
 
@@ -220,11 +271,9 @@ class TankSelectScene(BaseScene):
         is_selected: bool,
         is_locked: bool,
     ) -> None:
-        # --- Background ---
         bg_color = (50, 50, 55) if is_selected else (32, 32, 36)
         pygame.draw.rect(surface, bg_color, rect, border_radius=_CARD_RADIUS)
 
-        # --- Selected border ---
         if is_selected:
             pygame.draw.rect(surface, color, rect, width=_SELECTED_BORDER_W,
                              border_radius=_CARD_RADIUS)
@@ -232,26 +281,24 @@ class TankSelectScene(BaseScene):
         cx = rect.centerx
         y = rect.top + 18
 
-        # --- Tank name ---
         name_font = pygame.font.SysFont(None, 32)
         name_text = td.get("type", "").replace("_", " ").title()
-        rendered_name = name_font.render(name_text, True, COLOR_WHITE if not is_locked else COLOR_GRAY)
+        rendered_name = name_font.render(
+            name_text, True, COLOR_WHITE if not is_locked else COLOR_GRAY
+        )
         surface.blit(rendered_name, rendered_name.get_rect(center=(cx, y)))
         y += 36
 
-        # --- Mini sprite ---
         sprite_color = color if not is_locked else COLOR_DARK_GRAY
         sprite_cy = y + TANK_BODY_HEIGHT // 2 + 10
         self._draw_mini_sprite(surface, cx, sprite_cy, sprite_color)
         y = sprite_cy + TANK_BODY_HEIGHT // 2 + 20
 
-        # --- Description ---
         desc_font = pygame.font.SysFont(None, 22)
         desc = td.get("description", "")
         self._draw_wrapped(surface, desc_font, desc, COLOR_GRAY, cx, y, _CARD_W - 24)
         y += 46
 
-        # --- Stat bars ---
         stat_label_font = pygame.font.SysFont(None, 22)
         bar_left = rect.left + 16
         for label, key in _STATS:
@@ -263,10 +310,8 @@ class TankSelectScene(BaseScene):
             surface.blit(lbl, (bar_left, y))
 
             bar_y = y + 14
-            # Track (background)
             track_rect = pygame.Rect(bar_left, bar_y, MAX_BAR_WIDTH, _STAT_BAR_H)
             pygame.draw.rect(surface, (55, 55, 60), track_rect, border_radius=3)
-            # Fill
             if bar_w > 0:
                 fill_color = color if not is_locked else COLOR_DARK_GRAY
                 fill_rect = pygame.Rect(bar_left, bar_y, bar_w, _STAT_BAR_H)
@@ -274,9 +319,94 @@ class TankSelectScene(BaseScene):
 
             y += _STAT_ROW_GAP
 
-        # --- Locked overlay ---
         if is_locked:
             self._draw_locked_overlay(surface, rect)
+
+    def _draw_difficulty_row(self, surface: pygame.Surface) -> None:
+        """Difficulty selector row — three pill-shaped option buttons."""
+        row_y = _ROW_Y
+        is_focused = (self._focused_row == _ROW_DIFFICULTY)
+        self._draw_selector_row(
+            surface,
+            label="Difficulty",
+            options=[_DIFFICULTY_LABELS[d] for d in _DIFFICULTIES],
+            selected_idx=self._difficulty_idx,
+            row_y=row_y,
+            is_focused=is_focused,
+            active_color=COLOR_GREEN,
+        )
+
+    def _draw_opponent_row(self, surface: pygame.Surface) -> None:
+        """Opponent count selector row."""
+        row_y = _ROW_Y + _ROW_H + _ROW_GAP
+        is_focused = (self._focused_row == _ROW_OPPONENTS)
+        self._draw_selector_row(
+            surface,
+            label="Opponents",
+            options=[str(n) for n in _OPPONENT_COUNTS],
+            selected_idx=self._opponent_idx,
+            row_y=row_y,
+            is_focused=is_focused,
+            active_color=COLOR_GREEN,
+        )
+
+    def _draw_selector_row(
+        self,
+        surface: pygame.Surface,
+        label: str,
+        options: list,
+        selected_idx: int,
+        row_y: int,
+        is_focused: bool,
+        active_color: tuple,
+    ) -> None:
+        """Generic horizontal selector row: Label  [ opt ]  [ OPT ]  [ opt ]"""
+        label_font = pygame.font.SysFont(None, 28)
+        opt_font = pygame.font.SysFont(None, 26)
+
+        total_w = 600
+        row_x = (SCREEN_WIDTH - total_w) // 2
+        cx = SCREEN_WIDTH // 2
+
+        # Row background
+        bg_alpha = 60 if is_focused else 30
+        bg_surf = pygame.Surface((total_w, _ROW_H), pygame.SRCALPHA)
+        bg_surf.fill((255, 255, 255, bg_alpha))
+        surface.blit(bg_surf, (row_x, row_y))
+
+        if is_focused:
+            pygame.draw.rect(surface, active_color,
+                             pygame.Rect(row_x, row_y, total_w, _ROW_H),
+                             width=2, border_radius=6)
+
+        # Row label (left-aligned inside the bg)
+        lbl_color = COLOR_WHITE if is_focused else COLOR_GRAY
+        lbl_surf = label_font.render(label + ":", True, lbl_color)
+        surface.blit(lbl_surf, (row_x + 16, row_y + (_ROW_H - lbl_surf.get_height()) // 2))
+
+        # Option pills — centred in the row
+        pill_w = 90
+        pill_h = 28
+        pill_gap = 16
+        n = len(options)
+        pills_total = n * pill_w + (n - 1) * pill_gap
+        pill_start = cx - pills_total // 2
+
+        for i, opt_text in enumerate(options):
+            px = pill_start + i * (pill_w + pill_gap)
+            py = row_y + (_ROW_H - pill_h) // 2
+            pill_rect = pygame.Rect(px, py, pill_w, pill_h)
+
+            if i == selected_idx:
+                pill_color = active_color if is_focused else _dim_color(active_color)
+                pygame.draw.rect(surface, pill_color, pill_rect, border_radius=6)
+                text_color = COLOR_BG
+            else:
+                pygame.draw.rect(surface, (60, 60, 65), pill_rect, border_radius=6)
+                text_color = COLOR_GRAY
+
+            rendered = opt_font.render(opt_text, True, text_color)
+            surface.blit(rendered, rendered.get_rect(center=pill_rect.center))
 
     def _draw_mini_sprite(
         self,
@@ -285,12 +415,9 @@ class TankSelectScene(BaseScene):
         cy: int,
         color: tuple,
     ) -> None:
-        """Render the same rect+barrel placeholder used in gameplay."""
         body_rect = pygame.Rect(0, 0, TANK_BODY_WIDTH, TANK_BODY_HEIGHT)
         body_rect.center = (cx, cy)
         pygame.draw.rect(surface, color, body_rect, border_radius=4)
-
-        # Barrel pointing right (angle = 0) — same convention as game world
         barrel_rect = pygame.Rect(
             cx,
             cy - TANK_BARREL_HEIGHT // 2,
@@ -302,11 +429,9 @@ class TankSelectScene(BaseScene):
     def _draw_locked_overlay(
         self, surface: pygame.Surface, rect: pygame.Rect
     ) -> None:
-        """Darken the card and stamp a LOCKED label."""
         overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
         surface.blit(overlay, rect.topleft)
-
         lock_font = pygame.font.SysFont(None, 36)
         lock_surf = lock_font.render("LOCKED", True, COLOR_RED)
         surface.blit(lock_surf, lock_surf.get_rect(center=rect.center))
@@ -314,14 +439,13 @@ class TankSelectScene(BaseScene):
     @staticmethod
     def _draw_wrapped(
         surface: pygame.Surface,
-        font: pygame.font.Font,
+        font,
         text: str,
         color: tuple,
         cx: int,
         y: int,
         max_width: int,
     ) -> None:
-        """Render text word-wrapped to max_width, centred at cx."""
         words = text.split()
         lines: list[str] = []
         current = ""
@@ -335,7 +459,6 @@ class TankSelectScene(BaseScene):
                 current = word
         if current:
             lines.append(current)
-
         line_h = font.get_linesize()
         for line in lines:
             rendered = font.render(line, True, color)
@@ -347,10 +470,25 @@ class TankSelectScene(BaseScene):
     # ------------------------------------------------------------------
 
     def is_locked(self, tank_type: str) -> bool:
-        """Return True if tank_type is not in the current unlocked set."""
         return tank_type not in self._unlocked
 
     def can_select(self, tank_type: str) -> bool:
-        """Return True if tank_type exists in tank_data and is unlocked."""
         types = [td.get("type") for td in self._tank_data]
         return tank_type in types and tank_type in self._unlocked
+
+    @property
+    def selected_difficulty(self) -> str:
+        return _DIFFICULTIES[self._difficulty_idx]
+
+    @property
+    def selected_opponent_count(self) -> int:
+        return _OPPONENT_COUNTS[self._opponent_idx]
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+def _dim_color(color: tuple, factor: float = 0.45) -> tuple:
+    """Return a darkened version of color for unfocused rows."""
+    return tuple(int(c * factor) for c in color)
