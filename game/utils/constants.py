@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.14.0"
+GAME_VERSION: str = "v0.15.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
