@@ -129,13 +129,14 @@ class GameplayScene(BaseScene):
         Called each time the player enters the gameplay scene, so a
         rematch starts with a clean state without relaunching the game.
         """
-        # Apply persisted keybinds from settings.json
-        _keybinds = SaveManager().load_settings().get("keybinds", {})
+        # Apply persisted settings (keybinds + AI difficulty) from settings.json
+        _settings = SaveManager().load_settings()
+        _keybinds = _settings.get("keybinds", {})
         self._input_handler = InputHandler(keybinds=_keybinds if _keybinds else None)
 
-        # Resolve player tank type from TankSelectScene kwarg
+        # Resolve player tank type and opponent count from TankSelectScene kwargs
         tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)
-        ai_difficulty_key = kwargs.get("ai_difficulty", "medium")
+        ai_difficulty_key = _settings.get("ai_difficulty", "medium")
         ai_count = max(1, min(_MAX_AI, int(kwargs.get("ai_count", 1))))
 
         log.info(
