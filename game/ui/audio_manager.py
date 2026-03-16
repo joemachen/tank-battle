@@ -135,3 +135,37 @@ class AudioManager:
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
         log.debug("Volume set: %s = %.2f", channel, value)
+
+    # ------------------------------------------------------------------
+    # Mute toggle
+    # ------------------------------------------------------------------
+
+    def toggle_mute(self) -> bool:
+        """
+        Toggle master mute on/off.
+
+        When muting, stores the current master volume and sets it to 0.
+        When unmuting, restores the previous master volume.
+
+        Returns:
+            True  — audio is now muted
+            False — audio is now unmuted
+        """
+        if getattr(self, "_muted", False):
+            # Restore previous volume
+            self._master = getattr(self, "_pre_mute_volume", MASTER_VOLUME_DEFAULT)
+            self._muted = False
+        else:
+            self._pre_mute_volume = self._master
+            self._master = 0.0
+            self._muted = True
+
+        if self._initialized:
+            pygame.mixer.music.set_volume(self._master * self._music_vol)
+        log.info("Audio %s.", "muted" if self._muted else "unmuted")
+        return self._muted
+
+    @property
+    def is_muted(self) -> bool:
+        """Return True if master mute is currently active."""
+        return getattr(self, "_muted", False)

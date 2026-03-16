@@ -7,7 +7,8 @@ Game over screen. Stub — stats display and progression update implemented late
 import pygame
 
 from game.scenes.base_scene import BaseScene
-from game.utils.constants import COLOR_BG, COLOR_WHITE, SCENE_MENU
+from game.ui.audio_manager import get_audio_manager
+from game.utils.constants import COLOR_BG, COLOR_WHITE, MUSIC_GAME_OVER, SCENE_MENU
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -29,6 +30,7 @@ class GameOverScene(BaseScene):
         self._won = won
         self._score = score
         self._xp_earned = xp_earned
+        get_audio_manager().play_music(MUSIC_GAME_OVER, loop=False)
         log.info("Game over. Won=%s, Score=%d, XP=%d", won, score, xp_earned)
         # TODO: trigger SaveManager to record result and update profile
 

@@ -7,9 +7,11 @@ Main menu screen. Stub — full UI implemented in a later milestone.
 import pygame
 
 from game.scenes.base_scene import BaseScene
+from game.ui.audio_manager import get_audio_manager
 from game.utils.constants import (
     COLOR_BG,
     COLOR_WHITE,
+    MUSIC_MENU,
     SCENE_SETTINGS,
     SCENE_TANK_SELECT,
     TITLE,
@@ -23,6 +25,7 @@ class MainMenuScene(BaseScene):
     """Displays the main menu and routes to tank selection or settings."""
 
     def on_enter(self, **kwargs) -> None:
+        get_audio_manager().play_music(MUSIC_MENU)
         log.info("Main menu entered.")
 
     def handle_event(self, event: pygame.event.Event) -> None:

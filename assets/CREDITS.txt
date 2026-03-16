@@ -1,0 +1,39 @@
+TankBattle — Audio Asset Credits
+==================================
+
+All audio assets in this release are procedurally generated placeholders
+synthesised using Python standard library only (wave, struct, math, random).
+No third-party audio was used. Source code: scripts/generate_audio.py
+
+These files are suitable for development and feel-testing. Before a public
+release, replace the WAV files in assets/sounds/ and assets/music/ with
+properly licensed recordings. Recommended CC0 / royalty-free sources:
+
+  Recommended sources for replacement assets:
+  - https://freemusicarchive.org        (CC-licensed music, filter by CC0)
+  - https://opengameart.org             (CC0 game SFX and music)
+  - https://incompetech.com             (Kevin MacLeod — CC BY 4.0)
+  - https://joshuamclean.com            (synthwave — check individual licenses)
+  - https://soundimage.org              (Eric Matyas — free for games)
+  - https://freesound.org               (mixed licenses — filter by CC0)
+
+Asset inventory
+---------------
+
+SFX (assets/sounds/)
+  sfx_tank_fire.wav           — synthesised (procedural)
+  sfx_bullet_hit_tank.wav     — synthesised (procedural)
+  sfx_bullet_hit_obstacle.wav — synthesised (procedural)
+  sfx_obstacle_destroy.wav    — synthesised (procedural)
+  sfx_tank_explosion.wav      — synthesised (procedural)
+  sfx_tank_collision.wav      — synthesised (procedural)
+  sfx_ui_navigate.wav         — synthesised (procedural)
+  sfx_ui_confirm.wav          — synthesised (procedural)
+
+Music (assets/music/)
+  music_menu.wav              — synthesised outrun/synthwave, 80 BPM, A minor (procedural)
+  music_gameplay.wav          — synthesised outrun/synthwave, 120 BPM, A minor (procedural)
+  music_game_over.wav         — synthesised melancholic sting, 70 BPM, A minor (procedural)
+
+All procedurally generated audio is original work and is released under
+CC0 1.0 Universal (Public Domain Dedication).
