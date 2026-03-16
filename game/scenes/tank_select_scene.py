@@ -4,7 +4,8 @@ game/scenes/tank_select_scene.py
 TankSelectScene — pre-match tank selection screen.
 
 Flow:
-    MainMenuScene (ENTER) → TankSelectScene → (confirm) → GameplayScene
+    MainMenuScene (ENTER) → TankSelectScene → (confirm) → WeaponSelectScene
+                                           → (ESC)     → MainMenuScene
 
 Layout (two interactive rows, navigated separately):
     Row 0 — Tank cards  (LEFT/RIGHT or A/D)
@@ -13,13 +14,16 @@ Layout (two interactive rows, navigated separately):
 Controls:
     UP / DOWN   — switch focus between rows
     LEFT / RIGHT (or A / D on tank row) — navigate within focused row
-    ENTER / SPACE — confirm and start match
+    ENTER / SPACE — confirm and proceed to weapon select
     ESC — return to main menu
 
 AI difficulty is read from settings.json by GameplayScene on on_enter().
 
-Selection is passed to GameplayScene via:
-    switch_to(SCENE_GAME, tank_type=…, ai_count=…)
+Selection is passed to WeaponSelectScene via:
+    switch_to(SCENE_WEAPON_SELECT, tank_type=…, ai_count=…)
+
+Back-navigation from WeaponSelectScene passes from_weapon_select=True so
+cursor and opponent state are preserved without a full reset.
 """
 
 import pygame
@@ -37,8 +41,8 @@ from game.utils.constants import (
     COLOR_WHITE,
     MAX_BAR_WIDTH,
     MUSIC_MENU,
-    SCENE_GAME,
     SCENE_MENU,
+    SCENE_WEAPON_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     SFX_UI_CONFIRM,
@@ -141,15 +145,16 @@ class TankSelectScene(BaseScene):
             if lvl is not None:
                 self._unlock_levels[t] = lvl
 
-        # Cursor on first unlocked tank
-        self._tank_cursor = 0
-        for i, td in enumerate(self._tank_data):
-            if td["type"] in self._unlocked:
-                self._tank_cursor = i
-                break
+        # When returning from WeaponSelectScene, preserve cursor and opponent state.
+        # On any other entry (fresh from menu), reset to defaults.
+        if not kwargs.get("from_weapon_select", False):
+            self._tank_cursor = 0
+            for i, td in enumerate(self._tank_data):
+                if td["type"] in self._unlocked:
+                    self._tank_cursor = i
+                    break
+            self._opponent_idx = _DEFAULT_OPPONENT_IDX
 
-        # Reset selector row
-        self._opponent_idx = _DEFAULT_OPPONENT_IDX
         self._focused_row = _ROW_TANKS
 
         get_audio_manager().play_music(MUSIC_MENU)
@@ -215,7 +220,7 @@ class TankSelectScene(BaseScene):
         )
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         self.manager.switch_to(
-            SCENE_GAME,
+            SCENE_WEAPON_SELECT,
             tank_type=tank_type,
             ai_count=ai_count,
         )

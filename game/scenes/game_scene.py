@@ -108,6 +108,7 @@ class GameplayScene(BaseScene):
         self._camera: Camera | None = None
         self._hud: HUD | None = None
         self._weapon_config: dict = {}
+        self._weapon_type: str = DEFAULT_WEAPON_TYPE
         self._bullets: list[Bullet] = []
         self._obstacles: list = []
         self._tank_surf: pygame.Surface | None = None
@@ -144,6 +145,9 @@ class GameplayScene(BaseScene):
             tank_type, ai_difficulty_key, ai_count,
         )
 
+        # Resolve weapon type from WeaponSelectScene kwargs (fall back to default)
+        self._weapon_type = kwargs.get("weapon_type", DEFAULT_WEAPON_TYPE)
+
         # Player tank
         tank_config = get_tank_config(tank_type, TANKS_CONFIG)
         self._tank = Tank(
@@ -152,7 +156,7 @@ class GameplayScene(BaseScene):
             config=tank_config,
             controller=self._input_handler,
         )
-        self._weapon_config = get_weapon_config(DEFAULT_WEAPON_TYPE, WEAPONS_CONFIG)
+        self._weapon_config = get_weapon_config(self._weapon_type, WEAPONS_CONFIG)
         self._tank.fire_rate = float(
             self._weapon_config.get("fire_rate", self._tank.fire_rate)
         )
@@ -208,7 +212,7 @@ class GameplayScene(BaseScene):
 
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapon: %s",
-            tank_type, ai_count, ai_difficulty_key, DEFAULT_WEAPON_TYPE,
+            tank_type, ai_count, ai_difficulty_key, self._weapon_type,
         )
 
     def on_exit(self) -> None:
@@ -371,7 +375,8 @@ class GameplayScene(BaseScene):
         _draw_bullets(surface, self._bullets, self._camera)
 
         if self._hud:
-            self._hud.draw(surface, self._tank, self._ai_tanks)
+            self._hud.draw(surface, self._tank, self._ai_tanks,
+                           weapon_type=self._weapon_type)
 
         # Debug overlay — first AI used for state label
         first_ai = self._ai_tanks[0] if self._ai_tanks else None

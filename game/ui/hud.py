@@ -16,6 +16,7 @@ import pygame
 from game.utils.constants import (
     COLOR_GRAY,
     COLOR_GREEN,
+    COLOR_NEON_PINK,
     COLOR_RED,
     COLOR_WHITE,
     HUD_BAR_HEIGHT,
@@ -49,14 +50,21 @@ class HUD:
         if self._small_font is None:
             self._small_font = pygame.font.SysFont(None, 18)
 
-    def draw(self, surface: pygame.Surface, player_tank, ai_tanks=None) -> None:
+    def draw(
+        self,
+        surface: pygame.Surface,
+        player_tank,
+        ai_tanks=None,
+        weapon_type: str | None = None,
+    ) -> None:
         """
-        Render HUD health bars.
+        Render HUD health bars and optional weapon label.
 
         Args:
             surface:     target display surface
             player_tank: player Tank entity (always drawn)
             ai_tanks:    a single Tank, a list of Tanks, or None
+            weapon_type: current weapon key shown below the player health bar
         """
         self._ensure_fonts()
 
@@ -67,6 +75,13 @@ class HUD:
         bar_y = sh - HUD_MARGIN - HUD_BAR_HEIGHT
         label_y = bar_y - _LABEL_HEIGHT
         self._draw_health_bar(surface, player_tank, HUD_MARGIN, bar_y, label_y)
+
+        # Weapon label — just below the player health bar
+        if weapon_type:
+            weapon_label = self._small_font.render(
+                weapon_type.replace("_", " ").title(), True, COLOR_NEON_PINK
+            )
+            surface.blit(weapon_label, (HUD_MARGIN, bar_y + HUD_BAR_HEIGHT + 4))
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
         if ai_tanks is None:

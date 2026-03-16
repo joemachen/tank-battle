@@ -173,6 +173,22 @@ TANK_SELECT_COLORS: dict = {
     "scout_tank":  COLOR_WHITE,
 }
 
+# Weapon type → card color lookup used by WeaponSelectScene
+WEAPON_CARD_COLORS: dict = {
+    "standard_shell": COLOR_GREEN,
+    "spread_shot":    COLOR_BLUE,
+    "bouncing_round": COLOR_YELLOW,
+    "homing_missile": COLOR_RED,
+}
+
+# Reference maxima for weapon stat bar normalisation (derived from weapons.yaml peak values)
+WEAPON_STAT_MAX: dict = {
+    "damage":    50.0,    # homing_missile
+    "speed":    420.0,    # standard_shell
+    "fire_rate":  1.0,    # standard_shell
+    "max_range": 2400.0,  # bouncing_round
+}
+
 # Stat bar max width in pixels (normalized 0.0–1.0 × this value)
 MAX_BAR_WIDTH: int = 120
 
@@ -190,6 +206,7 @@ TANK_STAT_MAX: dict = {
 SCENE_PROFILE_SELECT: str = "profile_select"
 SCENE_MENU: str = "menu"
 SCENE_TANK_SELECT: str = "tank_select"
+SCENE_WEAPON_SELECT: str = "weapon_select"
 SCENE_GAME: str = "game"
 SCENE_SETTINGS: str = "settings"
 SCENE_GAME_OVER: str = "game_over"

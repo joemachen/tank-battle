@@ -228,12 +228,12 @@ class TestLockedState:
         assert scene.manager.last_switch is None
 
     def test_unlocked_tank_confirms_correctly(self):
-        """Confirm on an unlocked tank switches to SCENE_GAME with correct kwarg."""
-        from game.utils.constants import SCENE_GAME
+        """Confirm on an unlocked tank switches to SCENE_WEAPON_SELECT with correct kwarg."""
+        from game.utils.constants import SCENE_WEAPON_SELECT
         scene = _make_scene(unlocked=["light_tank", "medium_tank"])
         scene._tank_cursor = 1  # medium_tank
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_WEAPON_SELECT
         assert scene.manager.last_kwargs.get("tank_type") == "medium_tank"
 
     def test_is_locked_returns_true_for_locked_tank(self):
@@ -368,15 +368,15 @@ class TestTankSelectKwargs:
         assert scene.selected_opponent_count == 1
 
     def test_opponent_count_kwarg_forwarded(self):
-        """Opponent count 3 is passed to GameplayScene."""
+        """Opponent count 3 is passed to WeaponSelectScene."""
         from game.scenes.tank_select_scene import _OPPONENT_COUNTS
-        from game.utils.constants import SCENE_GAME
+        from game.utils.constants import SCENE_WEAPON_SELECT
         scene = self._scene_with_selection(
             tank_cursor=1,  # medium_tank (unlocked)
             opp_idx=_OPPONENT_COUNTS.index(3),
         )
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_WEAPON_SELECT
         assert scene.manager.last_kwargs.get("ai_count") == 3
 
     def test_ai_difficulty_not_in_kwargs(self):

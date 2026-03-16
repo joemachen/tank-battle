@@ -21,6 +21,7 @@ from game.scenes.menu_scene import MainMenuScene
 from game.scenes.profile_select_scene import ProfileSelectScene
 from game.scenes.settings_scene import SettingsScene
 from game.scenes.tank_select_scene import TankSelectScene
+from game.scenes.weapon_select_scene import WeaponSelectScene
 from game.utils.constants import (
     FPS,
     SCENE_GAME,
@@ -29,6 +30,7 @@ from game.utils.constants import (
     SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
     SCENE_TANK_SELECT,
+    SCENE_WEAPON_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TITLE,
@@ -87,6 +89,7 @@ class GameEngine:
         sm.register(SCENE_PROFILE_SELECT, ProfileSelectScene(sm))
         sm.register(SCENE_MENU, MainMenuScene(sm))
         sm.register(SCENE_TANK_SELECT, TankSelectScene(sm))
+        sm.register(SCENE_WEAPON_SELECT, WeaponSelectScene(sm))
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))
