@@ -19,8 +19,9 @@ are completed or plans change.
 | v0.13.5 | Profile selection — multi-save slots, SaveManager refactor, migration  |
 ---
 ## 🔨 In Progress
-*Nothing in progress — all milestones up to v0.13.5 complete.*
-
+| Branch                   | Milestone                                               |
+|--------------------------|---------------------------------------------------------|
+| feature/weapon-selection | v0.14 — Pre-match weapon selection screen              |
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
