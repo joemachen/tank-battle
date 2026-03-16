@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.13.0"
+GAME_VERSION: str = "v0.13.5"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -114,7 +114,8 @@ MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 SAVES_DIR: str = "saves"
 LOGS_DIR: str = "logs"
 LOG_FILE: str = "logs/tank_battle.log"
-PROFILE_FILE: str = "saves/player_profile.json"
+PROFILES_INDEX_FILE: str = "saves/profiles.json"
+PROFILES_DIR: str = "saves/profiles"
 SETTINGS_FILE: str = "saves/settings.json"
 TANKS_CONFIG: str = "data/configs/tanks.yaml"
 WEAPONS_CONFIG: str = "data/configs/weapons.yaml"
@@ -186,6 +187,7 @@ TANK_STAT_MAX: dict = {
 # ---------------------------------------------------------------------------
 # Scene names (registered with SceneManager by these keys)
 # ---------------------------------------------------------------------------
+SCENE_PROFILE_SELECT: str = "profile_select"
 SCENE_MENU: str = "menu"
 SCENE_TANK_SELECT: str = "tank_select"
 SCENE_GAME: str = "game"
@@ -228,6 +230,12 @@ XP_WIN: int = 100                  # bonus for winning the match
 XP_KILL: int = 40                  # per AI tank destroyed
 XP_SURVIVAL_BONUS: int = 25        # bonus for surviving to end of match
 XP_ACCURACY_BONUS_MAX: int = 50    # max bonus for perfect shot accuracy
+
+# ---------------------------------------------------------------------------
+# Profile selection
+# ---------------------------------------------------------------------------
+PROFILE_NAME_MAX_LEN: int = 12    # max characters in a profile name
+MAX_PROFILES: int = 4             # number of save slots
 
 # ---------------------------------------------------------------------------
 # Persistence defaults

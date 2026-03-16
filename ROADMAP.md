@@ -16,18 +16,16 @@ are completed or plans change.
 | v0.11.0 | Match result + XP persistence — stat screen, level-up, unlock flow   |
 | v0.12.0 | Main menu polish — perspective grid, glow title, fade transition      |
 | v0.13.0 | Settings screen — audio sliders, keybinds, resolution, AI difficulty  |
+| v0.13.5 | Profile selection — multi-save slots, SaveManager refactor, migration  |
 ---
 ## 🔨 In Progress
-| Branch                    | Milestone                                              |
-|---------------------------|--------------------------------------------------------|
-| feature/profile-selection | v0.13.5 — Profile selection (multi-save)              |
+*Nothing in progress — all milestones up to v0.13.5 complete.*
+
 ---
 ## 🗺️ Planned
 ### Phase 1 — Core Loop Polish
 *Get the base game feeling complete before expanding content.*
-| Version | Milestone              | Notes                                                                 |
-|---------|------------------------|-----------------------------------------------------------------------|
-| v0.13.5 | Profile selection      | Multi-save slot picker, SaveManager refactor. Slotted between v0.13 and v0.14 per roadmap note. |
+
 ---
 ### Phase 2 — Content Expansion
 *More things to do and unlock.*
