@@ -332,3 +332,63 @@ class TestMigration:
         m = _TestSaveManager(str(tmp_path))
         assert m.load_profile()["level"] == 1
         assert m.active_slot == 0
+
+
+# ---------------------------------------------------------------------------
+# resolve_start_scene
+# ---------------------------------------------------------------------------
+
+class TestResolveStartScene:
+    """
+    Tests for engine.resolve_start_scene().
+    Uses _TestSaveManager as a drop-in replacement for the production
+    SaveManager so no pygame or display initialisation is needed.
+    """
+
+    def _make_save(self, tmp_path, *, skip: bool, has_profile: bool):
+        """Build a _TestSaveManager with controlled settings + optional profile."""
+        m = _TestSaveManager(str(tmp_path))
+        settings = dict(DEFAULT_SETTINGS)
+        settings["skip_profile_select"] = skip
+        m.save_settings(settings)
+        if has_profile:
+            idx = {"active_slot": 0, "profiles": {"0": {"name": "Test", "slot": 0}}}
+            m.save_profiles_index(idx)
+        return m
+
+    def _resolve(self, save):
+        """Call resolve_start_scene with our test save manager."""
+        from game.engine import resolve_start_scene
+        from game.utils.constants import SCENE_MENU, SCENE_PROFILE_SELECT
+        result = resolve_start_scene(save)
+        return result
+
+    def test_skip_false_no_profile_goes_to_profile_select(self, tmp_path):
+        from game.utils.constants import SCENE_PROFILE_SELECT
+        save = self._make_save(tmp_path, skip=False, has_profile=False)
+        assert self._resolve(save) == SCENE_PROFILE_SELECT
+
+    def test_skip_false_with_profile_goes_to_profile_select(self, tmp_path):
+        from game.utils.constants import SCENE_PROFILE_SELECT
+        save = self._make_save(tmp_path, skip=False, has_profile=True)
+        assert self._resolve(save) == SCENE_PROFILE_SELECT
+
+    def test_skip_true_no_profile_goes_to_profile_select(self, tmp_path):
+        """skip=True but no profiles yet → must still show profile select."""
+        from game.utils.constants import SCENE_PROFILE_SELECT
+        save = self._make_save(tmp_path, skip=True, has_profile=False)
+        assert self._resolve(save) == SCENE_PROFILE_SELECT
+
+    def test_skip_true_with_profile_goes_to_menu(self, tmp_path):
+        from game.utils.constants import SCENE_MENU
+        save = self._make_save(tmp_path, skip=True, has_profile=True)
+        assert self._resolve(save) == SCENE_MENU
+
+    def test_default_setting_is_false(self, tmp_path):
+        """Fresh install: skip_profile_select absent from file → SCENE_PROFILE_SELECT."""
+        from game.utils.constants import SCENE_PROFILE_SELECT
+        save = _TestSaveManager(str(tmp_path))  # no settings file written
+        # Plant a profile so we're only varying the setting, not the profile state
+        idx = {"active_slot": 0, "profiles": {"0": {"name": "X", "slot": 0}}}
+        save.save_profiles_index(idx)
+        assert self._resolve(save) == SCENE_PROFILE_SELECT

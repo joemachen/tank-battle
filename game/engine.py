@@ -34,8 +34,31 @@ from game.utils.constants import (
     TITLE,
 )
 from game.utils.logger import get_logger
+from game.utils.save_manager import SaveManager
 
 log = get_logger(__name__)
+
+
+def resolve_start_scene(save: SaveManager) -> str:
+    """
+    Determine which scene to launch at startup.
+
+    Returns SCENE_MENU when ALL of the following are true:
+      1. settings["skip_profile_select"] is True
+      2. At least one profile slot exists in the profiles index
+
+    Otherwise returns SCENE_PROFILE_SELECT.
+    Module-level so it can be imported and tested without pygame.
+    """
+    try:
+        settings = save.load_settings()
+        if settings.get("skip_profile_select", False):
+            idx = save.load_profiles_index()
+            if idx.get("profiles"):
+                return SCENE_MENU
+    except Exception:
+        log.warning("resolve_start_scene: error reading save data — defaulting to profile select.")
+    return SCENE_PROFILE_SELECT
 
 
 class GameEngine:
@@ -67,8 +90,9 @@ class GameEngine:
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))
-        sm.switch_to(SCENE_PROFILE_SELECT)
-        log.info("All scenes registered. Starting at: '%s'", SCENE_PROFILE_SELECT)
+        start = resolve_start_scene(SaveManager())
+        sm.switch_to(start)
+        log.info("All scenes registered. Starting at: '%s'", start)
 
     def run(self) -> None:
         """
