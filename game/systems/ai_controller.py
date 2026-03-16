@@ -59,6 +59,11 @@ _RECOVERY_DURATION: float = _RECOVERY_PHASE1 + _RECOVERY_PHASE2  # 1.0s total
 # tank still has residual wall proximity after phase 2.
 _POST_RECOVERY_IMMUNITY: float = 1.2
 
+# Flee-angle bias injected during post-recovery immunity to break corner symmetry.
+# The bias rotates the flee direction in the same direction as the last recovery
+# rotation, nudging the AI out of the corner before immunity expires.
+_EVADE_BIAS_ANGLE: float = 65.0
+
 _STUCK_WINDOW: float = 0.5       # rolling window for stuck detection (seconds)
 _STUCK_THRESHOLD: float = 10.0   # minimum displacement (px) to not be "stuck"
 
@@ -104,6 +109,9 @@ class AIController:
         self._recovery_timer: float = 0.0
         # Direction alternates each recovery to avoid spinning in place
         self._recovery_direction: float = 1.0
+        # Captures the direction *before* the flip so _evade_input can bias the
+        # flee angle in the same rotational direction the tank just turned.
+        self._post_recovery_direction: float = 1.0
         # Immunity window after recovery — prevents immediate re-trigger
         self._recovery_immunity_timer: float = 0.0
 
@@ -159,6 +167,9 @@ class AIController:
             self._recovery_timer -= dt
             if self._recovery_timer <= 0.0:
                 self._recovery_timer = 0.0
+                # Remember this direction before flipping so _evade_input can
+                # continue biasing the flee heading in the same rotational sense.
+                self._post_recovery_direction = self._recovery_direction
                 # Alternate direction so the next recovery turns the other way
                 self._recovery_direction *= -1.0
                 # Reset to PATROL; _update_state will re-evaluate next get_input()
@@ -288,6 +299,16 @@ class AIController:
             return TankInput(throttle=-1.0, rotate=0.5, fire=False)
         # Flee direction is the opposite of the bearing to the target
         flee_angle = angle_to(self._owner.position, target.position) + 180.0
+
+        # Post-recovery bias: during the immunity window, nudge the flee angle in
+        # the same rotational direction the tank just turned during recovery.  This
+        # breaks corner symmetry where two walls produce equal-and-opposite steer
+        # corrections that cancel each other out, keeping the flee vector blocked.
+        # The bias fades linearly to zero as the immunity timer expires.
+        if self._recovery_immunity_timer > 0.0:
+            bias_strength = self._recovery_immunity_timer / _POST_RECOVERY_IMMUNITY
+            flee_angle += self._post_recovery_direction * _EVADE_BIAS_ANGLE * bias_strength
+
         flee_angle += self._obstacle_steer_correction(flee_angle)
         diff = angle_difference(self._owner.angle, flee_angle)
         rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
@@ -322,11 +343,13 @@ class AIController:
         Algorithm:
           For each live obstacle within _LOOKAHEAD_PX of the tank:
             1. Find the nearest point on the obstacle rect to the tank center.
-            2. Check if the bearing to that point is within ±70° of the tank's
-               current heading (i.e., the obstacle is ahead of us).
+            2. Check if the bearing to that point is within ±90° of desired_angle
+               (i.e., the obstacle blocks the intended travel direction).
             3. If so, compute a lateral correction that steers away from the
                obstacle center, scaled by proximity (closer → stronger nudge).
-          Returns the first significant correction found; 0.0 if none.
+          All corrections are accumulated and capped at _STEER_ANGLE * 1.8 so
+          that a symmetric corner — where two walls produce equal-and-opposite
+          corrections — does not cancel out to zero.
 
         This is NOT pathfinding — it is a simple repulsion that prevents
         the AI from blindly walking into walls.  The stuck-recovery system
@@ -340,6 +363,8 @@ class AIController:
             return 0.0
 
         tx, ty = self._owner.position
+        total_correction: float = 0.0
+        _MAX_CORRECTION = _STEER_ANGLE * 1.8
 
         for obs in obstacles:
             if not obs.is_alive:
@@ -356,9 +381,11 @@ class AIController:
             if dist == 0 or dist >= _LOOKAHEAD_PX:
                 continue
 
-            # Is the obstacle in the forward arc? (within ±70° of current heading)
+            # Is the obstacle within ±90° of the *desired* heading?
+            # (was ±70° of self._owner.angle — the wider cone and desired_angle
+            # reference ensures corner walls are both detected when fleeing.)
             bearing = math.degrees(math.atan2(dy, dx))
-            if abs(angle_difference(self._owner.angle, bearing)) > 70.0:
+            if abs(angle_difference(desired_angle, bearing)) > 90.0:
                 continue
 
             # Steer away: obstacle to the right of desired_angle → correct left (negative)
@@ -368,6 +395,7 @@ class AIController:
 
             # Scale by proximity: closer → stronger nudge
             scale = 1.0 - (dist / _LOOKAHEAD_PX)
-            return correction * scale
+            total_correction += correction * scale
 
-        return 0.0
+        # Cap to prevent over-correction while still letting two same-side walls add up
+        return max(-_MAX_CORRECTION, min(_MAX_CORRECTION, total_correction))
