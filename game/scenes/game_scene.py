@@ -117,8 +117,13 @@ class GameplayScene(BaseScene):
         """
         self._input_handler = InputHandler()
 
+        # Resolve player tank type — passed as kwarg from TankSelectScene,
+        # fallback to TANK_DEFAULT_TYPE if called without a selection.
+        tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)
+        log.info("GameplayScene: player tank type = '%s'", tank_type)
+
         # Load tank stats from data/configs/tanks.yaml
-        tank_config = get_tank_config(TANK_DEFAULT_TYPE, TANKS_CONFIG)
+        tank_config = get_tank_config(tank_type, TANKS_CONFIG)
         self._tank = Tank(
             x=_SPAWN_X,
             y=_SPAWN_Y,
