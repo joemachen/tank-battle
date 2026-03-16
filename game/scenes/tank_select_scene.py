@@ -155,8 +155,12 @@ class TankSelectScene(BaseScene):
                 self._tank_cursor = i
                 break
 
-        # Reset selector rows to defaults each time we enter
-        self._difficulty_idx = _DEFAULT_DIFFICULTY_IDX
+        # Reset selector rows — use saved AI difficulty default if available
+        _saved_diff = self._save_manager.load_settings().get("ai_difficulty", "").lower()
+        if _saved_diff in _DIFFICULTIES:
+            self._difficulty_idx = _DIFFICULTIES.index(_saved_diff)
+        else:
+            self._difficulty_idx = _DEFAULT_DIFFICULTY_IDX
         self._opponent_idx = _DEFAULT_OPPONENT_IDX
         self._focused_row = _ROW_TANKS
 

@@ -75,6 +75,7 @@ from game.utils.constants import (
     WEAPONS_CONFIG,
 )
 from game.utils.map_loader import load_map
+from game.utils.save_manager import SaveManager
 from game.utils.logger import get_logger
 from game.utils.math_utils import heading_to_vec
 
@@ -128,7 +129,9 @@ class GameplayScene(BaseScene):
         Called each time the player enters the gameplay scene, so a
         rematch starts with a clean state without relaunching the game.
         """
-        self._input_handler = InputHandler()
+        # Apply persisted keybinds from settings.json
+        _keybinds = SaveManager().load_settings().get("keybinds", {})
+        self._input_handler = InputHandler(keybinds=_keybinds if _keybinds else None)
 
         # Resolve player tank type from TankSelectScene kwarg
         tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)

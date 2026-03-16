@@ -308,7 +308,7 @@ class TestGameplaySceneTankType:
             def world_to_screen(self, x, y): return (x, y)
 
         monkeypatch.setattr(gs, "Tank",          lambda **kw: _FakeTank())
-        monkeypatch.setattr(gs, "InputHandler",  lambda: _FakeInput())
+        monkeypatch.setattr(gs, "InputHandler",  lambda keybinds=None: _FakeInput())
         monkeypatch.setattr(gs, "AIController",  lambda **kw: _FakeAI())
         monkeypatch.setattr(gs, "CollisionSystem", lambda: object())
         monkeypatch.setattr(gs, "PhysicsSystem",   lambda: object())
@@ -354,6 +354,8 @@ class TestTankSelectKwargs:
         scene._save_manager.load_profile = lambda: {
             "unlocked_tanks": ["light_tank", "medium_tank"]
         }
+        # Patch load_settings so tests aren't affected by live saves/settings.json
+        scene._save_manager.load_settings = lambda: {"ai_difficulty": "medium"}
         scene.on_enter()
         scene._tank_cursor = tank_cursor
         if diff_idx is not None:
