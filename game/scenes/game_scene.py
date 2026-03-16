@@ -49,6 +49,7 @@ from game.utils.constants import (
     BULLET_COLOR,
     BULLET_RADIUS,
     COLOR_BG,
+    COLOR_NEON_PINK,
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_WEAPON_TYPE,
@@ -56,6 +57,9 @@ from game.utils.constants import (
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
     OBSTACLE_DAMAGED_COLOR,
+    RETICLE_COLOR,
+    RETICLE_LINE_LENGTH,
+    RETICLE_RADIUS,
     SCENE_GAME_OVER,
     SCENE_MENU,
     SFX_BULLET_HIT_OBSTACLE,
@@ -65,7 +69,7 @@ from game.utils.constants import (
     SFX_TANK_EXPLOSION,
     SFX_TANK_FIRE,
     TANK_BARREL_COLOR,
-    TANK_BARREL_HEIGHT,
+    TANK_BARREL_LENGTH,
     TANK_BARREL_WIDTH,
     TANK_BODY_HEIGHT,
     TANK_BODY_WIDTH,
@@ -77,7 +81,7 @@ from game.utils.constants import (
 from game.utils.map_loader import load_map
 from game.utils.save_manager import SaveManager
 from game.utils.logger import get_logger
-from game.utils.math_utils import heading_to_vec
+from game.utils.math_utils import draw_rotated_rect, heading_to_vec
 
 log = get_logger(__name__)
 
@@ -133,7 +137,6 @@ class GameplayScene(BaseScene):
         # Apply persisted settings (keybinds + AI difficulty) from settings.json
         _settings = SaveManager().load_settings()
         _keybinds = _settings.get("keybinds", {})
-        self._input_handler = InputHandler(keybinds=_keybinds if _keybinds else None)
 
         # Resolve player tank type and opponent count from TankSelectScene kwargs
         tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)
@@ -147,6 +150,19 @@ class GameplayScene(BaseScene):
 
         # Resolve weapon type from WeaponSelectScene kwargs (fall back to default)
         self._weapon_type = kwargs.get("weapon_type", DEFAULT_WEAPON_TYPE)
+
+        # Camera created first so InputHandler can reference it for mouse→world transform
+        self._camera = Camera()
+        self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
+
+        # InputHandler — passes camera + tank position getter for free-aim turret
+        # tank_position_getter is a lambda that reads self._tank at call time (not now),
+        # so it is safe to create InputHandler before self._tank exists.
+        self._input_handler = InputHandler(
+            keybinds=_keybinds if _keybinds else None,
+            camera=self._camera,
+            tank_position_getter=lambda: self._tank.position,
+        )
 
         # Player tank
         tank_config = get_tank_config(tank_type, TANKS_CONFIG)
@@ -192,13 +208,14 @@ class GameplayScene(BaseScene):
             self._ai_controllers.append(controller)
             self._ai_surfs.append(_build_tank_surface(COLOR_RED))
 
-        # Systems
+        # Remaining systems
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
         self._hud = HUD()
-        self._camera = Camera()
-        self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
+
+        # Hide system cursor — replaced by neon-pink reticle during gameplay
+        pygame.mouse.set_visible(False)
 
         # Reset match stats
         self._shots_fired = 0
@@ -217,6 +234,8 @@ class GameplayScene(BaseScene):
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
+        # Restore system cursor for all non-gameplay scenes
+        pygame.mouse.set_visible(True)
         self._tank = None
         self._input_handler = None
         self._ai_tanks = []
@@ -349,11 +368,30 @@ class GameplayScene(BaseScene):
         self._camera.update(dt, self._tank.x, self._tank.y)
 
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
+        # event = ("fire", tank_x, tank_y, turret_angle)
         _, ex, ey, eangle = event
-        dx, dy = heading_to_vec(eangle)
-        bx = ex + dx * TANK_BARREL_WIDTH
-        by = ey + dy * TANK_BARREL_WIDTH
-        self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
+
+        spread_count = int(self._weapon_config.get("spread_count", 1))
+        spread_angle = float(self._weapon_config.get("spread_angle", 0.0))
+
+        if spread_count > 1 and spread_angle > 0.0:
+            # Fan spread_count bullets symmetrically around eangle.
+            # half_spread centres the pattern so the middle bullet stays on aim.
+            # e.g. count=3, angle=18 → offsets: [-18, 0, +18]
+            half_spread = spread_angle * (spread_count - 1) / 2.0
+            for i in range(spread_count):
+                offset = -half_spread + i * spread_angle
+                bullet_angle = eangle + offset
+                dx, dy = heading_to_vec(bullet_angle)
+                bx = ex + dx * TANK_BARREL_LENGTH
+                by = ey + dy * TANK_BARREL_LENGTH
+                self._bullets.append(Bullet(bx, by, bullet_angle, owner, self._weapon_config))
+        else:
+            # Single bullet (standard_shell, bouncing_round, homing_missile)
+            dx, dy = heading_to_vec(eangle)
+            bx = ex + dx * TANK_BARREL_LENGTH
+            by = ey + dy * TANK_BARREL_LENGTH
+            self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
 
     # ------------------------------------------------------------------
     # Draw
@@ -378,6 +416,10 @@ class GameplayScene(BaseScene):
             self._hud.draw(surface, self._tank, self._ai_tanks,
                            weapon_type=self._weapon_type)
 
+        # Reticle — drawn after entities, before debug; hidden when paused or player dead
+        if self._tank.is_alive:
+            _draw_reticle(surface)
+
         # Debug overlay — first AI used for state label
         first_ai = self._ai_tanks[0] if self._ai_tanks else None
         first_ctrl = self._ai_controllers[0] if self._ai_controllers else None
@@ -393,12 +435,10 @@ class GameplayScene(BaseScene):
 # ---------------------------------------------------------------------------
 
 def _build_tank_surface(body_color: tuple) -> pygame.Surface:
+    """Create a hull-only surface (no barrel).  The barrel is drawn separately
+    in _draw_tank using the tank's independent turret_angle."""
     surf = pygame.Surface((TANK_BODY_WIDTH, TANK_BODY_HEIGHT), pygame.SRCALPHA)
     pygame.draw.rect(surf, body_color, (0, 0, TANK_BODY_WIDTH, TANK_BODY_HEIGHT), border_radius=5)
-    barrel_x = TANK_BODY_WIDTH // 2
-    barrel_y = (TANK_BODY_HEIGHT - TANK_BARREL_HEIGHT) // 2
-    pygame.draw.rect(surf, TANK_BARREL_COLOR,
-                     (barrel_x, barrel_y, TANK_BARREL_WIDTH, TANK_BARREL_HEIGHT))
     return surf
 
 
@@ -442,12 +482,39 @@ def _draw_tank(
     tank_surf: pygame.Surface,
     camera: Camera,
 ) -> None:
+    """Two-pass tank renderer.
+
+    Pass 1 — Hull: rotated to tank.angle (where the body is pointing).
+    Pass 2 — Barrel: a thin rotated rectangle aligned to tank.turret_angle
+              (where the gun is aiming).  Drawn on top of the hull so the
+              visual separation between hull direction and aim direction is clear.
+    """
     if not tank.is_alive:
         return
     sx, sy = camera.world_to_screen(tank.x, tank.y)
-    rotated = pygame.transform.rotate(tank_surf, -tank.angle)
-    blit_rect = rotated.get_rect(center=(int(sx), int(sy)))
-    surface.blit(rotated, blit_rect)
+    isx, isy = int(sx), int(sy)
+
+    # Pass 1: hull
+    rotated_hull = pygame.transform.rotate(tank_surf, -tank.angle)
+    hull_rect = rotated_hull.get_rect(center=(isx, isy))
+    surface.blit(rotated_hull, hull_rect)
+
+    # Pass 2: barrel — centered TANK_BARREL_LENGTH/2 + 4 pixels ahead of tank center
+    # along turret_angle so it extends from center to (TANK_BARREL_LENGTH + 8) px forward.
+    barrel_length = TANK_BARREL_LENGTH + 8   # total pixel length of barrel rect
+    half_len = barrel_length / 2.0
+    import math as _math
+    rad = _math.radians(tank.turret_angle)
+    bcx = isx + int(_math.cos(rad) * half_len)
+    bcy = isy + int(_math.sin(rad) * half_len)
+    draw_rotated_rect(
+        surface,
+        TANK_BARREL_COLOR,
+        center=(bcx, bcy),
+        width=barrel_length,
+        height=TANK_BARREL_WIDTH,
+        angle_deg=tank.turret_angle,
+    )
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:
@@ -456,6 +523,22 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
             continue
         sx, sy = camera.world_to_screen(bullet.x, bullet.y)
         pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
+
+
+def _draw_reticle(surface: pygame.Surface) -> None:
+    """
+    Draw a neon-pink crosshair at the current mouse screen position.
+    Mouse position is already in screen space — no camera transform needed.
+    The system cursor is hidden during gameplay (set in GameplayScene.on_enter).
+    """
+    mx, my = pygame.mouse.get_pos()
+    ll = RETICLE_LINE_LENGTH
+    r = RETICLE_RADIUS
+    # Horizontal and vertical arms
+    pygame.draw.line(surface, RETICLE_COLOR, (mx - ll, my), (mx + ll, my), 1)
+    pygame.draw.line(surface, RETICLE_COLOR, (mx, my - ll), (mx, my + ll), 1)
+    # Circle
+    pygame.draw.circle(surface, RETICLE_COLOR, (mx, my), r, 1)
 
 
 def _draw_debug(

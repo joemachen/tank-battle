@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.14.0"
+GAME_VERSION: str = "v0.15.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -72,8 +72,9 @@ CAMERA_LERP_SPEED: float = 6.0           # higher = snappier follow; lower = mor
 # ---------------------------------------------------------------------------
 TANK_BODY_WIDTH: int = 40                # pixels
 TANK_BODY_HEIGHT: int = 30
-TANK_BARREL_WIDTH: int = 22              # extends right from center (angle=0)
-TANK_BARREL_HEIGHT: int = 8
+TANK_BARREL_LENGTH: int = 22             # forward extent of barrel from center (px)
+TANK_BARREL_WIDTH: int = 6               # visual thickness of barrel rectangle (px)
+TANK_BARREL_HEIGHT: int = 8              # legacy — used by tank select mini-sprite
 TANK_BARREL_COLOR = (55, 55, 55)
 TANK_PLAYER_COLOR = (100, 160, 80)       # player tank fill color (placeholder)
 
@@ -155,6 +156,13 @@ MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav"
 HUD_MARGIN: int = 12
 HUD_BAR_WIDTH: int = 160
 HUD_BAR_HEIGHT: int = 16
+
+# ---------------------------------------------------------------------------
+# Reticle (mouse crosshair overlay — v0.15)
+# ---------------------------------------------------------------------------
+RETICLE_RADIUS: int = 8        # circle radius in screen pixels
+RETICLE_LINE_LENGTH: int = 12  # half-length of each crosshair arm
+RETICLE_COLOR: tuple = COLOR_NEON_PINK  # alias — same neon pink as weapon label
 
 # ---------------------------------------------------------------------------
 # Tank Selection screen

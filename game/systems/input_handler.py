@@ -1,12 +1,23 @@
 """
 game/systems/input_handler.py
 
-InputHandler — player controller. Reads pygame keyboard state and
+InputHandler — player controller. Reads pygame keyboard and mouse state and
 produces a TankInput each frame.
 
-The Tank class calls get_input() — it has no knowledge of whether the
-controller is human or AI.
+Mouse aim (v0.15):
+  The mouse controls where the player tank fires — not which direction the
+  hull faces.  get_input() converts the screen-space mouse position to a
+  world-space position using the Camera, then computes the angle from the
+  tank's world position to that point.  This angle is returned as
+  TankInput.turret_angle.
+
+  The Camera dependency is intentional and correct: mouse-aimed gameplay
+  fundamentally requires a screen→world coordinate transform.  Passing the
+  camera and a position getter as constructor arguments keeps InputHandler
+  decoupled from the Tank entity itself.
 """
+
+import math
 
 import pygame
 
@@ -27,20 +38,33 @@ _DEFAULT_KEYS: dict = {
 
 class InputHandler:
     """
-    Reads keyboard state each frame and produces a TankInput.
+    Reads keyboard and mouse state each frame and produces a TankInput.
 
-    Instantiate once per human-controlled tank. Key bindings can be
-    updated at runtime (e.g., after loading settings.json).
+    Args:
+        keybinds:              Optional key binding overrides (from settings.json).
+        camera:                Camera instance used to convert mouse screen position
+                               to world position.  If None, turret_angle defaults
+                               to 0.0 (useful in headless / test contexts).
+        tank_position_getter:  Zero-arg callable returning (x, y) world position
+                               of the player tank.  Used to compute turret angle
+                               from tank center → mouse world position.
     """
 
-    def __init__(self, keybinds: dict | None = None) -> None:
+    def __init__(
+        self,
+        keybinds: dict | None = None,
+        camera=None,
+        tank_position_getter=None,
+    ) -> None:
         self._keys = dict(_DEFAULT_KEYS)
         if keybinds:
             self._apply_keybinds(keybinds)
-        log.debug("InputHandler initialized.")
+        self._camera = camera
+        self._position_getter = tank_position_getter
+        log.debug("InputHandler initialized (camera=%s).", "yes" if camera else "no")
 
     def get_input(self) -> TankInput:
-        """Sample current keyboard state and return a TankInput."""
+        """Sample current keyboard/mouse state and return a TankInput."""
         keys = pygame.key.get_pressed()
 
         throttle = 0.0
@@ -58,7 +82,11 @@ class InputHandler:
         # Left mouse button is a permanent secondary fire binding (not user-configurable)
         fire = bool(keys[self._keys["fire"]]) or pygame.mouse.get_pressed()[0]
 
-        return TankInput(throttle=throttle, rotate=rotate, fire=fire)
+        # Turret angle: mouse world position → angle from tank center
+        turret_angle = self._compute_turret_angle()
+
+        return TankInput(throttle=throttle, rotate=rotate, fire=fire,
+                         turret_angle=turret_angle)
 
     def update_keybinds(self, keybinds: dict) -> None:
         """Apply new keybinds from settings at runtime."""
@@ -68,6 +96,22 @@ class InputHandler:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _compute_turret_angle(self) -> float:
+        """
+        Convert mouse screen position to world position using the Camera,
+        then return the angle (degrees) from the tank's world position toward
+        that world point.
+
+        Returns 0.0 if camera or position_getter are not set — allows the class
+        to be used in headless test contexts without a display.
+        """
+        if self._camera is None or self._position_getter is None:
+            return 0.0
+        mx, my = pygame.mouse.get_pos()
+        wx, wy = self._camera.screen_to_world(mx, my)
+        tx, ty = self._position_getter()
+        return math.degrees(math.atan2(wy - ty, wx - tx))
 
     def _apply_keybinds(self, keybinds: dict) -> None:
         key_map = {

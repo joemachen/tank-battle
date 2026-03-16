@@ -76,3 +76,38 @@ def heading_to_vec(angle_deg: float) -> Vec2:
     """Convert a heading angle (degrees) to a unit direction vector."""
     rad = math.radians(angle_deg)
     return (math.cos(rad), math.sin(rad))
+
+
+def draw_rotated_rect(
+    surface,
+    color: tuple,
+    center: tuple,
+    width: int,
+    height: int,
+    angle_deg: float,
+) -> None:
+    """
+    Draw a filled rectangle of (width × height) rotated by angle_deg degrees,
+    centered at the given screen-space center point.
+
+    The rectangle's long axis aligns with angle_deg (0 = pointing right, CW positive,
+    following pygame's coordinate convention).
+
+    Requires pygame; imported locally so that this module remains importable in
+    headless test environments where pygame is stubbed.
+
+    Args:
+        surface:   Target pygame.Surface to draw onto.
+        color:     RGB or RGBA fill color tuple.
+        center:    (x, y) screen-space center of the rectangle.
+        width:     Rectangle extent along the angle_deg axis (the "length").
+        height:    Rectangle extent perpendicular to angle_deg (the "thickness").
+        angle_deg: Rotation angle in degrees (0 = right, increasing CW).
+    """
+    import pygame  # local import — keeps math_utils importable without pygame
+
+    rect_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+    pygame.draw.rect(rect_surf, color, (0, 0, width, height))
+    rotated = pygame.transform.rotate(rect_surf, -angle_deg)
+    blit_rect = rotated.get_rect(center=(int(center[0]), int(center[1])))
+    surface.blit(rotated, blit_rect)

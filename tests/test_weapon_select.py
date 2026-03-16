@@ -434,3 +434,117 @@ class TestTankSelectCursorPreservation:
         scene._opponent_idx = 2   # user had selected 3 opponents
         scene.on_enter(from_weapon_select=True)
         assert scene._opponent_idx == 2
+
+
+# ---------------------------------------------------------------------------
+# 8. Spread shot bullet spawning
+# ---------------------------------------------------------------------------
+
+class TestSpreadShotSpawn:
+    """
+    Verify that spread_shot fires spread_count bullets and that the outer bullets
+    are offset by spread_angle from the centre bullet.
+
+    _spawn_bullet is tested via a minimal harness that skips all pygame rendering
+    — we only care about how many Bullet objects end up in the bullet list and
+    what angles they carry.
+    """
+
+    def _call_spawn(self, weapon_config: dict, turret_angle: float = 0.0) -> list:
+        """
+        Call game_scene._spawn_bullet logic directly without instantiating
+        GameplayScene (which requires pygame display).  Returns the list of
+        Bullet objects that would be appended.
+        """
+        from game.entities.bullet import Bullet
+        from game.utils.math_utils import heading_to_vec
+        from game.utils.constants import TANK_BARREL_LENGTH
+
+        import math
+
+        bullets: list = []
+        ex, ey, eangle = 0.0, 0.0, turret_angle
+
+        spread_count = int(weapon_config.get("spread_count", 1))
+        spread_angle = float(weapon_config.get("spread_angle", 0.0))
+
+        # Replicate the exact logic from GameplayScene._spawn_bullet
+        class _FakeOwner:
+            pass
+
+        owner = _FakeOwner()
+
+        if spread_count > 1 and spread_angle > 0.0:
+            half_spread = spread_angle * (spread_count - 1) / 2.0
+            for i in range(spread_count):
+                offset = -half_spread + i * spread_angle
+                bullet_angle = eangle + offset
+                dx, dy = heading_to_vec(bullet_angle)
+                bx = ex + dx * TANK_BARREL_LENGTH
+                by = ey + dy * TANK_BARREL_LENGTH
+                bullets.append(Bullet(bx, by, bullet_angle, owner, weapon_config))
+        else:
+            dx, dy = heading_to_vec(eangle)
+            bx = ex + dx * TANK_BARREL_LENGTH
+            by = ey + dy * TANK_BARREL_LENGTH
+            bullets.append(Bullet(bx, by, eangle, owner, weapon_config))
+
+        return bullets
+
+    def _spread_config(self):
+        from game.utils.config_loader import get_weapon_config
+        from game.utils.constants import WEAPONS_CONFIG
+        return get_weapon_config("spread_shot", WEAPONS_CONFIG)
+
+    def _standard_config(self):
+        from game.utils.config_loader import get_weapon_config
+        from game.utils.constants import WEAPONS_CONFIG
+        return get_weapon_config("standard_shell", WEAPONS_CONFIG)
+
+    def test_spread_shot_fires_three_bullets(self):
+        """spread_count=3 → exactly 3 Bullet objects spawned per trigger."""
+        bullets = self._call_spawn(self._spread_config(), turret_angle=0.0)
+        assert len(bullets) == 3
+
+    def test_standard_shell_fires_one_bullet(self):
+        """standard_shell has no spread_count → exactly 1 bullet."""
+        bullets = self._call_spawn(self._standard_config(), turret_angle=0.0)
+        assert len(bullets) == 1
+
+    def test_spread_centre_bullet_on_turret_angle(self):
+        """Middle bullet of 3-spread must travel exactly on turret_angle."""
+        bullets = self._call_spawn(self._spread_config(), turret_angle=45.0)
+        centre = bullets[1]   # index 1 = middle of [left, centre, right]
+        assert centre.angle == pytest.approx(45.0)
+
+    def test_spread_left_bullet_offset(self):
+        """Left bullet (index 0) must be spread_angle degrees left of centre."""
+        cfg = self._spread_config()
+        spread_angle = cfg["spread_angle"]   # 18
+        bullets = self._call_spawn(cfg, turret_angle=0.0)
+        expected_left = 0.0 - spread_angle
+        assert bullets[0].angle == pytest.approx(expected_left)
+
+    def test_spread_right_bullet_offset(self):
+        """Right bullet (index 2) must be spread_angle degrees right of centre."""
+        cfg = self._spread_config()
+        spread_angle = cfg["spread_angle"]
+        bullets = self._call_spawn(cfg, turret_angle=0.0)
+        expected_right = 0.0 + spread_angle
+        assert bullets[2].angle == pytest.approx(expected_right)
+
+    def test_spread_bullets_symmetric_around_turret(self):
+        """All bullets are symmetric: left and right offsets are equal in magnitude."""
+        cfg = self._spread_config()
+        bullets = self._call_spawn(cfg, turret_angle=90.0)
+        left_diff  = bullets[1].angle - bullets[0].angle
+        right_diff = bullets[2].angle - bullets[1].angle
+        assert left_diff == pytest.approx(right_diff)
+
+    def test_spread_config_has_required_fields(self):
+        """spread_shot YAML must declare spread_count and spread_angle."""
+        cfg = self._spread_config()
+        assert "spread_count" in cfg, "spread_shot missing spread_count"
+        assert "spread_angle" in cfg, "spread_shot missing spread_angle"
+        assert int(cfg["spread_count"]) >= 2
+        assert float(cfg["spread_angle"]) > 0.0

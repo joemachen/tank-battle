@@ -49,7 +49,7 @@ from game.utils.constants import (
     SFX_UI_NAVIGATE,
     TANK_BARREL_COLOR,
     TANK_BARREL_HEIGHT,
-    TANK_BARREL_WIDTH,
+    TANK_BARREL_LENGTH,
     TANK_BODY_HEIGHT,
     TANK_BODY_WIDTH,
     TANK_SELECT_COLORS,
@@ -430,7 +430,7 @@ class TankSelectScene(BaseScene):
         barrel_rect = pygame.Rect(
             cx,
             cy - TANK_BARREL_HEIGHT // 2,
-            TANK_BARREL_WIDTH,
+            TANK_BARREL_LENGTH,
             TANK_BARREL_HEIGHT,
         )
         pygame.draw.rect(surface, TANK_BARREL_COLOR, barrel_rect)
