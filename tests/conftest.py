@@ -124,11 +124,24 @@ def _install_pygame_stub() -> None:
     # Surface / Rect stubs
     # ---------------------------------------------------------------------------
     class _Surface:
-        def __init__(self, *a, **kw): pass
+        def __init__(self, *a, **kw):
+            # Capture optional size tuple so get_width/get_height return sensible values
+            if a and hasattr(a[0], '__len__') and len(a[0]) >= 2:
+                self._w, self._h = int(a[0][0]), int(a[0][1])
+            else:
+                self._w, self._h = 1280, 720
         def fill(self, *a, **kw): pass
         def blit(self, *a, **kw): pass
-        def get_width(self):  return 1280
-        def get_height(self): return 720
+        def get_width(self):  return self._w
+        def get_height(self): return self._h
+        def get_rect(self, **kwargs):
+            """Return a _Rect for this surface, optionally repositioned to 'center'."""
+            r = _Rect(0, 0, self._w, self._h)
+            if 'center' in kwargs:
+                cx, cy = kwargs['center']
+                r.x = cx - self._w // 2
+                r.y = cy - self._h // 2
+            return r
 
     class _Rect:
         def __init__(self, *a, **kw):
@@ -182,6 +195,23 @@ def _install_pygame_stub() -> None:
     stub.mixer = mixer_mod
 
     # ---------------------------------------------------------------------------
+    # Transform sub-module (needed by draw_rotated_rect and _draw_tank)
+    # ---------------------------------------------------------------------------
+    transform_mod = types.ModuleType("pygame.transform")
+    # Stub rotate: return the same surface unchanged (no actual rotation in tests)
+    transform_mod.rotate = lambda surf, angle: surf
+    stub.transform = transform_mod
+
+    # ---------------------------------------------------------------------------
+    # Mouse sub-module (needed by InputHandler and reticle rendering)
+    # ---------------------------------------------------------------------------
+    mouse_mod = types.ModuleType("pygame.mouse")
+    mouse_mod.get_pos       = lambda: (0, 0)
+    mouse_mod.get_pressed   = lambda: (False, False, False)
+    mouse_mod.set_visible   = lambda v: None
+    stub.mouse = mouse_mod
+
+    # ---------------------------------------------------------------------------
     # Register everything
     # ---------------------------------------------------------------------------
     sys.modules["pygame"]             = stub
@@ -192,6 +222,8 @@ def _install_pygame_stub() -> None:
     sys.modules["pygame.key"]         = key_mod
     sys.modules["pygame.mixer"]       = mixer_mod
     sys.modules["pygame.mixer.music"] = music_mod
+    sys.modules["pygame.transform"]   = transform_mod
+    sys.modules["pygame.mouse"]       = mouse_mod
 
 
 # Only install the stub when pygame is not available in this environment.

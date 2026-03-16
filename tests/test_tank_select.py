@@ -109,9 +109,13 @@ _mixer_music_mod.play = lambda *a, **kw: None
 _mixer_mod.music = _mixer_music_mod
 _pygame_stub.mixer = _mixer_mod
 
-sys.modules["pygame"] = _pygame_stub
-sys.modules["pygame.font"] = _font_mod
-sys.modules["pygame.mixer"] = _mixer_mod
+# Only install this stub if conftest.py hasn't already installed the comprehensive one.
+# test_weapon_select.py uses the same guard.  Prevents overwriting the full stub
+# (which includes transform, mouse, key.name, etc.) with this minimal version.
+if "pygame" not in sys.modules:
+    sys.modules["pygame"] = _pygame_stub
+    sys.modules["pygame.font"] = _font_mod
+    sys.modules["pygame.mixer"] = _mixer_mod
 
 # ---------------------------------------------------------------------------
 # Now safe to import game modules
@@ -314,7 +318,7 @@ class TestGameplaySceneTankType:
             def world_to_screen(self, x, y): return (x, y)
 
         monkeypatch.setattr(gs, "Tank",          lambda **kw: _FakeTank())
-        monkeypatch.setattr(gs, "InputHandler",  lambda keybinds=None: _FakeInput())
+        monkeypatch.setattr(gs, "InputHandler",  lambda **kw: _FakeInput())
         monkeypatch.setattr(gs, "AIController",  lambda **kw: _FakeAI())
         monkeypatch.setattr(gs, "CollisionSystem", lambda: object())
         monkeypatch.setattr(gs, "PhysicsSystem",   lambda: object())

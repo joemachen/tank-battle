@@ -265,40 +265,50 @@ class AIController:
     # ------------------------------------------------------------------
 
     def _patrol_input(self) -> TankInput:
-        """Wander by slowly rotating on a timer."""
+        """Wander by slowly rotating on a timer. Turret faces same direction as hull."""
         # Stub: just rotate slowly; waypoint patrol implemented later
-        return TankInput(throttle=0.5, rotate=0.3, fire=False)
+        turret = self._owner.angle if self._owner is not None else 0.0
+        return TankInput(throttle=0.5, rotate=0.3, fire=False, turret_angle=turret)
 
     def _pursue_input(self, target) -> TankInput:
-        """Turn and move toward target with lightweight obstacle avoidance."""
+        """Turn and move toward target with lightweight obstacle avoidance.
+        Turret independently tracks the player while the hull steers."""
         if self._owner is None or target is None:
             return TankInput()
         desired_angle = angle_to(self._owner.position, target.position)
+        turret_angle = desired_angle   # track player even while steering
         desired_angle += self._obstacle_steer_correction(desired_angle)
         diff = angle_difference(self._owner.angle, desired_angle)
         rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
         throttle = 1.0 if abs(diff) < 45 else 0.3
-        return TankInput(throttle=throttle, rotate=rotate, fire=False)
+        return TankInput(throttle=throttle, rotate=rotate, fire=False,
+                         turret_angle=turret_angle)
 
     def _attack_input(self, target) -> TankInput:
-        """Aim and fire; accuracy introduces angular jitter."""
+        """Aim and fire; accuracy introduces angular jitter. Turret points at target."""
         if self._owner is None or target is None:
             return TankInput()
         desired_angle = angle_to(self._owner.position, target.position)
         # Accuracy jitter: lower accuracy → larger random offset
         jitter = (1.0 - self.accuracy) * random.uniform(-30, 30)
         desired_angle += jitter
+        # Turret snaps to the jittered aim angle
+        turret_angle = desired_angle
         diff = angle_difference(self._owner.angle, desired_angle)
         rotate = 1.0 if diff > 2 else (-1.0 if diff < -2 else 0.0)
         fire = abs(diff) < 10 and random.random() < self.aggression
-        return TankInput(throttle=0.0, rotate=rotate, fire=fire)
+        return TankInput(throttle=0.0, rotate=rotate, fire=fire,
+                         turret_angle=turret_angle)
 
     def _evade_input(self, target) -> TankInput:
-        """Retreat away from the target with lightweight obstacle avoidance."""
+        """Retreat away from the target. Turret keeps watching the player while fleeing."""
         if self._owner is None or target is None:
-            return TankInput(throttle=-1.0, rotate=0.5, fire=False)
+            return TankInput(throttle=-1.0, rotate=0.5, fire=False, turret_angle=0.0)
+        # Turret faces the player (threatening even while retreating)
+        turret_angle = angle_to(self._owner.position, target.position)
+
         # Flee direction is the opposite of the bearing to the target
-        flee_angle = angle_to(self._owner.position, target.position) + 180.0
+        flee_angle = turret_angle + 180.0
 
         # Post-recovery bias: during the immunity window, nudge the flee angle in
         # the same rotational direction the tank just turned during recovery.  This
@@ -312,7 +322,8 @@ class AIController:
         flee_angle += self._obstacle_steer_correction(flee_angle)
         diff = angle_difference(self._owner.angle, flee_angle)
         rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
-        return TankInput(throttle=1.0, rotate=rotate, fire=False)
+        return TankInput(throttle=1.0, rotate=rotate, fire=False,
+                         turret_angle=turret_angle)
 
     def _recovery_input(self) -> TankInput:
         """
@@ -323,13 +334,18 @@ class AIController:
         Phase 2 (_RECOVERY_PHASE2 seconds): moderate forward + gentle rotation.
             Consolidates the new heading so the tank is genuinely pointed away from the
             wall before the normal state machine resumes.
+
+        Turret stays aligned with hull during recovery — no target tracking needed.
         """
+        turret = self._owner.angle if self._owner is not None else 0.0
         if self._recovery_timer > _RECOVERY_PHASE2:
             # Phase 1 — backing out
-            return TankInput(throttle=-1.0, rotate=self._recovery_direction, fire=False)
+            return TankInput(throttle=-1.0, rotate=self._recovery_direction, fire=False,
+                             turret_angle=turret)
         else:
             # Phase 2 — rolling forward in the new heading
-            return TankInput(throttle=0.7, rotate=self._recovery_direction * 0.4, fire=False)
+            return TankInput(throttle=0.7, rotate=self._recovery_direction * 0.4, fire=False,
+                             turret_angle=turret)
 
     # ------------------------------------------------------------------
     # Obstacle avoidance helper (Layer 3)

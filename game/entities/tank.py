@@ -28,10 +28,13 @@ class TankInput:
     """
     Normalized control intent produced by any controller.
     Values are in [-1, 1] for axes; booleans for discrete actions.
+    turret_angle is set by the controller each frame — the tank applies it
+    directly so the controller fully owns where the gun is pointing.
     """
-    throttle: float = 0.0     # -1 = full reverse, +1 = full forward
-    rotate: float = 0.0       # -1 = rotate left, +1 = rotate right
+    throttle: float = 0.0       # -1 = full reverse, +1 = full forward
+    rotate: float = 0.0         # -1 = rotate left, +1 = rotate right
     fire: bool = False
+    turret_angle: float = 0.0   # desired turret facing (degrees, pygame CW convention)
 
 
 class ControllerProtocol(Protocol):
@@ -59,7 +62,8 @@ class Tank:
     ) -> None:
         self.x: float = x
         self.y: float = y
-        self.angle: float = 0.0          # facing angle in degrees (0 = right)
+        self.angle: float = 0.0          # hull facing angle in degrees (0 = right)
+        self.turret_angle: float = 0.0   # turret/gun facing — independent of hull
         self.controller = controller
 
         # Stats from config — fall back to defaults if key missing
@@ -100,7 +104,10 @@ class Tank:
         events = []
         intent = self.controller.get_input()
 
-        # Rotation
+        # Turret tracks whatever the controller requests (instant snap for now)
+        self.turret_angle = intent.turret_angle
+
+        # Hull rotation
         self.angle += intent.rotate * self.turn_rate * dt
 
         # Movement along facing direction
@@ -120,8 +127,8 @@ class Tank:
 
         if intent.fire and self._fire_cooldown <= 0:
             self._fire_cooldown = 1.0 / self.fire_rate
-            events.append(("fire", self.x, self.y, self.angle))
-            log.debug("Tank fired at angle %.1f", self.angle)
+            events.append(("fire", self.x, self.y, self.turret_angle))
+            log.debug("Tank fired at turret_angle %.1f", self.turret_angle)
 
         return events
 
