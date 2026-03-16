@@ -32,7 +32,7 @@ are completed or plans change.
 *More things to do and unlock.*
 | Version | Milestone              | Notes                                                                 |
 |---------|------------------------|-----------------------------------------------------------------------|
-| v0.14   | Weapon selection       | Pre-match weapon picker, same pattern as tank select. All 4 weapons already in weapons.yaml. Primary slot only. |
+| v0.14   | Weapon selection       | Pre-match weapon picker, same pattern as tank select. All 4 weapons already in weapons.yaml. Primary slot only. *(Note: Profile selection (multi-save) to be slotted between v0.13 and v0.14 as a dedicated milestone. SaveManager refactor required.)* |
 | v0.15   | Secondary + tertiary weapons | Each tank has up to 3 weapon slots. Tab or Q/E to cycle. Weapon slots defined per tank type in tanks.yaml. |
 | v0.16   | Multiple maps          | Map select screen, 2–3 maps with distinct layouts in data/maps/. MapLoader already handles this. |
 | v0.17   | Destructible obstacles | Material system already supports it — needs visual destruction feedback (flash, crumble). |

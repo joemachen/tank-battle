@@ -12,6 +12,14 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
+GAME_VERSION: str = "v0.12.0"
+
+# ---------------------------------------------------------------------------
+# Main Menu
+# ---------------------------------------------------------------------------
+MENU_GRID_SPEED: int = 60            # apparent scroll speed of the perspective grid (px/s)
+MENU_TITLE_ANIM_DURATION: float = 0.8   # seconds for title slide-in / fade-in
+MENU_FADE_DURATION: float = 0.3         # seconds for scene-exit fade to black
 
 # ---------------------------------------------------------------------------
 # Colors  (R, G, B)
@@ -25,6 +33,7 @@ COLOR_YELLOW = (181, 137, 0)
 COLOR_GRAY = (88, 110, 117)
 COLOR_DARK_GRAY = (40, 40, 40)
 COLOR_BG = (20, 20, 20)
+COLOR_NEON_PINK: tuple = (255, 16, 240)  # synthwave accent
 
 # ---------------------------------------------------------------------------
 # Physics / Movement defaults (overridden by tank config where applicable)
