@@ -24,6 +24,7 @@ Selection is passed to GameplayScene via:
 import pygame
 
 from game.scenes.base_scene import BaseScene
+from game.systems.progression_manager import ProgressionManager
 from game.ui.audio_manager import get_audio_manager
 from game.utils.config_loader import load_yaml
 from game.utils.constants import (
@@ -113,12 +114,15 @@ class TankSelectScene(BaseScene):
     def __init__(self, manager) -> None:
         super().__init__(manager)
         self._save_manager: SaveManager = SaveManager()
+        self._progression: ProgressionManager = ProgressionManager()
         self._tank_data: list[dict] = []
         self._unlocked: set[str] = set()
         self._tank_cursor: int = 0          # index into _tank_data
         self._difficulty_idx: int = _DEFAULT_DIFFICULTY_IDX
         self._opponent_idx: int = _DEFAULT_OPPONENT_IDX
         self._focused_row: int = _ROW_TANKS  # which row has keyboard focus
+        self._player_level: int = 1          # loaded from profile on on_enter
+        self._unlock_levels: dict[str, int] = {}  # tank_type → unlock level
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -135,6 +139,14 @@ class TankSelectScene(BaseScene):
 
         profile = self._save_manager.load_profile()
         self._unlocked = set(profile.get("unlocked_tanks", []))
+        self._player_level = int(profile.get("level", 1))
+        # Build unlock level lookup for locked card display
+        self._unlock_levels = {}
+        for td in self._tank_data:
+            t = td.get("type", "")
+            lvl = self._progression.unlock_level_for(t)
+            if lvl is not None:
+                self._unlock_levels[t] = lvl
 
         # Cursor on first unlocked tank
         self._tank_cursor = 0
@@ -234,6 +246,7 @@ class TankSelectScene(BaseScene):
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(COLOR_BG)
         self._draw_header(surface)
+        self._draw_level_badge(surface)
         self._draw_cards(surface)
         self._draw_difficulty_row(surface)
         self._draw_opponent_row(surface)
@@ -243,6 +256,13 @@ class TankSelectScene(BaseScene):
         font = pygame.font.SysFont(None, 52)
         heading = font.render("Select Your Tank", True, COLOR_WHITE)
         surface.blit(heading, heading.get_rect(center=(SCREEN_WIDTH // 2, 55)))
+
+    def _draw_level_badge(self, surface: pygame.Surface) -> None:
+        """Small 'Level N' label in the top-right corner."""
+        font = pygame.font.SysFont(None, 28)
+        label = font.render(f"Level {self._player_level}", True, COLOR_GREEN)
+        margin = 18
+        surface.blit(label, (SCREEN_WIDTH - label.get_width() - margin, margin))
 
     def _draw_footer(self, surface: pygame.Surface) -> None:
         font = pygame.font.SysFont(None, 26)
@@ -330,7 +350,8 @@ class TankSelectScene(BaseScene):
             y += _STAT_ROW_GAP
 
         if is_locked:
-            self._draw_locked_overlay(surface, rect)
+            unlock_lvl = self._unlock_levels.get(td.get("type", ""))
+            self._draw_locked_overlay(surface, rect, unlock_lvl)
 
     def _draw_difficulty_row(self, surface: pygame.Surface) -> None:
         """Difficulty selector row — three pill-shaped option buttons."""
@@ -437,14 +458,24 @@ class TankSelectScene(BaseScene):
         pygame.draw.rect(surface, TANK_BARREL_COLOR, barrel_rect)
 
     def _draw_locked_overlay(
-        self, surface: pygame.Surface, rect: pygame.Rect
+        self,
+        surface: pygame.Surface,
+        rect: pygame.Rect,
+        unlock_level: int | None = None,
     ) -> None:
         overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 150))
         surface.blit(overlay, rect.topleft)
         lock_font = pygame.font.SysFont(None, 36)
         lock_surf = lock_font.render("LOCKED", True, COLOR_RED)
-        surface.blit(lock_surf, lock_surf.get_rect(center=rect.center))
+        # If we know the unlock level, shift LOCKED up and add the sub-label
+        if unlock_level is not None:
+            surface.blit(lock_surf, lock_surf.get_rect(center=(rect.centerx, rect.centery - 14)))
+            sub_font = pygame.font.SysFont(None, 24)
+            sub_surf = sub_font.render(f"Unlocks at Level {unlock_level}", True, COLOR_GRAY)
+            surface.blit(sub_surf, sub_surf.get_rect(center=(rect.centerx, rect.centery + 14)))
+        else:
+            surface.blit(lock_surf, lock_surf.get_rect(center=rect.center))
 
     @staticmethod
     def _draw_wrapped(
