@@ -370,11 +370,28 @@ class GameplayScene(BaseScene):
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle)
         _, ex, ey, eangle = event
-        dx, dy = heading_to_vec(eangle)
-        # Offset bullet spawn to barrel tip so it doesn't overlap the tank hull
-        bx = ex + dx * TANK_BARREL_LENGTH
-        by = ey + dy * TANK_BARREL_LENGTH
-        self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
+
+        spread_count = int(self._weapon_config.get("spread_count", 1))
+        spread_angle = float(self._weapon_config.get("spread_angle", 0.0))
+
+        if spread_count > 1 and spread_angle > 0.0:
+            # Fan spread_count bullets symmetrically around eangle.
+            # half_spread centres the pattern so the middle bullet stays on aim.
+            # e.g. count=3, angle=18 → offsets: [-18, 0, +18]
+            half_spread = spread_angle * (spread_count - 1) / 2.0
+            for i in range(spread_count):
+                offset = -half_spread + i * spread_angle
+                bullet_angle = eangle + offset
+                dx, dy = heading_to_vec(bullet_angle)
+                bx = ex + dx * TANK_BARREL_LENGTH
+                by = ey + dy * TANK_BARREL_LENGTH
+                self._bullets.append(Bullet(bx, by, bullet_angle, owner, self._weapon_config))
+        else:
+            # Single bullet (standard_shell, bouncing_round, homing_missile)
+            dx, dy = heading_to_vec(eangle)
+            bx = ex + dx * TANK_BARREL_LENGTH
+            by = ey + dy * TANK_BARREL_LENGTH
+            self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
 
     # ------------------------------------------------------------------
     # Draw
