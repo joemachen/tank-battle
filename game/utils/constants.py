@@ -204,6 +204,15 @@ COLLISION_SPEED_SCALE: float = 150.0
 COLLISION_SPEED_CAP: float = 1.5
 
 # ---------------------------------------------------------------------------
+# XP and Progression
+# ---------------------------------------------------------------------------
+XP_PARTICIPATION: int = 10        # awarded even on a loss — just for playing
+XP_WIN: int = 100                  # bonus for winning the match
+XP_KILL: int = 40                  # per AI tank destroyed
+XP_SURVIVAL_BONUS: int = 25        # bonus for surviving to end of match
+XP_ACCURACY_BONUS_MAX: int = 50    # max bonus for perfect shot accuracy
+
+# ---------------------------------------------------------------------------
 # Persistence defaults
 # ---------------------------------------------------------------------------
 DEFAULT_PROFILE: dict = {

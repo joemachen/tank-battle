@@ -18,6 +18,8 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 """
 
+import time
+
 import pygame
 
 from game.entities.bullet import Bullet
@@ -26,6 +28,7 @@ from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
 from game.systems.input_handler import InputHandler
+from game.systems.match_calculator import MatchCalculator
 from game.systems.physics import PhysicsSystem
 from game.ui.audio_manager import get_audio_manager
 from game.ui.hud import HUD
@@ -107,6 +110,13 @@ class GameplayScene(BaseScene):
         self._bullets: list[Bullet] = []
         self._obstacles: list = []
         self._tank_surf: pygame.Surface | None = None
+        # Match stats — reset on_enter, read on match end
+        self._shots_fired: int = 0
+        self._shots_hit: int = 0
+        self._kills: int = 0
+        self._damage_dealt: int = 0
+        self._damage_taken: int = 0
+        self._match_start_time: float = 0.0
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -182,6 +192,14 @@ class GameplayScene(BaseScene):
         self._camera.snap_to(_SPAWN_X, _SPAWN_Y)
         self._tank_surf = _build_tank_surface(TANK_PLAYER_COLOR)
 
+        # Reset match stats
+        self._shots_fired = 0
+        self._shots_hit = 0
+        self._kills = 0
+        self._damage_dealt = 0
+        self._damage_taken = 0
+        self._match_start_time = time.monotonic()
+
         get_audio_manager().play_music(MUSIC_GAMEPLAY)
 
         log.info(
@@ -226,6 +244,7 @@ class GameplayScene(BaseScene):
         for event in self._tank.update(dt):
             if event[0] == "fire":
                 self._spawn_bullet(event, self._tank)
+                self._shots_fired += 1
                 audio.play_sfx(SFX_TANK_FIRE)
 
         # AI tanks update (tick() for stuck detection before tank.update())
@@ -243,6 +262,10 @@ class GameplayScene(BaseScene):
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
         self._bullets = [b for b in self._bullets if b.is_alive]
 
+        # Snapshot state before collision resolution for stat tracking
+        player_hp_before = self._tank.health
+        ai_alive_before = {id(t): t.is_alive for t in self._ai_tanks}
+
         # Collision: bullets, obstacles, tank-to-tank
         audio_events = self._collision.update(
             tanks=all_tanks,
@@ -252,7 +275,15 @@ class GameplayScene(BaseScene):
         )
         self._bullets = [b for b in self._bullets if b.is_alive]
 
-        # Map collision events → SFX (de-duplicate per frame to avoid spam)
+        # Accumulate damage taken by player
+        self._damage_taken += max(0, player_hp_before - self._tank.health)
+
+        # Count kills (AI tanks that just died this frame)
+        for t in self._ai_tanks:
+            if ai_alive_before.get(id(t)) and not t.is_alive:
+                self._kills += 1
+
+        # Map collision events → SFX and stat tracking
         _COLLISION_SFX = {
             "bullet_hit_tank":     SFX_BULLET_HIT_TANK,
             "tank_explosion":      SFX_TANK_EXPLOSION,
@@ -262,19 +293,49 @@ class GameplayScene(BaseScene):
         }
         played: set[str] = set()
         for ev in audio_events:
-            if ev not in played:
-                sfx_path = _COLLISION_SFX.get(ev)
-                if sfx_path:
-                    audio.play_sfx(sfx_path)
-                played.add(ev)
+            if isinstance(ev, str):
+                if ev not in played:
+                    sfx_path = _COLLISION_SFX.get(ev)
+                    if sfx_path:
+                        audio.play_sfx(sfx_path)
+                    played.add(ev)
+            elif isinstance(ev, tuple) and ev[0] == "bullet_hit_tank_stat":
+                _, owner, dmg = ev
+                if owner is self._tank:
+                    self._shots_hit += 1
+                    self._damage_dealt += dmg
 
-        # Win / lose checks
+        # Win / lose checks — build MatchResult and pass to GameOverScene
         if not self._tank.is_alive:
-            self.manager.switch_to(SCENE_GAME_OVER, won=False, score=0, xp_earned=10)
+            self.manager.switch_to(
+                SCENE_GAME_OVER,
+                result=MatchCalculator.build(
+                    won=False,
+                    survived=False,
+                    kills=self._kills,
+                    shots_fired=self._shots_fired,
+                    shots_hit=self._shots_hit,
+                    time_elapsed=time.monotonic() - self._match_start_time,
+                    damage_dealt=self._damage_dealt,
+                    damage_taken=self._damage_taken,
+                ),
+            )
             return
 
         if all(not t.is_alive for t in self._ai_tanks):
-            self.manager.switch_to(SCENE_GAME_OVER, won=True, score=100, xp_earned=50)
+            self.manager.switch_to(
+                SCENE_GAME_OVER,
+                result=MatchCalculator.build(
+                    won=True,
+                    survived=True,
+                    kills=self._kills,
+                    shots_fired=self._shots_fired,
+                    shots_hit=self._shots_hit,
+                    time_elapsed=time.monotonic() - self._match_start_time,
+                    damage_dealt=self._damage_dealt,
+                    damage_taken=self._damage_taken,
+                ),
+            )
             return
 
         self._camera.update(dt, self._tank.x, self._tank.y)

@@ -39,15 +39,18 @@ class CollisionSystem:
     def __init__(self) -> None:
         log.debug("CollisionSystem initialized.")
 
-    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list) -> list[str]:
+    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list) -> list:
         """
         Run all collision checks for the current frame.
         Called once per frame from GameplayScene.update().
 
         Returns:
-            A list of audio event strings for the caller to play back.
-            Possible values: "bullet_hit_tank", "bullet_hit_obstacle",
-            "obstacle_destroy", "tank_collision".
+            A mixed list of audio event strings and stat-tracking tuples.
+            String events: "bullet_hit_tank", "bullet_hit_obstacle",
+                           "obstacle_destroy", "tank_collision", "tank_explosion"
+            Tuple events:  ("bullet_hit_tank_stat", owner, damage)
+                           — emitted alongside every bullet-hits-tank string event
+                           so callers can attribute hits to a specific owner.
         """
         events: list[str] = []
         events.extend(self._bullets_vs_tanks(bullets, tanks))
@@ -79,8 +82,8 @@ class CollisionSystem:
             return True
         return False
 
-    def _bullets_vs_tanks(self, bullets: list, tanks: list) -> list[str]:
-        events: list[str] = []
+    def _bullets_vs_tanks(self, bullets: list, tanks: list) -> list:
+        events: list = []
         for bullet in bullets:
             if not bullet.is_alive:
                 continue
@@ -90,6 +93,10 @@ class CollisionSystem:
                         events.append("bullet_hit_tank")
                     else:
                         events.append("tank_explosion")
+                    # Stat tuple: caller uses bullet.owner to attribute
+                    # hits and damage without the CollisionSystem needing
+                    # to know which tank is the player.
+                    events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage))
                     break
         return events
 
