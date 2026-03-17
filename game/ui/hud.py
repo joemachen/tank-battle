@@ -131,7 +131,7 @@ class HUD:
             t_label_y = t_bar_y - _LABEL_HEIGHT
             if t_label_y < 0:
                 break  # no vertical space left
-            self._draw_health_bar(surface, tank, ai_x, t_bar_y, t_label_y)
+            self._draw_health_bar(surface, tank, ai_x, t_bar_y, t_label_y, right_aligned=True)
             row += 1
 
     def _draw_weapon_slots(
@@ -174,10 +174,21 @@ class HUD:
         x: int,
         y: int,
         label_y: int,
+        right_aligned: bool = False,
     ) -> None:
-        """Draw a single health bar with a type label above it."""
+        """Draw a single health bar with a type label above it.
+
+        Args:
+            right_aligned: When True (AI bars), the label is right-aligned to the
+                           bar's right edge and HP text is placed to the LEFT of the
+                           bar so neither element overflows the screen edge.
+        """
         label = self._font.render(tank.tank_type, True, COLOR_WHITE)
-        surface.blit(label, (x, label_y))
+        if right_aligned:
+            label_x = x + HUD_BAR_WIDTH - label.get_width()
+        else:
+            label_x = x
+        surface.blit(label, (label_x, label_y))
 
         pygame.draw.rect(surface, COLOR_GRAY, (x, y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT))
 
@@ -189,4 +200,8 @@ class HUD:
         hp_text = self._small_font.render(
             f"{tank.health}/{tank.max_health}", True, COLOR_WHITE
         )
-        surface.blit(hp_text, (x + HUD_BAR_WIDTH + 6, y + 1))
+        if right_aligned:
+            hp_text_x = x - hp_text.get_width() - 8
+        else:
+            hp_text_x = x + HUD_BAR_WIDTH + 6
+        surface.blit(hp_text, (hp_text_x, y + 1))
