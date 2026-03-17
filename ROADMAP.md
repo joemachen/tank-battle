@@ -18,20 +18,19 @@ are completed or plans change.
 | v0.13.0 | Settings screen — audio sliders, keybinds, resolution, AI difficulty          |
 | v0.13.5 | Profile selection — multi-save slots, SaveManager refactor, auto-login        |
 | v0.14.0 | Weapon selection — pre-match picker, stat bars, animated preview, HUD display |
+| v0.15.0 | Decoupled turret aiming + mouse reticle — turret_angle, barrel render, aim reticle |
+| v0.16.0 | Secondary + tertiary weapons — 3-slot loadout, per-slot cooldowns, Tab/Q/E/wheel/1-3 |
 ---
 ## 🔨 In Progress
-| Branch          | Milestone                                        |
-|-----------------|--------------------------------------------------|
-| feature/turret  | v0.15 — Decoupled turret aiming + mouse reticle  |
+| Branch               | Milestone                                            |
+|----------------------|------------------------------------------------------|
+| feature/maps-themes  | v0.17 — Multiple maps + environment themes           |
 ---
 ## 🗺️ Planned
 ### Phase 2 — Content Expansion
 *More things to do and unlock.*
 | Version | Milestone                          | Notes                                                                                                                                                                                                                                                                                                    |
 |---------|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.14   | Weapon selection                  | Pre-match weapon picker, same pattern as tank select. All 4 weapons already in weapons.yaml. Primary slot only.                                                                                                                                                                                          |
-| v0.15   | Decoupled turret aiming + mouse reticle | Turret angle independent of tank body. Mouse cursor controls aim direction. Reticle rendered at mouse world position (camera transform applied). Bullets travel toward reticle, not tank facing axis. Requires turret_angle on Tank, separate barrel rendering, InputHandler mouse tracking. AI turret already effectively tracks player — minimal AI changes. Significant milestone — own branch, own tag. |
-| v0.16   | Secondary + tertiary weapons      | Each tank has up to 3 weapon slots. Tab or Q/E to cycle. Weapon slots defined per tank type in tanks.yaml.                                                                                                                                                                                               |
 | v0.17   | Multiple maps + environment themes | Map select screen, 2–3 map layouts in data/maps/. Theme system: each map has an environment theme (desert, snow, jungle, urban, suburban, island). Theme defines floor color/texture, border style, obstacle tint, ambient mood. Same map geometry can be reskinned across themes. Theme config in data/themes/. Reference aesthetic: Wii Play Tanks — toy/wooden table feel. |
 | v0.18   | Destructible obstacles            | Material system already supports it — needs visual destruction feedback (flash, crumble).                                                                                                                                                                                                                |
 | v0.19   | Pickup drops                      | Health packs, ammo, speed boost. Pickup entity already exists in entities/pickup.py.                                                                                                                                                                                                                     |
@@ -139,5 +138,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.14.0 — roadmap expanded with turret aiming,
-environment themes, tank tracks, toy aesthetic (Wii Play Tanks reference)*
+*Last updated: v0.16.0 — v0.15 turret aiming + v0.16 secondary weapons completed;
+v0.17 maps + environment themes in progress*
