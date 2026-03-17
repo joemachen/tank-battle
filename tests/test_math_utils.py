@@ -3,9 +3,10 @@ tests/test_math_utils.py
 
 Unit tests for game/utils/math_utils.py.
 
-Covers all existing helpers plus the v0.15 addition:
+Covers all existing helpers plus:
   - draw_rotated_rect helper exists and accepts correct parameters
-    (smoke test — no rendering assertion needed)
+    (smoke test — no rendering assertion needed)  [v0.15]
+  - blend_colors lerps RGB channels correctly, clamps, handles t=0/1  [v0.17]
 
 The pygame stub is installed by conftest.py.
 """
@@ -23,6 +24,7 @@ import pygame  # provided by conftest.py stub when pygame is not installed
 from game.utils.math_utils import (
     angle_difference,
     angle_to,
+    blend_colors,
     clamp,
     distance,
     draw_rotated_rect,
@@ -232,3 +234,51 @@ class TestDrawRotatedRect:
     def test_negative_angle(self):
         surf = self._surface()
         draw_rotated_rect(surf, (255, 16, 240), (100, 100), 22, 6, -45.0)
+
+
+# ---------------------------------------------------------------------------
+# blend_colors — v0.17
+# ---------------------------------------------------------------------------
+
+class TestBlendColors:
+    def test_t_zero_returns_color_a(self):
+        result = blend_colors((255, 0, 0), (0, 0, 255), 0.0)
+        assert result == (255, 0, 0)
+
+    def test_t_one_returns_color_b(self):
+        result = blend_colors((255, 0, 0), (0, 0, 255), 1.0)
+        assert result == (0, 0, 255)
+
+    def test_t_half_midpoint(self):
+        result = blend_colors((0, 0, 0), (100, 200, 50), 0.5)
+        assert result == (50, 100, 25)
+
+    def test_red_to_blue_midpoint(self):
+        result = blend_colors((200, 0, 0), (0, 0, 200), 0.5)
+        assert result == (100, 0, 100)
+
+    def test_returns_tuple_of_ints(self):
+        result = blend_colors((10, 20, 30), (40, 60, 80), 0.3)
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        assert all(isinstance(v, int) for v in result)
+
+    def test_channels_clamped_above_255(self):
+        """t < 0 is clamped to 0; effectively returns color_a."""
+        result = blend_colors((255, 255, 255), (300, 300, 300), 1.0)
+        assert result == (255, 255, 255)
+
+    def test_channels_clamped_below_zero(self):
+        """Negative channel inputs clamped to 0."""
+        result = blend_colors((0, 0, 0), (-100, -100, -100), 1.0)
+        assert result == (0, 0, 0)
+
+    def test_t_clamped_below_zero(self):
+        """t values < 0 are clamped to 0 → returns color_a."""
+        result = blend_colors((10, 20, 30), (100, 200, 255), -5.0)
+        assert result == (10, 20, 30)
+
+    def test_t_clamped_above_one(self):
+        """t values > 1 are clamped to 1 → returns color_b."""
+        result = blend_colors((10, 20, 30), (100, 200, 50), 99.0)
+        assert result == (100, 200, 50)

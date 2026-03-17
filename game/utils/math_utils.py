@@ -72,6 +72,33 @@ def rotate_point(point: Vec2, origin: Vec2, angle_deg: float) -> Vec2:
     )
 
 
+def blend_colors(
+    color_a: tuple,
+    color_b: tuple,
+    t: float,
+) -> tuple:
+    """
+    Linear interpolation between two RGB colors by factor *t*.
+
+    At t=0 returns color_a; at t=1 returns color_b.
+    Each channel is clamped to [0, 255] and returned as an int.
+
+    Args:
+        color_a: (R, G, B) source color.
+        color_b: (R, G, B) target color.
+        t:       Blend factor in [0.0, 1.0] (values outside are clamped).
+
+    Returns:
+        (R, G, B) integer tuple.
+    """
+    t = max(0.0, min(1.0, t))
+    return (
+        int(max(0, min(255, color_a[0] + (color_b[0] - color_a[0]) * t))),
+        int(max(0, min(255, color_a[1] + (color_b[1] - color_a[1]) * t))),
+        int(max(0, min(255, color_a[2] + (color_b[2] - color_a[2]) * t))),
+    )
+
+
 def heading_to_vec(angle_deg: float) -> Vec2:
     """Convert a heading angle (degrees) to a unit direction vector."""
     rad = math.radians(angle_deg)

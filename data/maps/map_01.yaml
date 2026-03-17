@@ -17,6 +17,9 @@
 #   material_type   — key into data/configs/materials.yaml
 #   reflective      — reserved for future non-reflective surface variant
 
+name: "Headquarters"
+theme: "default"
+
 obstacles:
   # Left mid-lane wall — indestructible stone; permanent lane divider
   - x: 350

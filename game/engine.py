@@ -21,11 +21,13 @@ from game.scenes.menu_scene import MainMenuScene
 from game.scenes.profile_select_scene import ProfileSelectScene
 from game.scenes.settings_scene import SettingsScene
 from game.scenes.tank_select_scene import TankSelectScene
+from game.scenes.map_select_scene import MapSelectScene
 from game.scenes.weapon_select_scene import WeaponSelectScene
 from game.utils.constants import (
     FPS,
     SCENE_GAME,
     SCENE_GAME_OVER,
+    SCENE_MAP_SELECT,
     SCENE_MENU,
     SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
@@ -90,6 +92,7 @@ class GameEngine:
         sm.register(SCENE_MENU, MainMenuScene(sm))
         sm.register(SCENE_TANK_SELECT, TankSelectScene(sm))
         sm.register(SCENE_WEAPON_SELECT, WeaponSelectScene(sm))
+        sm.register(SCENE_MAP_SELECT, MapSelectScene(sm))
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))

@@ -1,0 +1,12 @@
+# data/themes/jungle.yaml
+# Dense canopy — deep greens, heavy foliage feel, thick borders.
+# Reference: moss-covered wooden battlefield table.
+
+name: "Jungle"
+floor_color: [45, 80, 40]
+floor_grid_color: [40, 70, 35]
+border_color: [30, 60, 25]
+border_thickness: 6
+obstacle_tint: [60, 100, 50]
+ambient_label: "Dense"
+music_override: null

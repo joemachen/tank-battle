@@ -1,0 +1,72 @@
+# data/maps/map_02.yaml
+#
+# Map 02 — Dunes: asymmetric open desert arena.
+#
+# Arena: 1600 x 1200 px
+# Player spawns at (800, 600)  — arena center
+# AI spawns at    (1280, 240)  — top-right quadrant
+#
+# Layout intent:
+#   Fewer obstacles, wider sightlines.  Large dune-style blocks anchor the
+#   flanks; a central corridor encourages aggressive forward play.
+#   Asymmetry rewards map awareness — left side is more sheltered than right.
+
+name: "Dunes"
+theme: "desert"
+
+obstacles:
+  # Left flank — wide low dune, stone
+  - x: 200
+    y: 150
+    width: 180
+    height: 80
+    material_type: stone
+    reflective: false
+
+  # Right flank — mirror dune, stone
+  - x: 1220
+    y: 150
+    width: 180
+    height: 80
+    material_type: stone
+    reflective: false
+
+  # Upper-centre-left — tall brick outcrop
+  - x: 600
+    y: 300
+    width: 120
+    height: 200
+    material_type: brick
+    reflective: false
+
+  # Upper-centre-right — mirror brick outcrop
+  - x: 880
+    y: 300
+    width: 120
+    height: 200
+    material_type: brick
+    reflective: false
+
+  # Lower-left — low wood cover
+  - x: 300
+    y: 800
+    width: 200
+    height: 80
+    material_type: wood
+    reflective: false
+
+  # Lower-right — mirror wood cover
+  - x: 1100
+    y: 800
+    width: 200
+    height: 80
+    material_type: wood
+    reflective: false
+
+  # Centre-bottom — wide brick wall, breaks central corridor in two
+  - x: 650
+    y: 950
+    width: 300
+    height: 60
+    material_type: brick
+    reflective: false

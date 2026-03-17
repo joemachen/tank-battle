@@ -37,7 +37,7 @@ from game.utils.constants import (
     MAX_BAR_WIDTH,
     MAX_WEAPON_SLOTS,
     MUSIC_MENU,
-    SCENE_GAME,
+    SCENE_MAP_SELECT,
     SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -280,7 +280,7 @@ class WeaponSelectScene(BaseScene):
         )
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         self.manager.switch_to(
-            SCENE_GAME,
+            SCENE_MAP_SELECT,
             tank_type=self._tank_type,
             ai_count=self._ai_count,
             weapon_types=weapon_types,

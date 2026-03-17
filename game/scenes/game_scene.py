@@ -52,11 +52,12 @@ from game.utils.constants import (
     COLOR_NEON_PINK,
     COLOR_RED,
     COLOR_WHITE,
+    DEFAULT_MAP,
     DEFAULT_WEAPON_TYPE,
     KEYBIND_SLOT_1,
     KEYBIND_SLOT_2,
     KEYBIND_SLOT_3,
-    MAP_01,
+    MAPS_DIR,
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
     OBSTACLE_DAMAGED_COLOR,
@@ -79,9 +80,11 @@ from game.utils.constants import (
     TANK_DEFAULT_TYPE,
     TANK_PLAYER_COLOR,
     TANKS_CONFIG,
+    THEME_TINT_BLEND,
     WEAPONS_CONFIG,
 )
 from game.utils.map_loader import load_map
+from game.utils.math_utils import blend_colors
 from game.utils.save_manager import SaveManager
 from game.utils.logger import get_logger
 from game.utils.math_utils import draw_rotated_rect, heading_to_vec
@@ -115,6 +118,7 @@ class GameplayScene(BaseScene):
         self._camera: Camera | None = None
         self._hud: HUD | None = None
         self._weapon_configs: dict[str, dict] = {}   # type → config dict (v0.16)
+        self._theme: dict = {}                        # active map theme (v0.17)
         self._bullets: list[Bullet] = []
         self._obstacles: list = []
         self._tank_surf: pygame.Surface | None = None
@@ -195,9 +199,14 @@ class GameplayScene(BaseScene):
         player_weapon_cfgs = [self._weapon_configs[wt] for wt in weapon_types]
         self._tank.load_weapons(player_weapon_cfgs)
 
-        # Obstacles — loaded once per match
+        # Obstacles — loaded once per match; map_name resolves to data/maps/{name}.yaml
+        map_name = kwargs.get("map_name", DEFAULT_MAP)
+        import os as _os
+        map_path = _os.path.join(MAPS_DIR, f"{map_name}.yaml")
+        map_data = load_map(map_path)
         self._bullets = []
-        self._obstacles = load_map(MAP_01)
+        self._obstacles = map_data["obstacles"]
+        self._theme = map_data["theme"]
 
         # AI tanks — all heavy_tank, shared difficulty, independent controllers
         ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
@@ -246,7 +255,8 @@ class GameplayScene(BaseScene):
         self._damage_taken = 0
         self._match_start_time = time.monotonic()
 
-        get_audio_manager().play_music(MUSIC_GAMEPLAY)
+        music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
+        get_audio_manager().play_music(music_track)
 
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapons: %s",
@@ -269,6 +279,7 @@ class GameplayScene(BaseScene):
         self._obstacles = []
         self._tank_surf = None
         self._weapon_configs = {}
+        self._theme = {}
         self._bullets = []
 
     # ------------------------------------------------------------------
@@ -437,8 +448,8 @@ class GameplayScene(BaseScene):
         if self._camera is None or self._tank is None:
             return
 
-        _draw_arena(surface, self._camera)
-        _draw_obstacles(surface, self._obstacles, self._camera)
+        _draw_arena(surface, self._camera, self._theme)
+        _draw_obstacles(surface, self._obstacles, self._camera, self._theme)
 
         # AI tanks drawn before player (player renders on top if overlapping)
         for ai_tank, ai_surf in zip(self._ai_tanks, self._ai_surfs):
@@ -480,18 +491,28 @@ def _build_tank_surface(body_color: tuple) -> pygame.Surface:
     return surf
 
 
-def _draw_arena(surface: pygame.Surface, camera: Camera) -> None:
+def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = None) -> None:
+    """Draw the arena floor, grid lines, and border using theme colors when available.
+
+    Falls back to the constants (ARENA_FLOOR_COLOR etc.) if no theme is supplied,
+    ensuring backward compatibility with any call sites that omit the theme.
+    """
+    floor_color  = tuple(theme["floor_color"])       if theme and "floor_color"      in theme else ARENA_FLOOR_COLOR
+    grid_color   = tuple(theme["floor_grid_color"])  if theme and "floor_grid_color" in theme else ARENA_GRID_COLOR
+    border_color = tuple(theme["border_color"])      if theme and "border_color"     in theme else ARENA_BORDER_COLOR
+    border_thick = int(theme["border_thickness"])    if theme and "border_thickness" in theme else ARENA_BORDER_THICKNESS
+
     ax, ay = camera.world_to_screen(0, 0)
     ax_i, ay_i = int(ax), int(ay)
     floor_rect = pygame.Rect(ax_i, ay_i, ARENA_WIDTH, ARENA_HEIGHT)
-    pygame.draw.rect(surface, ARENA_FLOOR_COLOR, floor_rect)
+    pygame.draw.rect(surface, floor_color, floor_rect)
     for wx in range(0, ARENA_WIDTH + 1, ARENA_GRID_STEP):
         sx = ax_i + wx
-        pygame.draw.line(surface, ARENA_GRID_COLOR, (sx, ay_i), (sx, ay_i + ARENA_HEIGHT))
+        pygame.draw.line(surface, grid_color, (sx, ay_i), (sx, ay_i + ARENA_HEIGHT))
     for wy in range(0, ARENA_HEIGHT + 1, ARENA_GRID_STEP):
         sy = ay_i + wy
-        pygame.draw.line(surface, ARENA_GRID_COLOR, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
-    pygame.draw.rect(surface, ARENA_BORDER_COLOR, floor_rect, ARENA_BORDER_THICKNESS)
+        pygame.draw.line(surface, grid_color, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
+    pygame.draw.rect(surface, border_color, floor_rect, border_thick)
 
 
 def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
@@ -503,13 +524,23 @@ def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
     )
 
 
-def _draw_obstacles(surface: pygame.Surface, obstacles: list, camera: Camera) -> None:
+def _draw_obstacles(
+    surface: pygame.Surface,
+    obstacles: list,
+    camera: Camera,
+    theme: dict | None = None,
+) -> None:
+    """Draw obstacles, applying the theme's obstacle_tint (50/50 blend with material color)."""
+    tint = tuple(theme["obstacle_tint"]) if theme and "obstacle_tint" in theme else None
     for obs in obstacles:
         if not obs.is_alive:
             continue
         sx, sy = camera.world_to_screen(obs.x, obs.y)
         rect = pygame.Rect(int(sx), int(sy), int(obs.width), int(obs.height))
-        fill = _lerp_color(obs.color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
+        base_color = obs.color
+        if tint is not None:
+            base_color = blend_colors(base_color, tint, THEME_TINT_BLEND)
+        fill = _lerp_color(base_color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
         pygame.draw.rect(surface, fill, rect)
         pygame.draw.rect(surface, OBSTACLE_BORDER_COLOR, rect, 2)
 

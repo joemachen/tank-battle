@@ -1,0 +1,12 @@
+# data/themes/island.yaml
+# Coastal shoreline — sandy floor, turquoise border, thick sea-wall edges.
+# Reference: beach diorama tabletop, tide-worn stone and driftwood obstacles.
+
+name: "Island"
+floor_color: [194, 178, 128]
+floor_grid_color: [180, 165, 115]
+border_color: [100, 160, 200]
+border_thickness: 8
+obstacle_tint: [160, 140, 100]
+ambient_label: "Coastal"
+music_override: null

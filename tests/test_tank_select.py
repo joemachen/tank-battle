@@ -299,7 +299,10 @@ class TestGameplaySceneTankType:
                                               "accuracy": 0.72,
                                               "aggression": 0.6,
                                               "evasion_threshold": 0.40})
-        monkeypatch.setattr(gs, "load_map", lambda *a, **kw: [])
+        from game.utils.theme_loader import load_theme
+        monkeypatch.setattr(gs, "load_map", lambda *a, **kw: {
+            "obstacles": [], "theme": load_theme("default"), "name": "Test Map"
+        })
 
         class _FakeTank:
             x = y = 0
