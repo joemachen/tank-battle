@@ -15,6 +15,12 @@ Mouse aim (v0.15):
   fundamentally requires a screen→world coordinate transform.  Passing the
   camera and a position getter as constructor arguments keeps InputHandler
   decoupled from the Tank entity itself.
+
+Weapon cycling (v0.16):
+  TAB or E → cycle_weapon = +1 (next slot)
+  Q        → cycle_weapon = -1 (previous slot)
+  Edge-detected: only fires on the frame the key transitions from up to down,
+  so holding a key doesn't spin through all slots every frame.
 """
 
 import math
@@ -28,11 +34,14 @@ log = get_logger(__name__)
 
 # Default key bindings — overridden at runtime from settings.json
 _DEFAULT_KEYS: dict = {
-    "move_forward": pygame.K_w,
-    "move_backward": pygame.K_s,
-    "rotate_left": pygame.K_a,
-    "rotate_right": pygame.K_d,
-    "fire": pygame.K_SPACE,
+    "move_forward":    pygame.K_w,
+    "move_backward":   pygame.K_s,
+    "rotate_left":     pygame.K_a,
+    "rotate_right":    pygame.K_d,
+    "fire":            pygame.K_SPACE,
+    "cycle_next":      pygame.K_TAB,
+    "cycle_prev":      pygame.K_q,
+    "cycle_next_alt":  pygame.K_e,
 }
 
 
@@ -61,6 +70,11 @@ class InputHandler:
             self._apply_keybinds(keybinds)
         self._camera = camera
         self._position_getter = tank_position_getter
+
+        # Edge-detection state for weapon cycle keys
+        self._prev_cycle_next: bool = False
+        self._prev_cycle_prev: bool = False
+
         log.debug("InputHandler initialized (camera=%s).", "yes" if camera else "no")
 
     def get_input(self) -> TankInput:
@@ -85,8 +99,29 @@ class InputHandler:
         # Turret angle: mouse world position → angle from tank center
         turret_angle = self._compute_turret_angle()
 
-        return TankInput(throttle=throttle, rotate=rotate, fire=fire,
-                         turret_angle=turret_angle)
+        # Weapon cycling: edge-detect so one keypress = one slot advance
+        next_held = (
+            bool(keys[self._keys["cycle_next"]])
+            or bool(keys[self._keys["cycle_next_alt"]])
+        )
+        prev_held = bool(keys[self._keys["cycle_prev"]])
+
+        cycle = 0
+        if next_held and not self._prev_cycle_next:
+            cycle = 1
+        elif prev_held and not self._prev_cycle_prev:
+            cycle = -1
+
+        self._prev_cycle_next = next_held
+        self._prev_cycle_prev = prev_held
+
+        return TankInput(
+            throttle=throttle,
+            rotate=rotate,
+            fire=fire,
+            turret_angle=turret_angle,
+            cycle_weapon=cycle,
+        )
 
     def update_keybinds(self, keybinds: dict) -> None:
         """Apply new keybinds from settings at runtime."""
@@ -115,11 +150,11 @@ class InputHandler:
 
     def _apply_keybinds(self, keybinds: dict) -> None:
         key_map = {
-            "move_forward": "move_forward",
+            "move_forward":  "move_forward",
             "move_backward": "move_backward",
-            "rotate_left": "rotate_left",
-            "rotate_right": "rotate_right",
-            "fire": "fire",
+            "rotate_left":   "rotate_left",
+            "rotate_right":  "rotate_right",
+            "fire":          "fire",
         }
         for action, key_name in keybinds.items():
             if action in key_map:

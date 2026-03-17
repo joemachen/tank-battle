@@ -63,6 +63,16 @@ def _install_pygame_stub() -> None:
     stub.K_RMETA    = 309
     stub.K_CAPSLOCK = 301
     stub.K_NUMLOCK  = 300
+    # Weapon cycling keys (v0.16)
+    stub.K_TAB      = 9
+    stub.K_q        = 113
+    stub.K_e        = 101
+    # Direct slot-select keys (v0.16)
+    stub.K_1        = 49
+    stub.K_2        = 50
+    stub.K_3        = 51
+    # Mouse wheel event type (v0.16)
+    stub.MOUSEWHEEL = 1027
 
     # ---------------------------------------------------------------------------
     # Key sub-module
@@ -71,6 +81,7 @@ def _install_pygame_stub() -> None:
 
     _KEY_NAMES_MAP = {
         8: "backspace", 9: "tab", 13: "return", 27: "escape", 32: "space",
+        101: "e", 113: "q",
         273: "up", 274: "down", 275: "right", 276: "left",
         300: "numlock", 301: "caps lock", 303: "right shift", 304: "left shift",
         305: "right ctrl", 306: "left ctrl", 307: "right alt", 308: "left alt",
