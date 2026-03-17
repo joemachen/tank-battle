@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.15.0"
+GAME_VERSION: str = "v0.16.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -91,6 +91,12 @@ ARENA_PADDING: int = 32                  # min distance from arena edge for spaw
 # Weapons / Bullets
 # ---------------------------------------------------------------------------
 DEFAULT_WEAPON_TYPE: str = "standard_shell"
+MAX_WEAPON_SLOTS: int = 3            # per-tank loadout slots (v0.16)
+
+# Key constants for weapon cycling (v0.16)
+KEYBIND_CYCLE_NEXT: int = 9          # K_TAB  — cycle to next weapon slot
+KEYBIND_CYCLE_PREV: int = 113        # K_q    — cycle to previous weapon slot
+KEYBIND_CYCLE_NEXT_ALT: int = 101    # K_e    — alternate cycle-next binding
 BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
 BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml

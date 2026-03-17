@@ -33,7 +33,7 @@ from game.systems.physics import PhysicsSystem
 from game.ui.audio_manager import get_audio_manager
 from game.ui.hud import HUD
 from game.utils.camera import Camera
-from game.utils.config_loader import get_ai_config, get_tank_config, get_weapon_config
+from game.utils.config_loader import get_ai_config, get_tank_config, load_yaml
 from game.utils.constants import (
     AI_ATTACK_RANGE,
     AI_DETECTION_RANGE,
@@ -111,8 +111,7 @@ class GameplayScene(BaseScene):
         self._collision: CollisionSystem | None = None
         self._camera: Camera | None = None
         self._hud: HUD | None = None
-        self._weapon_config: dict = {}
-        self._weapon_type: str = DEFAULT_WEAPON_TYPE
+        self._weapon_configs: dict[str, dict] = {}   # type → config dict (v0.16)
         self._bullets: list[Bullet] = []
         self._obstacles: list = []
         self._tank_surf: pygame.Surface | None = None
@@ -148,8 +147,12 @@ class GameplayScene(BaseScene):
             tank_type, ai_difficulty_key, ai_count,
         )
 
-        # Resolve weapon type from WeaponSelectScene kwargs (fall back to default)
-        self._weapon_type = kwargs.get("weapon_type", DEFAULT_WEAPON_TYPE)
+        # Resolve weapon types from WeaponSelectScene kwargs (fall back to default)
+        raw_weapon_types = kwargs.get("weapon_types", DEFAULT_WEAPON_TYPE)
+        if isinstance(raw_weapon_types, str):
+            weapon_types: list[str] = [raw_weapon_types]
+        else:
+            weapon_types = list(raw_weapon_types) or [DEFAULT_WEAPON_TYPE]
 
         # Camera created first so InputHandler can reference it for mouse→world transform
         self._camera = Camera()
@@ -164,6 +167,19 @@ class GameplayScene(BaseScene):
             tank_position_getter=lambda: self._tank.position,
         )
 
+        # Build weapon config lookup used by _spawn_bullet
+        all_weapon_data = load_yaml(WEAPONS_CONFIG)
+        self._weapon_configs = {}
+        for wtype in weapon_types:
+            cfg = dict(all_weapon_data.get(wtype, {}))
+            cfg.setdefault("type", wtype)
+            self._weapon_configs[wtype] = cfg
+        # Ensure standard_shell is always available (AI uses it)
+        if "standard_shell" not in self._weapon_configs:
+            cfg = dict(all_weapon_data.get("standard_shell", {}))
+            cfg.setdefault("type", "standard_shell")
+            self._weapon_configs["standard_shell"] = cfg
+
         # Player tank
         tank_config = get_tank_config(tank_type, TANKS_CONFIG)
         self._tank = Tank(
@@ -172,10 +188,9 @@ class GameplayScene(BaseScene):
             config=tank_config,
             controller=self._input_handler,
         )
-        self._weapon_config = get_weapon_config(self._weapon_type, WEAPONS_CONFIG)
-        self._tank.fire_rate = float(
-            self._weapon_config.get("fire_rate", self._tank.fire_rate)
-        )
+        # Equip player with selected weapon loadout
+        player_weapon_cfgs = [self._weapon_configs[wt] for wt in weapon_types]
+        self._tank.load_weapons(player_weapon_cfgs)
 
         # Obstacles — loaded once per match
         self._bullets = []
@@ -204,6 +219,9 @@ class GameplayScene(BaseScene):
             )
             controller.set_owner(ai_tank)
             controller.set_obstacles_getter(live_obstacles)
+            # AI always uses standard_shell
+            std_cfg = self._weapon_configs["standard_shell"]
+            ai_tank.load_weapons([std_cfg])
             self._ai_tanks.append(ai_tank)
             self._ai_controllers.append(controller)
             self._ai_surfs.append(_build_tank_surface(COLOR_RED))
@@ -228,8 +246,8 @@ class GameplayScene(BaseScene):
         get_audio_manager().play_music(MUSIC_GAMEPLAY)
 
         log.info(
-            "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapon: %s",
-            tank_type, ai_count, ai_difficulty_key, self._weapon_type,
+            "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapons: %s",
+            tank_type, ai_count, ai_difficulty_key, weapon_types,
         )
 
     def on_exit(self) -> None:
@@ -247,7 +265,7 @@ class GameplayScene(BaseScene):
         self._hud = None
         self._obstacles = []
         self._tank_surf = None
-        self._weapon_config = {}
+        self._weapon_configs = {}
         self._bullets = []
 
     # ------------------------------------------------------------------
@@ -368,11 +386,12 @@ class GameplayScene(BaseScene):
         self._camera.update(dt, self._tank.x, self._tank.y)
 
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
-        # event = ("fire", tank_x, tank_y, turret_angle)
-        _, ex, ey, eangle = event
+        # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]
+        _, ex, ey, eangle, weapon_type = event
+        weapon_cfg = self._weapon_configs.get(weapon_type, {"type": weapon_type})
 
-        spread_count = int(self._weapon_config.get("spread_count", 1))
-        spread_angle = float(self._weapon_config.get("spread_angle", 0.0))
+        spread_count = int(weapon_cfg.get("spread_count", 1))
+        spread_angle = float(weapon_cfg.get("spread_angle", 0.0))
 
         if spread_count > 1 and spread_angle > 0.0:
             # Fan spread_count bullets symmetrically around eangle.
@@ -385,13 +404,13 @@ class GameplayScene(BaseScene):
                 dx, dy = heading_to_vec(bullet_angle)
                 bx = ex + dx * TANK_BARREL_LENGTH
                 by = ey + dy * TANK_BARREL_LENGTH
-                self._bullets.append(Bullet(bx, by, bullet_angle, owner, self._weapon_config))
+                self._bullets.append(Bullet(bx, by, bullet_angle, owner, weapon_cfg))
         else:
             # Single bullet (standard_shell, bouncing_round, homing_missile)
             dx, dy = heading_to_vec(eangle)
             bx = ex + dx * TANK_BARREL_LENGTH
             by = ey + dy * TANK_BARREL_LENGTH
-            self._bullets.append(Bullet(bx, by, eangle, owner, self._weapon_config))
+            self._bullets.append(Bullet(bx, by, eangle, owner, weapon_cfg))
 
     # ------------------------------------------------------------------
     # Draw
@@ -413,8 +432,11 @@ class GameplayScene(BaseScene):
         _draw_bullets(surface, self._bullets, self._camera)
 
         if self._hud:
-            self._hud.draw(surface, self._tank, self._ai_tanks,
-                           weapon_type=self._weapon_type)
+            self._hud.draw(
+                surface, self._tank, self._ai_tanks,
+                weapon_slots=self._tank.weapon_slots,
+                active_slot=self._tank.active_slot,
+            )
 
         # Reticle — drawn after entities, before debug; hidden when paused or player dead
         if self._tank.is_alive:

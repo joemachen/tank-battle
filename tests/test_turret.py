@@ -118,7 +118,7 @@ class TestBulletSpawnAngle:
         events = tank.update(dt=0.016)
         fire_events = [e for e in events if e[0] == "fire"]
         assert len(fire_events) == 1
-        _, _x, _y, fire_angle = fire_events[0]
+        _, _x, _y, fire_angle, _wtype = fire_events[0]
         assert fire_angle == pytest.approx(90.0)
 
     def test_fire_event_angle_differs_from_hull_when_turret_rotated(self):
@@ -127,7 +127,7 @@ class TestBulletSpawnAngle:
         events = tank.update(dt=0.016)
         fire_events = [e for e in events if e[0] == "fire"]
         assert len(fire_events) == 1
-        _, _x, _y, fire_angle = fire_events[0]
+        _, _x, _y, fire_angle, _wtype = fire_events[0]
         # Should be 180° (turret), NOT 45° (hull)
         assert fire_angle == pytest.approx(180.0)
         assert fire_angle != pytest.approx(45.0)

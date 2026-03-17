@@ -287,8 +287,13 @@ class TestGameplaySceneTankType:
                     "turn_rate": 130, "fire_rate": 1.0}
 
         monkeypatch.setattr(gs, "get_tank_config", _spy_get_tank_config)
-        monkeypatch.setattr(gs, "get_weapon_config",
-                            lambda *a, **kw: {"fire_rate": 1.0})
+        monkeypatch.setattr(gs, "load_yaml",
+                            lambda *a, **kw: {
+                                "standard_shell": {"type": "standard_shell", "fire_rate": 1.0},
+                                "spread_shot":    {"type": "spread_shot",    "fire_rate": 0.8},
+                                "bouncing_round": {"type": "bouncing_round", "fire_rate": 0.6},
+                                "homing_missile": {"type": "homing_missile", "fire_rate": 0.4},
+                            })
         monkeypatch.setattr(gs, "get_ai_config",
                             lambda *a, **kw: {"reaction_time": 0.4,
                                               "accuracy": 0.72,
@@ -302,8 +307,11 @@ class TestGameplaySceneTankType:
             health_ratio = 1.0
             fire_rate = 1.0
             position = (0.0, 0.0)
+            weapon_slots = [{"type": "standard_shell", "fire_rate": 1.0}]
+            active_slot = 0
             def set_controller(self, c): pass
             def update(self, dt): pass
+            def load_weapons(self, configs): pass
 
         class _FakeInput: pass
 

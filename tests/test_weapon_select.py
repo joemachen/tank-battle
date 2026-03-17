@@ -48,6 +48,9 @@ if "pygame" not in sys.modules:
     _pygame_stub.K_BACKSPACE = 8
     _pygame_stub.K_y = 121
     _pygame_stub.K_n = 110
+    _pygame_stub.K_TAB = 9
+    _pygame_stub.K_q = 113
+    _pygame_stub.K_e = 101
 
     _event_mod = types.ModuleType("pygame.event")
     class _FakeEventType: pass
@@ -238,16 +241,17 @@ class TestLockUnlock:
         scene = _make_scene(unlocked=_UNLOCKED_ALL)
         assert scene.is_locked("homing_missile") is False
 
-    def test_cursor_starts_on_first_unlocked(self):
+    def test_slot1_defaults_to_first_unlocked_weapon(self):
+        """Slot 1 is pre-populated with the first unlocked weapon from the tank's defaults."""
         scene = _make_scene(unlocked=["standard_shell"])
-        weapon_type = scene._weapon_data[scene._cursor]["type"]
-        assert weapon_type == "standard_shell"
+        # medium_tank default_weapons[0] = standard_shell → slot 1 = standard_shell
+        assert scene._slot_selections[0] == "standard_shell"
 
-    def test_cursor_skips_locked_to_first_unlocked(self):
-        """With only spread_shot unlocked, cursor should start on spread_shot (idx 1)."""
-        scene = _make_scene(unlocked=["spread_shot"])
-        weapon_type = scene._weapon_data[scene._cursor]["type"]
-        assert weapon_type == "spread_shot"
+    def test_locked_default_weapon_leaves_slot_empty(self):
+        """If the tank's default slot-2 weapon is locked, that slot remains None."""
+        # medium_tank default_weapons[1] = null → slot 2 = None regardless
+        scene = _make_scene(unlocked=["standard_shell"], tank_type="medium_tank")
+        assert scene._slot_selections[1] is None
 
 
 # ---------------------------------------------------------------------------
@@ -257,55 +261,93 @@ class TestLockUnlock:
 class TestKwargForwarding:
     def test_confirm_switches_to_scene_game(self):
         scene = _make_scene(unlocked=_UNLOCKED_ALL)
-        scene._cursor = 0  # standard_shell
+        scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
         assert scene.manager.last_switch == SCENE_GAME
 
-    def test_weapon_type_forwarded(self):
+    def test_weapon_types_forwarded_as_list(self):
+        """Confirmed weapons are forwarded as weapon_types (list), not weapon_type."""
         scene = _make_scene(unlocked=_UNLOCKED_ALL)
-        scene._cursor = 0  # standard_shell
+        scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
-        assert scene.manager.last_kwargs.get("weapon_type") == "standard_shell"
+        wt = scene.manager.last_kwargs.get("weapon_types")
+        assert isinstance(wt, list)
+        assert "standard_shell" in wt
+
+    def test_weapon_type_key_not_present(self):
+        """New scene uses weapon_types (plural); the old weapon_type key must not appear."""
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections[0] = "standard_shell"
+        scene._confirm_selection()
+        assert "weapon_type" not in scene.manager.last_kwargs
 
     def test_tank_type_forwarded(self):
         scene = _make_scene(unlocked=_UNLOCKED_ALL, tank_type="heavy_tank")
-        scene._cursor = 0
+        scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
         assert scene.manager.last_kwargs.get("tank_type") == "heavy_tank"
 
     def test_ai_count_forwarded(self):
         scene = _make_scene(unlocked=_UNLOCKED_ALL, ai_count=3)
-        scene._cursor = 0
+        scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
         assert scene.manager.last_kwargs.get("ai_count") == 3
 
-    def test_all_three_kwargs_present(self):
+    def test_all_kwargs_present(self):
         scene = _make_scene(unlocked=_UNLOCKED_ALL, tank_type="scout_tank", ai_count=2)
-        scene._cursor = 3  # homing_missile
+        scene._slot_selections = ["standard_shell", "spread_shot", None]
         scene._confirm_selection()
         kw = scene.manager.last_kwargs
-        assert kw.get("weapon_type") == "homing_missile"
         assert kw.get("tank_type") == "scout_tank"
         assert kw.get("ai_count") == 2
+        assert "standard_shell" in kw.get("weapon_types", [])
+        assert "spread_shot" in kw.get("weapon_types", [])
 
 
 # ---------------------------------------------------------------------------
-# 4. Locked weapon ignores confirm
+# 4. Slot confirm logic (replaces old locked-weapon-ignores-confirm tests)
 # ---------------------------------------------------------------------------
 
-class TestLockedWeaponIgnoresConfirm:
-    def test_locked_weapon_does_not_switch_scene(self):
-        """Confirming a locked weapon must not call switch_to."""
-        scene = _make_scene(unlocked=["standard_shell"])
-        scene._cursor = 3  # homing_missile (locked)
+class TestSlotConfirmLogic:
+    def test_empty_slot1_prevents_confirm(self):
+        """If slot 1 is None, confirm must not call switch_to."""
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections = [None, None, None]
         scene._confirm_selection()
         assert scene.manager.last_switch is None
 
-    def test_locked_weapon_leaves_no_kwargs(self):
-        scene = _make_scene(unlocked=["standard_shell"])
-        scene._cursor = 1  # spread_shot (locked)
+    def test_empty_slot1_leaves_no_kwargs(self):
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections = [None, None, None]
         scene._confirm_selection()
         assert scene.manager.last_kwargs == {}
+
+    def test_filled_slot1_allows_confirm(self):
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections[0] = "standard_shell"
+        scene._confirm_selection()
+        assert scene.manager.last_switch == SCENE_GAME
+
+    def test_only_non_none_slots_forwarded(self):
+        """Empty slots are excluded from weapon_types."""
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections = ["standard_shell", None, None]
+        scene._confirm_selection()
+        assert scene.manager.last_kwargs["weapon_types"] == ["standard_shell"]
+
+    def test_multi_slot_selection_forwarded(self):
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections = ["standard_shell", "spread_shot", None]
+        scene._confirm_selection()
+        assert scene.manager.last_kwargs["weapon_types"] == ["standard_shell", "spread_shot"]
+
+    def test_all_three_slots_forwarded(self):
+        scene = _make_scene(unlocked=_UNLOCKED_ALL)
+        scene._slot_selections = ["standard_shell", "spread_shot", "bouncing_round"]
+        scene._confirm_selection()
+        assert scene.manager.last_kwargs["weapon_types"] == [
+            "standard_shell", "spread_shot", "bouncing_round"
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 """
 game/ui/hud.py
 
-HUD — renders in-game overlay: health bars for player and AI tank(s).
+HUD — renders in-game overlay: health bars for player and AI tank(s),
+plus a weapon slot display showing all 3 loadout slots.
 
 Layout:
   Player bar — bottom-left corner
+  Weapon slots — row just below the player health bar
   AI bars    — bottom-right corner, stacked vertically (one per live AI tank)
   Each bar has the tank's type label drawn above it.
 
@@ -22,6 +24,7 @@ from game.utils.constants import (
     HUD_BAR_HEIGHT,
     HUD_BAR_WIDTH,
     HUD_MARGIN,
+    MAX_WEAPON_SLOTS,
 )
 from game.utils.logger import get_logger
 
@@ -55,16 +58,18 @@ class HUD:
         surface: pygame.Surface,
         player_tank,
         ai_tanks=None,
-        weapon_type: str | None = None,
+        weapon_slots: list | None = None,
+        active_slot: int = 0,
     ) -> None:
         """
-        Render HUD health bars and optional weapon label.
+        Render HUD health bars and weapon slot display.
 
         Args:
-            surface:     target display surface
-            player_tank: player Tank entity (always drawn)
-            ai_tanks:    a single Tank, a list of Tanks, or None
-            weapon_type: current weapon key shown below the player health bar
+            surface:      target display surface
+            player_tank:  player Tank entity (always drawn)
+            ai_tanks:     a single Tank, a list of Tanks, or None
+            weapon_slots: list of weapon config dicts from tank.weapon_slots
+            active_slot:  index of the currently active weapon slot
         """
         self._ensure_fonts()
 
@@ -76,12 +81,12 @@ class HUD:
         label_y = bar_y - _LABEL_HEIGHT
         self._draw_health_bar(surface, player_tank, HUD_MARGIN, bar_y, label_y)
 
-        # Weapon label — just below the player health bar
-        if weapon_type:
-            weapon_label = self._small_font.render(
-                weapon_type.replace("_", " ").title(), True, COLOR_NEON_PINK
+        # Weapon slot row — just below the player health bar
+        if weapon_slots:
+            self._draw_weapon_slots(
+                surface, weapon_slots, active_slot,
+                x=HUD_MARGIN, y=bar_y + HUD_BAR_HEIGHT + 4,
             )
-            surface.blit(weapon_label, (HUD_MARGIN, bar_y + HUD_BAR_HEIGHT + 4))
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
         if ai_tanks is None:
@@ -103,6 +108,39 @@ class HUD:
                 break  # no vertical space left
             self._draw_health_bar(surface, tank, ai_x, t_bar_y, t_label_y)
             row += 1
+
+    def _draw_weapon_slots(
+        self,
+        surface: pygame.Surface,
+        weapon_slots: list,
+        active_slot: int,
+        x: int,
+        y: int,
+    ) -> None:
+        """
+        Render up to MAX_WEAPON_SLOTS weapon labels in a horizontal row.
+        Active slot is neon-pink; inactive slots are gray; empty slots show '---'.
+        Format:  [1: Standard Shell]  [2: Spread Shot]  [3: ---]
+        """
+        font = self._small_font
+        if font is None:
+            return
+
+        # Pad to MAX_WEAPON_SLOTS with None entries
+        padded: list = list(weapon_slots) + [None] * (MAX_WEAPON_SLOTS - len(weapon_slots))
+
+        cx = x
+        for i, slot in enumerate(padded):
+            if slot is not None:
+                wname = slot.get("type", "---").replace("_", " ").title()
+            else:
+                wname = "---"
+
+            color = COLOR_NEON_PINK if i == active_slot else COLOR_GRAY
+            label = f"[{i + 1}: {wname}]"
+            rendered = font.render(label, True, color)
+            surface.blit(rendered, (cx, y))
+            cx += rendered.get_width() + 8
 
     def _draw_health_bar(
         self,
