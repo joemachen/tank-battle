@@ -4,11 +4,15 @@ game/ui/hud.py
 HUD — renders in-game overlay: health bars for player and AI tank(s),
 plus a weapon slot display showing all 3 loadout slots.
 
-Layout:
-  Player bar — bottom-left corner
-  Weapon slots — row just below the player health bar
-  AI bars    — bottom-right corner, stacked vertically (one per live AI tank)
-  Each bar has the tank's type label drawn above it.
+Layout (bottom-left, measured upward from screen bottom):
+  HUD_BOTTOM_MARGIN              ← gap from screen edge
+  Weapon slot row  (_WEAPON_ROW_H)
+  _BAR_WEAPON_GAP                ← gap between weapon row and bar
+  Player health bar (HUD_BAR_HEIGHT)
+  _LABEL_HEIGHT                  ← gap + label above bar
+
+AI health bars mirror the same y-anchor in the bottom-right corner
+(no weapon row; they start at the same bar_y as the player).
 
 HUD pulls all data at draw time — no entity references are stored here.
 """
@@ -23,6 +27,7 @@ from game.utils.constants import (
     COLOR_WHITE,
     HUD_BAR_HEIGHT,
     HUD_BAR_WIDTH,
+    HUD_BOTTOM_MARGIN,
     HUD_MARGIN,
     MAX_WEAPON_SLOTS,
 )
@@ -30,10 +35,25 @@ from game.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-_LABEL_HEIGHT: int = 20    # pixels above each bar for the type label
-_HP_TEXT_HEIGHT: int = 18  # pixels below each bar for HP numbers
+_LABEL_HEIGHT: int = 20     # pixels above each bar for the type label
+_HP_TEXT_HEIGHT: int = 18   # pixels below each bar for HP numbers
+_WEAPON_ROW_H: int = 18     # estimated pixel height of one small-font text row
+_BAR_WEAPON_GAP: int = 4    # gap between the top of the weapon row and the bottom of the bar
+
 # Vertical stride between stacked AI bars (bar + label + gap)
 _AI_BAR_STRIDE: int = HUD_BAR_HEIGHT + _LABEL_HEIGHT + 8
+
+
+def _compute_bar_y(sh: int) -> int:
+    """
+    Return the y-coordinate for a health bar so that the weapon slot row
+    and the bar itself are both fully visible at the bottom of the screen.
+
+    Stack from bottom up:
+      HUD_BOTTOM_MARGIN → weapon row → _BAR_WEAPON_GAP → health bar → label
+    """
+    weapon_y = sh - HUD_BOTTOM_MARGIN - _WEAPON_ROW_H
+    return weapon_y - _BAR_WEAPON_GAP - HUD_BAR_HEIGHT
 
 
 class HUD:
@@ -76,16 +96,20 @@ class HUD:
         sw = surface.get_width()
         sh = surface.get_height()
 
-        # Player bar — bottom-left
-        bar_y = sh - HUD_MARGIN - HUD_BAR_HEIGHT
+        # Compute anchors — everything derived from _compute_bar_y so
+        # the weapon row is never clipped at the bottom of the screen.
+        bar_y = _compute_bar_y(sh)
         label_y = bar_y - _LABEL_HEIGHT
+        weapon_y = bar_y + HUD_BAR_HEIGHT + _BAR_WEAPON_GAP
+
+        # Player bar — bottom-left
         self._draw_health_bar(surface, player_tank, HUD_MARGIN, bar_y, label_y)
 
-        # Weapon slot row — just below the player health bar
+        # Weapon slot row — below the player health bar
         if weapon_slots:
             self._draw_weapon_slots(
                 surface, weapon_slots, active_slot,
-                x=HUD_MARGIN, y=bar_y + HUD_BAR_HEIGHT + 4,
+                x=HUD_MARGIN, y=weapon_y,
             )
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
@@ -96,13 +120,14 @@ class HUD:
         else:
             tanks = [t for t in ai_tanks if t is not None]
 
-        # Stack AI bars from the bottom-right upward; dead tanks are omitted
+        # Stack AI bars from the same bar_y upward in the bottom-right corner;
+        # dead tanks are omitted.
         ai_x = sw - HUD_MARGIN - HUD_BAR_WIDTH
         row = 0
         for tank in tanks:
             if not tank.is_alive:
                 continue
-            t_bar_y = sh - HUD_MARGIN - HUD_BAR_HEIGHT - row * _AI_BAR_STRIDE
+            t_bar_y = bar_y - row * _AI_BAR_STRIDE
             t_label_y = t_bar_y - _LABEL_HEIGHT
             if t_label_y < 0:
                 break  # no vertical space left

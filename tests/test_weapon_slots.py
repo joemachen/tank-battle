@@ -351,7 +351,66 @@ class TestSlotRequirements:
 
 
 # ---------------------------------------------------------------------------
-# 8. TankInput dataclass defaults
+# 8. set_active_slot — direct slot select (number keys / mouse wheel)
+# ---------------------------------------------------------------------------
+
+class TestSetActiveSlot:
+    def test_set_active_slot_valid_index(self):
+        """set_active_slot(1) on a 2-slot tank switches to slot 1."""
+        tank = _make_tank()
+        tank.load_weapons([_std(), _spread()])
+        tank.set_active_slot(1)
+        assert tank.active_slot == 1
+        assert tank.active_weapon["type"] == "spread_shot"
+
+    def test_set_active_slot_zero(self):
+        """set_active_slot(0) always valid and stays at slot 0."""
+        tank = _make_tank()
+        tank.load_weapons([_std(), _spread()])
+        tank.cycle_weapon(+1)          # move to slot 1 first
+        tank.set_active_slot(0)
+        assert tank.active_slot == 0
+
+    def test_set_active_slot_out_of_range_is_noop(self):
+        """set_active_slot(2) on a 1-slot tank must leave active_slot unchanged."""
+        tank = _make_tank()
+        tank.load_weapons([_std()])
+        tank.set_active_slot(2)
+        assert tank.active_slot == 0
+
+    def test_set_active_slot_large_index_does_not_raise(self):
+        """Arbitrarily large index must not raise — silently ignored."""
+        tank = _make_tank()
+        tank.load_weapons([_std()])
+        tank.set_active_slot(99)       # must not raise
+        assert tank.active_slot == 0  # unchanged
+
+    def test_set_active_slot_does_not_reset_cooldown(self):
+        """Jumping to a slot via set_active_slot must not clear its cooldown timer."""
+        ctrl = _FixedController(TankInput(fire=True))
+        tank = Tank(x=0, y=0, config={}, controller=ctrl)
+        tank.load_weapons([_std(), _spread()])
+        tank.cycle_weapon(+1)                  # move to slot 1
+        tank.update(dt=0.016)                  # fire — slot 1 gets cooldown
+        cd_before = tank._slot_cooldowns[1]
+        assert cd_before > 0
+
+        tank.set_active_slot(0)                # jump away
+        tank.set_active_slot(1)                # jump back
+        # Cooldown must still be there (not reset by the slot select)
+        assert tank._slot_cooldowns[1] <= cd_before  # may have ticked down
+
+    def test_set_active_slot_three_slot_tank(self):
+        """set_active_slot(2) on a 3-slot tank correctly selects slot 2."""
+        tank = _make_tank()
+        tank.load_weapons([_std(), _spread(), _bounce()])
+        tank.set_active_slot(2)
+        assert tank.active_slot == 2
+        assert tank.active_weapon["type"] == "bouncing_round"
+
+
+# ---------------------------------------------------------------------------
+# 9. TankInput dataclass defaults
 # ---------------------------------------------------------------------------
 
 class TestTankInputDefaults:

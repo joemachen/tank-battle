@@ -97,6 +97,11 @@ MAX_WEAPON_SLOTS: int = 3            # per-tank loadout slots (v0.16)
 KEYBIND_CYCLE_NEXT: int = 9          # K_TAB  — cycle to next weapon slot
 KEYBIND_CYCLE_PREV: int = 113        # K_q    — cycle to previous weapon slot
 KEYBIND_CYCLE_NEXT_ALT: int = 101    # K_e    — alternate cycle-next binding
+
+# Direct slot-select keys (1 = slot 0, 2 = slot 1, 3 = slot 2)
+KEYBIND_SLOT_1: int = 49             # K_1
+KEYBIND_SLOT_2: int = 50             # K_2
+KEYBIND_SLOT_3: int = 51             # K_3
 BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
 BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml
@@ -159,7 +164,8 @@ MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav"
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
-HUD_MARGIN: int = 12
+HUD_MARGIN: int = 12                 # left / right margin for HUD elements
+HUD_BOTTOM_MARGIN: int = 12          # gap between bottom of screen and lowest HUD element
 HUD_BAR_WIDTH: int = 160
 HUD_BAR_HEIGHT: int = 16
 

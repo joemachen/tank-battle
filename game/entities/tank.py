@@ -167,6 +167,20 @@ class Tank:
             self._weapon_slots[self._active_slot].get("type"),
         )
 
+    def set_active_slot(self, index: int) -> None:
+        """
+        Jump directly to a specific weapon slot by zero-based index.
+        No-op (and no exception) if index is out of range — handles tanks
+        that carry fewer slots than the key binding assumes.
+        Does NOT reset the target slot's cooldown.
+        """
+        if 0 <= index < len(self._weapon_slots):
+            self._active_slot = index
+            log.debug(
+                "Tank weapon slot set to %d (%s)",
+                index, self._weapon_slots[index].get("type"),
+            )
+
     # ------------------------------------------------------------------
     # Weapon slot properties
     # ------------------------------------------------------------------

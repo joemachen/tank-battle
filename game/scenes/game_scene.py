@@ -53,6 +53,9 @@ from game.utils.constants import (
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_WEAPON_TYPE,
+    KEYBIND_SLOT_1,
+    KEYBIND_SLOT_2,
+    KEYBIND_SLOT_3,
     MAP_01,
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
@@ -278,6 +281,19 @@ class GameplayScene(BaseScene):
                 self.manager.switch_to(SCENE_MENU)
             elif event.key == pygame.K_m:
                 get_audio_manager().toggle_mute()
+            # Number keys — jump directly to weapon slot (no-op if slot doesn't exist)
+            elif event.key == KEYBIND_SLOT_1 and self._tank:
+                self._tank.set_active_slot(0)
+            elif event.key == KEYBIND_SLOT_2 and self._tank:
+                self._tank.set_active_slot(1)
+            elif event.key == KEYBIND_SLOT_3 and self._tank:
+                self._tank.set_active_slot(2)
+
+        # Mouse wheel — cycle through weapon slots
+        # scroll down (y < 0) = next weapon; scroll up (y > 0) = previous weapon
+        elif event.type == pygame.MOUSEWHEEL and self._tank:
+            direction = 1 if event.y < 0 else -1
+            self._tank.cycle_weapon(direction)
 
     def update(self, dt: float) -> None:
         if self._tank is None:
