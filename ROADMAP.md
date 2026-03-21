@@ -20,19 +20,20 @@ are completed or plans change.
 | v0.14.0 | Weapon selection — pre-match picker, stat bars, animated preview, HUD display |
 | v0.15.0 | Decoupled turret aiming + mouse reticle — turret_angle, barrel render, aim reticle |
 | v0.16.0 | Secondary + tertiary weapons — 3-slot loadout, per-slot cooldowns, Tab/Q/E/wheel/1-3 |
+| v0.17.0 | Multiple maps + environment themes — 3 maps, 6 themes, MapSelectScene |
+| v0.17.5 | Unified LoadoutScene + profile auto-create — collapse 3-scene pre-match chain |
+| v0.18.0 | Destructible obstacles — damage states, hit flash, debris particles, collision damage removed |
 ---
 ## 🔨 In Progress
 | Branch               | Milestone                                            |
 |----------------------|------------------------------------------------------|
-| feature/maps-themes  | v0.17 — Multiple maps + environment themes           |
+| feature/pickups      | v0.19 — Pickup drops                                 |
 ---
 ## 🗺️ Planned
 ### Phase 2 — Content Expansion
 *More things to do and unlock.*
 | Version | Milestone                          | Notes                                                                                                                                                                                                                                                                                                    |
 |---------|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.17   | Multiple maps + environment themes | Map select screen, 2–3 map layouts in data/maps/. Theme system: each map has an environment theme (desert, snow, jungle, urban, suburban, island). Theme defines floor color/texture, border style, obstacle tint, ambient mood. Same map geometry can be reskinned across themes. Theme config in data/themes/. Reference aesthetic: Wii Play Tanks — toy/wooden table feel. |
-| v0.18   | Destructible obstacles            | Material system already supports it — needs visual destruction feedback (flash, crumble).                                                                                                                                                                                                                |
 | v0.19   | Pickup drops                      | Health packs, ammo, speed boost. Pickup entity already exists in entities/pickup.py.                                                                                                                                                                                                                     |
 | v0.20   | Defensive pickups                 | Shields (absorb X damage), repair kits (regen over time), decoys (confuse AI targeting), EMP (brief area slow). All defined in pickup config.                                                                                                                                                            |
 ---
@@ -138,5 +139,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.16.0 — v0.15 turret aiming + v0.16 secondary weapons completed;
-v0.17 maps + environment themes in progress*
+*Last updated: v0.18.0 — v0.17 maps/themes, v0.17.5 unified loadout, v0.18 destructible obstacles completed;
+v0.19 pickup drops in progress*

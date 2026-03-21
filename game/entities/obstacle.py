@@ -5,7 +5,14 @@ Static map obstacle. Blocks tank movement and interacts with bullets.
 Material type drives hp, destructibility, damage filtering, and render color.
 """
 
+from game.utils.constants import (
+    DAMAGE_DARKEN_CRITICAL,
+    DAMAGE_DARKEN_MEDIUM,
+    HIT_FLASH_BLEND,
+    HIT_FLASH_DURATION,
+)
 from game.utils.logger import get_logger
+from game.utils.math_utils import blend_colors
 
 log = get_logger(__name__)
 
@@ -56,6 +63,8 @@ class Obstacle:
         self.damage_filters: list = list(cfg.get("damage_filters", []))
         raw_color = cfg.get("color", [90, 85, 75])
         self.color: tuple = (int(raw_color[0]), int(raw_color[1]), int(raw_color[2]))
+        self.base_color: tuple = self.color  # overwritten by GameplayScene with theme-tinted value
+        self._hit_flash_timer: float = 0.0
 
         log.debug(
             "Obstacle created: type=%s material=%s hp=%d destructible=%s",
@@ -77,6 +86,34 @@ class Obstacle:
         if not self.destructible or self.max_hp <= 0:
             return 1.0
         return max(0.0, self.hp / self.max_hp)
+
+    @property
+    def is_flashing(self) -> bool:
+        """True while the hit-flash effect is active."""
+        return self._hit_flash_timer > 0
+
+    @property
+    def current_color(self) -> tuple:
+        """Render color incorporating damage state and hit flash."""
+        color = self.base_color
+        if self.destructible:
+            ratio = self.hp_ratio
+            if ratio < 0.33:
+                color = blend_colors(color, (0, 0, 0), DAMAGE_DARKEN_CRITICAL)
+            elif ratio < 0.66:
+                color = blend_colors(color, (0, 0, 0), DAMAGE_DARKEN_MEDIUM)
+        if self.is_flashing:
+            color = blend_colors(color, (255, 255, 255), HIT_FLASH_BLEND)
+        return color
+
+    # ------------------------------------------------------------------
+    # Update
+    # ------------------------------------------------------------------
+
+    def update(self, dt: float) -> None:
+        """Advance per-frame timers (hit flash)."""
+        if self._hit_flash_timer > 0:
+            self._hit_flash_timer = max(0.0, self._hit_flash_timer - dt)
 
     # ------------------------------------------------------------------
     # Damage
@@ -100,6 +137,7 @@ class Obstacle:
             )
             return
         self.hp = max(0, self.hp - amount)
+        self._hit_flash_timer = HIT_FLASH_DURATION
         log.debug(
             "Obstacle at (%.0f, %.0f) took %d %s damage — hp=%d/%d.",
             self.x, self.y, amount, damage_type, self.hp, self.max_hp,

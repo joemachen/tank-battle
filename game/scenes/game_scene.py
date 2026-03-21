@@ -18,6 +18,7 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 """
 
+import random
 import time
 
 import pygame
@@ -27,6 +28,7 @@ from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
+from game.systems.debris_system import DebrisSystem
 from game.systems.input_handler import InputHandler
 from game.systems.match_calculator import MatchCalculator
 from game.systems.physics import PhysicsSystem
@@ -50,6 +52,9 @@ from game.utils.constants import (
     BULLET_RADIUS,
     COLOR_BG,
     COLOR_NEON_PINK,
+    DAMAGE_CRACK_DARKEN,
+    DEBRIS_COUNT,
+    DEBRIS_COUNT_DEFAULT,
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_MAP,
@@ -60,7 +65,6 @@ from game.utils.constants import (
     MAPS_DIR,
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
-    OBSTACLE_DAMAGED_COLOR,
     RETICLE_COLOR,
     RETICLE_LINE_LENGTH,
     RETICLE_RADIUS,
@@ -211,6 +215,15 @@ class GameplayScene(BaseScene):
         self._bullets = []
         self._obstacles = map_data["obstacles"]
         self._theme = map_data["theme"]
+
+        # Pre-compute theme-tinted base color on each obstacle
+        _tint = tuple(self._theme.get("obstacle_tint", (128, 128, 128)))
+        for _obs in self._obstacles:
+            _obs.base_color = blend_colors(_obs.color, _tint, THEME_TINT_BLEND)
+
+        # Debris system for destruction effects
+        self._debris = DebrisSystem()
+        self._destroyed_set: set[int] = set()
 
         # AI tanks — all heavy_tank, shared difficulty, independent controllers
         ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
@@ -416,6 +429,24 @@ class GameplayScene(BaseScene):
 
         self._camera.update(dt, self._tank.x, self._tank.y)
 
+        # Update obstacle flash timers
+        for obs in self._obstacles:
+            if obs.is_alive:
+                obs.update(dt)
+
+        # Detect newly destroyed obstacles → spawn debris
+        for obs in self._obstacles:
+            if not obs.is_alive and id(obs) not in self._destroyed_set:
+                self._destroyed_set.add(id(obs))
+                count = DEBRIS_COUNT.get(obs.material_type, DEBRIS_COUNT_DEFAULT)
+                self._debris.spawn_debris(
+                    obs.x + obs.width / 2, obs.y + obs.height / 2,
+                    obs.width, obs.height, obs.base_color, count,
+                )
+
+        # Update debris particles
+        self._debris.update(dt)
+
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]
         _, ex, ey, eangle, weapon_type = event
@@ -454,6 +485,7 @@ class GameplayScene(BaseScene):
 
         _draw_arena(surface, self._camera, self._theme)
         _draw_obstacles(surface, self._obstacles, self._camera, self._theme)
+        self._debris.draw(surface, self._camera)
 
         # AI tanks drawn before player (player renders on top if overlapping)
         for ai_tank, ai_surf in zip(self._ai_tanks, self._ai_surfs):
@@ -519,34 +551,49 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
     pygame.draw.rect(surface, border_color, floor_rect, border_thick)
 
 
-def _lerp_color(c1: tuple, c2: tuple, t: float) -> tuple:
-    t = max(0.0, min(1.0, t))
-    return (
-        int(c1[0] + (c2[0] - c1[0]) * t),
-        int(c1[1] + (c2[1] - c1[1]) * t),
-        int(c1[2] + (c2[2] - c1[2]) * t),
-    )
-
-
 def _draw_obstacles(
     surface: pygame.Surface,
     obstacles: list,
     camera: Camera,
     theme: dict | None = None,
 ) -> None:
-    """Draw obstacles, applying the theme's obstacle_tint (50/50 blend with material color)."""
-    tint = tuple(theme["obstacle_tint"]) if theme and "obstacle_tint" in theme else None
+    """Draw obstacles with damage-state coloring and crack overlays."""
     for obs in obstacles:
         if not obs.is_alive:
             continue
         sx, sy = camera.world_to_screen(obs.x, obs.y)
         rect = pygame.Rect(int(sx), int(sy), int(obs.width), int(obs.height))
-        base_color = obs.color
-        if tint is not None:
-            base_color = blend_colors(base_color, tint, THEME_TINT_BLEND)
-        fill = _lerp_color(base_color, OBSTACLE_DAMAGED_COLOR, 1.0 - obs.hp_ratio)
+
+        # current_color handles flash + damage-state darkening
+        fill = obs.current_color
         pygame.draw.rect(surface, fill, rect)
         pygame.draw.rect(surface, OBSTACLE_BORDER_COLOR, rect, 2)
+
+        # Crack overlay for damaged destructible obstacles
+        if obs.destructible and obs.hp_ratio < 0.66:
+            _draw_cracks(surface, obs, rect)
+
+
+def _draw_cracks(
+    surface: pygame.Surface,
+    obs,
+    rect: pygame.Rect,
+) -> None:
+    """Draw deterministic crack lines on a damaged obstacle."""
+    rng = random.Random(int(obs.x + obs.y * 1000))
+    crack_col = blend_colors(obs.base_color, (0, 0, 0), DAMAGE_CRACK_DARKEN)
+    critical = obs.hp_ratio < 0.33
+    num_cracks = 3 if critical else 2
+    line_w = 2 if critical else 1
+
+    for _ in range(num_cracks):
+        x1 = rect.x + rng.randint(max(1, int(rect.w * 0.1)), max(2, int(rect.w * 0.9)))
+        y1 = rect.y + rng.randint(max(1, int(rect.h * 0.1)), max(2, int(rect.h * 0.9)))
+        dx = rng.randint(-max(1, int(rect.w * 0.4)), max(1, int(rect.w * 0.4)))
+        dy = rng.randint(-max(1, int(rect.h * 0.4)), max(1, int(rect.h * 0.4)))
+        x2 = max(rect.x, min(rect.right, x1 + dx))
+        y2 = max(rect.y, min(rect.bottom, y1 + dy))
+        pygame.draw.line(surface, crack_col, (x1, y1), (x2, y2), line_w)
 
 
 def _draw_tank(
