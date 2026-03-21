@@ -73,6 +73,8 @@ def _install_pygame_stub() -> None:
     stub.K_3        = 51
     # Mouse wheel event type (v0.16)
     stub.MOUSEWHEEL = 1027
+    # Modifier masks (v0.17.5 — SHIFT+TAB panel navigation)
+    stub.KMOD_SHIFT = 1
 
     # ---------------------------------------------------------------------------
     # Key sub-module

@@ -41,6 +41,7 @@ _pygame_stub.K_F2 = 271
 _pygame_stub.K_BACKSPACE = 8
 _pygame_stub.K_y = 121
 _pygame_stub.K_n = 110
+_pygame_stub.KMOD_SHIFT = 1
 
 _event_mod = types.ModuleType("pygame.event")
 _event_mod.Event = type("Event", (), {})
@@ -281,48 +282,67 @@ class TestPanelNavigation:
     def test_tab_cycles_hull_to_weapons(self, monkeypatch):
         scene = _make_scene(monkeypatch)
         assert scene._panel == LOADOUT_PANEL_HULL
-        scene._panel = LOADOUT_PANEL_HULL
-        # Simulate TAB key
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB)
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB, mod=0)
         scene.handle_event(ev)
         assert scene._panel == LOADOUT_PANEL_WEAPONS
 
     def test_tab_cycles_weapons_to_map(self, monkeypatch):
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_WEAPONS
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB)
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB, mod=0)
         scene.handle_event(ev)
         assert scene._panel == LOADOUT_PANEL_MAP
 
     def test_tab_wraps_map_to_hull(self, monkeypatch):
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_MAP
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB)
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB, mod=0)
         scene.handle_event(ev)
         assert scene._panel == LOADOUT_PANEL_HULL
 
-    def test_right_in_hull_goes_to_weapons(self, monkeypatch):
+    def test_shift_tab_cycles_backward(self, monkeypatch):
         scene = _make_scene(monkeypatch)
-        scene._panel = LOADOUT_PANEL_HULL
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB, mod=_pygame_stub.KMOD_SHIFT)
         scene.handle_event(ev)
-        assert scene._panel == LOADOUT_PANEL_WEAPONS
+        assert scene._panel == LOADOUT_PANEL_HULL
 
-    def test_left_in_hull_wraps_to_map(self, monkeypatch):
+    def test_shift_tab_wraps_hull_to_map(self, monkeypatch):
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_HULL
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_TAB, mod=_pygame_stub.KMOD_SHIFT)
         scene.handle_event(ev)
         assert scene._panel == LOADOUT_PANEL_MAP
 
-    def test_right_in_map_wraps_to_hull(self, monkeypatch):
+    def test_left_right_in_hull_do_nothing(self, monkeypatch):
+        """LEFT/RIGHT in hull panel no longer switch panels."""
+        scene = _make_scene(monkeypatch)
+        scene._panel = LOADOUT_PANEL_HULL
+        tank_before = scene._tank_cursor
+        ev_right = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev_right)
+        assert scene._panel == LOADOUT_PANEL_HULL
+        assert scene._tank_cursor == tank_before
+        ev_left = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
+        scene.handle_event(ev_left)
+        assert scene._panel == LOADOUT_PANEL_HULL
+        assert scene._tank_cursor == tank_before
+
+    def test_left_right_in_map_do_nothing(self, monkeypatch):
+        """LEFT/RIGHT in map panel no longer switch panels."""
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_MAP
-        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
-        scene.handle_event(ev)
-        assert scene._panel == LOADOUT_PANEL_HULL
+        map_before = scene._map_cursor
+        ev_right = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev_right)
+        assert scene._panel == LOADOUT_PANEL_MAP
+        assert scene._map_cursor == map_before
+        ev_left = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
+        scene.handle_event(ev_left)
+        assert scene._panel == LOADOUT_PANEL_MAP
+        assert scene._map_cursor == map_before
 
-    def test_left_right_in_weapons_do_not_switch_panels(self, monkeypatch):
+    def test_left_right_in_weapons_cycle_not_switch(self, monkeypatch):
         """In the weapons panel LEFT/RIGHT cycles weapons, not panels."""
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_WEAPONS

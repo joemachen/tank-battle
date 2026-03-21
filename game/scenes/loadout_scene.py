@@ -298,7 +298,10 @@ class LoadoutScene(BaseScene):
             return
 
         if key == pygame.K_TAB:
-            self._panel = (self._panel + 1) % LOADOUT_PANEL_COUNT
+            if event.mod & pygame.KMOD_SHIFT:
+                self._panel = (self._panel - 1) % LOADOUT_PANEL_COUNT
+            else:
+                self._panel = (self._panel + 1) % LOADOUT_PANEL_COUNT
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
             return
 
@@ -334,12 +337,6 @@ class LoadoutScene(BaseScene):
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
             self._load_weapon_defaults()
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_RIGHT, pygame.K_d):
-            self._panel = (self._panel + 1) % LOADOUT_PANEL_COUNT
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_LEFT, pygame.K_a):
-            self._panel = (self._panel - 1) % LOADOUT_PANEL_COUNT
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     def _handle_weapons(self, key: int) -> None:
         if key in (pygame.K_UP, pygame.K_w):
@@ -361,12 +358,6 @@ class LoadoutScene(BaseScene):
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
             self._map_cursor = (self._map_cursor + 1) % len(_MAP_NAMES)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_LEFT, pygame.K_a):
-            self._panel = (self._panel - 1) % LOADOUT_PANEL_COUNT
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_RIGHT, pygame.K_d):
-            self._panel = (self._panel + 1) % LOADOUT_PANEL_COUNT
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     # ------------------------------------------------------------------
@@ -400,7 +391,7 @@ class LoadoutScene(BaseScene):
         # Hint
         font_hint = pygame.font.SysFont(None, 20)
         hint = font_hint.render(
-            "TAB  Switch Panel     ↑↓  Select     ←→  Choose (Weapons: cycle)     ENTER  Start     ESC  Back",
+            "TAB  Switch Panel     \u2191\u2193  Select     \u2190\u2192  Cycle (Weapons)     ENTER  Start     ESC  Back",
             True, _COLOR_DIM,
         )
         surface.blit(hint, ((SCREEN_WIDTH - hint.get_width()) // 2, SCREEN_HEIGHT - 20))
