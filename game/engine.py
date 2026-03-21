@@ -8,6 +8,12 @@ Responsibilities:
   - Own the SceneManager
   - Run the event/update/draw loop with delta time
   - Shut down cleanly on exit or unhandled exception
+
+v0.17.5 change: app always starts at SCENE_MENU.
+  resolve_start_scene() was removed — SaveManager now auto-creates a default
+  profile on first run so there is no need for a profile-picker at startup.
+  TankSelectScene, WeaponSelectScene, and MapSelectScene are no longer
+  registered; they have been replaced by LoadoutScene.
 """
 
 import traceback
@@ -17,20 +23,18 @@ import pygame
 from game.scenes import SceneManager
 from game.scenes.game_over_scene import GameOverScene
 from game.scenes.game_scene import GameplayScene
+from game.scenes.loadout_scene import LoadoutScene
 from game.scenes.menu_scene import MainMenuScene
 from game.scenes.profile_select_scene import ProfileSelectScene
 from game.scenes.settings_scene import SettingsScene
-from game.scenes.tank_select_scene import TankSelectScene
-from game.scenes.weapon_select_scene import WeaponSelectScene
 from game.utils.constants import (
     FPS,
     SCENE_GAME,
     SCENE_GAME_OVER,
+    SCENE_LOADOUT,
     SCENE_MENU,
     SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
-    SCENE_TANK_SELECT,
-    SCENE_WEAPON_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     TITLE,
@@ -39,28 +43,6 @@ from game.utils.logger import get_logger
 from game.utils.save_manager import SaveManager
 
 log = get_logger(__name__)
-
-
-def resolve_start_scene(save: SaveManager) -> str:
-    """
-    Determine which scene to launch at startup.
-
-    Returns SCENE_MENU when ALL of the following are true:
-      1. settings["skip_profile_select"] is True
-      2. At least one profile slot exists in the profiles index
-
-    Otherwise returns SCENE_PROFILE_SELECT.
-    Module-level so it can be imported and tested without pygame.
-    """
-    try:
-        settings = save.load_settings()
-        if settings.get("skip_profile_select", False):
-            idx = save.load_profiles_index()
-            if idx.get("profiles"):
-                return SCENE_MENU
-    except Exception:
-        log.warning("resolve_start_scene: error reading save data — defaulting to profile select.")
-    return SCENE_PROFILE_SELECT
 
 
 class GameEngine:
@@ -86,16 +68,16 @@ class GameEngine:
 
     def _register_scenes(self) -> None:
         sm = self._scene_manager
-        sm.register(SCENE_PROFILE_SELECT, ProfileSelectScene(sm))
         sm.register(SCENE_MENU, MainMenuScene(sm))
-        sm.register(SCENE_TANK_SELECT, TankSelectScene(sm))
-        sm.register(SCENE_WEAPON_SELECT, WeaponSelectScene(sm))
+        sm.register(SCENE_LOADOUT, LoadoutScene(sm))
         sm.register(SCENE_GAME, GameplayScene(sm))
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))
-        start = resolve_start_scene(SaveManager())
-        sm.switch_to(start)
-        log.info("All scenes registered. Starting at: '%s'", start)
+        sm.register(SCENE_PROFILE_SELECT, ProfileSelectScene(sm))
+        # SaveManager auto-creates a default profile on first run, so the
+        # game always opens directly to the main menu.
+        sm.switch_to(SCENE_MENU)
+        log.info("All scenes registered. Starting at: '%s'", SCENE_MENU)
 
     def run(self) -> None:
         """

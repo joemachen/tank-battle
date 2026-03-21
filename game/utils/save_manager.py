@@ -50,6 +50,7 @@ class SaveManager:
         os.makedirs(SAVES_DIR, exist_ok=True)
         os.makedirs(PROFILES_DIR, exist_ok=True)
         self._migrate_legacy()
+        self._auto_create_default_profile()
         idx = self.load_profiles_index()
         self._active_slot: int = int(idx.get("active_slot", 0))
         log.info(
@@ -144,6 +145,25 @@ class SaveManager:
     # ------------------------------------------------------------------
     # Migration (v0.13.5)
     # ------------------------------------------------------------------
+
+    def _auto_create_default_profile(self) -> None:
+        """
+        Ensure at least one profile slot exists on a fresh install.
+
+        If profiles.json has no registered slots, silently create slot 0
+        named "Player 1" so the game always launches directly to the main
+        menu rather than the profile-picker screen.  Does nothing if any
+        slot is already registered (including after migration).
+        """
+        idx = self.load_profiles_index()
+        if idx.get("profiles"):
+            return  # At least one slot already registered — nothing to do
+        self._save_json(self._profile_path(0), dict(DEFAULT_PROFILE), "profile slot 0")
+        idx.setdefault("profiles", {})["0"] = {"name": "Player 1", "slot": 0}
+        idx["active_slot"] = 0
+        self.save_profiles_index(idx)
+        self._active_slot = 0
+        log.info("Auto-created default profile 'Player 1' in slot 0")
 
     def _migrate_legacy(self) -> None:
         """

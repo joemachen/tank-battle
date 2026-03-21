@@ -1,6 +1,9 @@
 """
 game/scenes/weapon_select_scene.py
 
+# DEPRECATED as of v0.17.5 — replaced by LoadoutScene.
+# Retained for reference. Safe to delete after v0.20.
+
 WeaponSelectScene — pre-match loadout selection screen.
 
 Flow:
@@ -37,7 +40,7 @@ from game.utils.constants import (
     MAX_BAR_WIDTH,
     MAX_WEAPON_SLOTS,
     MUSIC_MENU,
-    SCENE_GAME,
+    SCENE_MAP_SELECT,
     SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -280,7 +283,7 @@ class WeaponSelectScene(BaseScene):
         )
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         self.manager.switch_to(
-            SCENE_GAME,
+            SCENE_MAP_SELECT,
             tank_type=self._tank_type,
             ai_count=self._ai_count,
             weapon_types=weapon_types,

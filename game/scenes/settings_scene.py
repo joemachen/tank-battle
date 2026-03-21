@@ -3,13 +3,12 @@ game/scenes/settings_scene.py
 
 SettingsScene — full implementation, v0.13.
 
-Five sections, each navigable by UP/DOWN with LEFT/RIGHT adjusting values:
+Four sections, each navigable by UP/DOWN with LEFT/RIGHT adjusting values:
 
   [ AUDIO ]      Master / Music / SFX volume sliders
   [ DISPLAY ]    Resolution + Fullscreen cycle selectors
   [ CONTROLS ]   Four rebindable movement keys; Fire + Mute shown as read-only
   [ GAMEPLAY ]   Default AI difficulty cycle
-  [ PROFILE ]    Auto-login (skip_profile_select toggle)
   BACK           Fades back to main menu
 
 Persistence:
@@ -36,6 +35,7 @@ from game.ui.components import (
 )
 from game.utils.constants import (
     COLOR_BG,
+    COLOR_GRAY,
     COLOR_NEON_PINK,
     DEFAULT_SETTINGS,
     MASTER_VOLUME_DEFAULT,
@@ -81,7 +81,7 @@ _SCANLINE_ALPHA: int = 14
 _SECTION_DIM: tuple = tuple(int(c * 0.28) for c in SETTINGS_SECTION_COLOR)
 _WARNING_DURATION: float = 2.0
 
-_STATIC_INFO: dict = {"Fire": "SPACE / LMB", "Mute": "M"}
+_FIRE_LMB_SUFFIX: str = " / LMB"  # always appended to Fire display (not editable)
 _VOLUME_CHANNEL: dict = {
     "master_volume": "master",
     "music_volume":  "music",
@@ -252,6 +252,8 @@ class SettingsScene(BaseScene):
         row = self._active_row
         if row is None or row.component is None:
             return
+        if not hasattr(row.component, "handle_input"):
+            return
         if row.component.handle_input(key):
             self._on_value_change(row)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
@@ -283,8 +285,6 @@ class SettingsScene(BaseScene):
                 self._restart_needed = True
             elif row.settings_key == "ai_difficulty":
                 self._settings["ai_difficulty"] = val.lower()
-            elif row.settings_key == "skip_profile_select":
-                self._settings["skip_profile_select"] = (val == "ON")
 
         self._save_manager.save_settings(self._settings)
 
@@ -367,14 +367,6 @@ class SettingsScene(BaseScene):
                                  (_LABEL_X, y + _SECTION_H - 2), (_CTRL_END, y + _SECTION_H - 2))
                 y += _SECTION_H
 
-            elif row.kind == "static":
-                ty = y + (_ROW_H - f_info.get_linesize()) // 2
-                lbl = f_info.render(row.label, True, (95, 95, 100))
-                val = f_info.render(_STATIC_INFO.get(row.label, ""), True, (95, 95, 100))
-                surface.blit(lbl, (_LABEL_X, ty))
-                surface.blit(val, (_LABEL_X + 360, ty))
-                y += _ROW_H
-
             elif row.kind == "back":
                 y += _BACK_EXTRA_GAP
                 clr = COLOR_NEON_PINK if is_sel else (153, 153, 153)
@@ -389,6 +381,10 @@ class SettingsScene(BaseScene):
             else:
                 # slider / cycle / keybind
                 row.component.draw(surface, _LABEL_X, y, is_sel)
+                # Fire row: append non-editable "/ LMB" suffix
+                if row.settings_key == "fire":
+                    suffix = f_info.render(_FIRE_LMB_SUFFIX, True, COLOR_GRAY)
+                    surface.blit(suffix, (_LABEL_X + 360 + 80, y + (_ROW_H - f_info.get_linesize()) // 2))
                 y += _ROW_H
 
     def _draw_footer(self, surface: pygame.Surface) -> None:
@@ -456,13 +452,13 @@ class SettingsScene(BaseScene):
             ("move_backward", "Move Backward"),
             ("rotate_left",   "Rotate Left"),
             ("rotate_right",  "Rotate Right"),
+            ("fire",          "Fire"),
+            ("mute",          "Mute"),
         ):
             default_key = DEFAULT_SETTINGS["keybinds"].get(action, action[0])
             rows.append(_Row("keybind", label,
                 KeybindComponent(label, action, kb.get(action, default_key)),
                 action))
-        rows.append(_Row("static", "Fire", focusable=False))
-        rows.append(_Row("static", "Mute", focusable=False))
 
         # GAMEPLAY
         rows.append(_Row("section", "GAMEPLAY", focusable=False))
@@ -472,13 +468,6 @@ class SettingsScene(BaseScene):
         rows.append(_Row("cycle", "AI Difficulty",
             CycleComponent("AI Difficulty", diff_opts, diff_idx),
             "ai_difficulty"))
-
-        # PROFILE
-        rows.append(_Row("section", "PROFILE", focusable=False))
-        autologin_idx = 1 if s.get("skip_profile_select", False) else 0
-        rows.append(_Row("cycle", "Auto-login",
-            CycleComponent("Auto-login", ["OFF", "ON"], autologin_idx),
-            "skip_profile_select"))
 
         # BACK
         rows.append(_Row("back", "BACK", focusable=True))

@@ -323,14 +323,14 @@ class TestDeleteProfile:
 # ---------------------------------------------------------------------------
 
 class TestEscGuard:
-    def test_esc_blocked_when_no_profiles(self, tmp_path):
+    def test_esc_always_returns_to_menu(self, tmp_path):
+        """v0.17.5: ESC always triggers fade regardless of whether profiles exist."""
         scene, save, mgr = _make_scene(tmp_path)
         scene._refresh_index()
-        # Patch fade to track calls
         started = []
         scene._fade.start = lambda: started.append(True)
         scene._handle_select(_make_event(pygame.K_ESCAPE, ""))
-        assert not started, "ESC should be blocked when no profiles exist"
+        assert started, "ESC should always trigger fade (v0.17.5)"
 
     def test_esc_allowed_when_profile_exists(self, tmp_path):
         scene, save, mgr = _make_scene(tmp_path)

@@ -122,6 +122,11 @@ OBSTACLE_DAMAGED_COLOR = (28, 26, 22)    # lerp target when obstacle hp reaches 
 DATA_DIR: str = "data"
 CONFIG_DIR: str = "data/configs"
 MAP_01: str = "data/maps/map_01.yaml"
+MAPS_DIR: str = "data/maps"
+THEMES_DIR: str = "data/themes"
+DEFAULT_MAP: str = "map_01"
+DEFAULT_THEME: str = "default"
+THEME_TINT_BLEND: float = 0.5        # 50/50 blend of material color + theme obstacle tint
 MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 SAVES_DIR: str = "saves"
 LOGS_DIR: str = "logs"
@@ -225,11 +230,21 @@ TANK_STAT_MAX: dict = {
 # ---------------------------------------------------------------------------
 SCENE_PROFILE_SELECT: str = "profile_select"
 SCENE_MENU: str = "menu"
-SCENE_TANK_SELECT: str = "tank_select"
-SCENE_WEAPON_SELECT: str = "weapon_select"
+SCENE_LOADOUT: str = "loadout"
+SCENE_TANK_SELECT: str = "tank_select"      # deprecated v0.17.5 — use SCENE_LOADOUT
+SCENE_WEAPON_SELECT: str = "weapon_select"  # deprecated v0.17.5 — use SCENE_LOADOUT
+SCENE_MAP_SELECT: str = "map_select"        # deprecated v0.17.5 — use SCENE_LOADOUT
 SCENE_GAME: str = "game"
 SCENE_SETTINGS: str = "settings"
 SCENE_GAME_OVER: str = "game_over"
+
+# ---------------------------------------------------------------------------
+# Loadout Screen (v0.17.5)
+# ---------------------------------------------------------------------------
+LOADOUT_PANEL_HULL: int = 0
+LOADOUT_PANEL_WEAPONS: int = 1
+LOADOUT_PANEL_MAP: int = 2
+LOADOUT_PANEL_COUNT: int = 3
 
 # ---------------------------------------------------------------------------
 # AI
@@ -299,9 +314,9 @@ DEFAULT_SETTINGS: dict = {
         "rotate_left": "a",
         "rotate_right": "d",
         "fire": "space",
+        "mute": "m",
         "pause": "escape",
     },
     "ai_difficulty": "medium",
     "fullscreen": False,
-    "skip_profile_select": False,
 }

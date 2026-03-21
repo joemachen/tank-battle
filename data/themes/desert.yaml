@@ -1,0 +1,12 @@
+# data/themes/desert.yaml
+# Warm sandy dunes — open sightlines, earthy browns and tans.
+# Reference: sun-baked tabletop, Wii Play Tanks wooden feel pushed warm.
+
+name: "Desert"
+floor_color: [194, 154, 108]
+floor_grid_color: [180, 140, 95]
+border_color: [160, 110, 60]
+border_thickness: 6
+obstacle_tint: [200, 160, 100]
+ambient_label: "Arid"
+music_override: null

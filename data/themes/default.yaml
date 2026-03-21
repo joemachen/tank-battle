@@ -1,0 +1,12 @@
+# data/themes/default.yaml
+# Classic dark-green arena — the original Tank Battle look.
+# Used as the fallback when a map's theme field is missing or unresolvable.
+
+name: "Classic"
+floor_color: [20, 30, 20]
+floor_grid_color: [30, 45, 30]
+border_color: [60, 80, 60]
+border_thickness: 4
+obstacle_tint: [100, 100, 100]
+ambient_label: "Classic"
+music_override: null

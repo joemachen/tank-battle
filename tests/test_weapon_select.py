@@ -127,7 +127,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from game.scenes.weapon_select_scene import WeaponSelectScene, _normalise_weapon
 from game.utils.config_loader import load_yaml
 from game.utils.constants import (
-    SCENE_GAME,
+    SCENE_MAP_SELECT,
     SCENE_TANK_SELECT,
     SCENE_WEAPON_SELECT,
     WEAPON_STAT_MAX,
@@ -263,7 +263,7 @@ class TestKwargForwarding:
         scene = _make_scene(unlocked=_UNLOCKED_ALL)
         scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_MAP_SELECT
 
     def test_weapon_types_forwarded_as_list(self):
         """Confirmed weapons are forwarded as weapon_types (list), not weapon_type."""
@@ -326,7 +326,7 @@ class TestSlotConfirmLogic:
         scene = _make_scene(unlocked=_UNLOCKED_ALL)
         scene._slot_selections[0] = "standard_shell"
         scene._confirm_selection()
-        assert scene.manager.last_switch == SCENE_GAME
+        assert scene.manager.last_switch == SCENE_MAP_SELECT
 
     def test_only_non_none_slots_forwarded(self):
         """Empty slots are excluded from weapon_types."""
