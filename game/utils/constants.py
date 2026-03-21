@@ -154,6 +154,12 @@ DEFAULT_MAP: str = "map_01"
 DEFAULT_THEME: str = "default"
 THEME_TINT_BLEND: float = 0.5        # 50/50 blend of material color + theme obstacle tint
 MATERIALS_CONFIG: str = "data/configs/materials.yaml"
+PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
+
+# Pickup spawner
+PICKUP_SPAWN_INTERVAL: float = 8.0
+PICKUP_MAX_ACTIVE: int = 4
+SPEED_BOOST_DURATION: float = 5.0
 SAVES_DIR: str = "saves"
 LOGS_DIR: str = "logs"
 LOG_FILE: str = "logs/tank_battle.log"

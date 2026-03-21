@@ -114,5 +114,14 @@ def load_map(path: str) -> dict:
         except (KeyError, TypeError, ValueError) as exc:
             log.warning("Skipping malformed obstacle entry %s: %s", entry, exc)
 
+    # Parse pickup spawn points
+    raw_spawns = data.get("pickup_spawns", [])
+    pickup_spawns = []
+    for s in raw_spawns:
+        try:
+            pickup_spawns.append((float(s["x"]), float(s["y"])))
+        except (KeyError, TypeError, ValueError) as exc:
+            log.warning("Skipping malformed pickup_spawn entry %s: %s", s, exc)
+
     log.info("Loaded %d obstacle(s) from '%s' (theme: %s).", len(obstacles), path, theme_key)
-    return {"obstacles": obstacles, "theme": theme, "name": map_name}
+    return {"obstacles": obstacles, "theme": theme, "name": map_name, "pickup_spawns": pickup_spawns}

@@ -30,6 +30,7 @@ from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
 from game.systems.debris_system import DebrisSystem
 from game.systems.input_handler import InputHandler
+from game.systems.pickup_spawner import PickupSpawner
 from game.systems.match_calculator import MatchCalculator
 from game.systems.physics import PhysicsSystem
 from game.ui.audio_manager import get_audio_manager
@@ -65,6 +66,7 @@ from game.utils.constants import (
     MAPS_DIR,
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
+    PICKUPS_CONFIG,
     RETICLE_COLOR,
     RETICLE_LINE_LENGTH,
     RETICLE_RADIUS,
@@ -225,6 +227,11 @@ class GameplayScene(BaseScene):
         self._debris = DebrisSystem()
         self._destroyed_set: set[int] = set()
 
+        # Pickup spawner
+        self._pickup_configs = load_yaml(PICKUPS_CONFIG)
+        pickup_spawns = map_data.get("pickup_spawns", [])
+        self._pickup_spawner = PickupSpawner(pickup_spawns, self._pickup_configs)
+
         # AI tanks — all heavy_tank, shared difficulty, independent controllers
         ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
         ai_tank_config = get_tank_config("heavy_tank", TANKS_CONFIG)
@@ -351,6 +358,9 @@ class GameplayScene(BaseScene):
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
         self._bullets = [b for b in self._bullets if b.is_alive]
 
+        # Tick pickup spawner
+        self._pickup_spawner.update(dt)
+
         # Snapshot state before collision resolution for stat tracking
         player_hp_before = self._tank.health
         ai_alive_before = {id(t): t.is_alive for t in self._ai_tanks}
@@ -360,7 +370,7 @@ class GameplayScene(BaseScene):
             tanks=all_tanks,
             bullets=self._bullets,
             obstacles=self._obstacles,
-            pickups=[],
+            pickups=self._pickup_spawner.active_pickups,
         )
         self._bullets = [b for b in self._bullets if b.is_alive]
 
@@ -484,6 +494,7 @@ class GameplayScene(BaseScene):
             return
 
         _draw_arena(surface, self._camera, self._theme)
+        _draw_pickups(surface, self._pickup_spawner.active_pickups, self._camera, self._pickup_configs)
         _draw_obstacles(surface, self._obstacles, self._camera, self._theme)
         self._debris.draw(surface, self._camera)
 
@@ -549,6 +560,33 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
         sy = ay_i + wy
         pygame.draw.line(surface, grid_color, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
     pygame.draw.rect(surface, border_color, floor_rect, border_thick)
+
+
+_PICKUP_INITIALS = {"health": "H", "ammo": "A", "speed_boost": "S"}
+
+
+def _draw_pickups(
+    surface: pygame.Surface,
+    pickups: list,
+    camera: Camera,
+    configs: dict,
+) -> None:
+    """Draw active pickups as pulsing colored circles with type initials."""
+    font = pygame.font.Font(None, 20)
+    for p in pickups:
+        if not p.is_alive:
+            continue
+        cfg = configs.get(p.pickup_type, {})
+        color = tuple(cfg.get("color", (200, 200, 200)))
+        base_r = int(cfg.get("radius", 14))
+        render_r = base_r + int(p.pulse * 3)
+        sx, sy = camera.world_to_screen(p.x, p.y)
+        cx, cy = int(sx), int(sy)
+        pygame.draw.circle(surface, color, (cx, cy), render_r)
+        pygame.draw.circle(surface, (255, 255, 255), (cx, cy), render_r, 2)
+        letter = _PICKUP_INITIALS.get(p.pickup_type, "?")
+        txt = font.render(letter, True, (0, 0, 0))
+        surface.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
 
 def _draw_obstacles(
