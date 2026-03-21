@@ -176,10 +176,25 @@ PICKUP_GLOW_SCALE: float = 1.5
 PICKUP_EFFECT_DURATION: float = 8.0
 PICKUP_LIFETIME: float = 30.0
 
+# Shield pickup
+SHIELD_DEFAULT_HP: float = 60.0
+SHIELD_DEFAULT_DURATION: float = 12.0
+
 # Buff indicator
 BUFF_ICON_OFFSET_Y: int = 20
 BUFF_ICON_FONT_SIZE: int = 14
 BUFF_ICON_SPACING: int = 16
+
+# Pickup VFX colors
+VFX_REGEN_COLOR: tuple = (80, 200, 80)
+VFX_SPEED_COLOR: tuple = (60, 160, 220)
+VFX_RELOAD_COLOR: tuple = (200, 180, 60)
+VFX_SHIELD_COLOR: tuple = (100, 180, 255)
+VFX_SHIELD_POP_COLOR: tuple = (150, 210, 255)
+
+# AI pickup-seeking ranges
+AI_PICKUP_SEEK_RANGE: float = 300.0    # EVADE: health-seek range (px)
+AI_PICKUP_OPPORTUNISTIC_RANGE: float = 100.0  # PATROL/PURSUE: grab if nearby
 
 # Tank front stripe
 TANK_FRONT_STRIPE_WIDTH: int = 2
@@ -219,11 +234,25 @@ SFX_UI_CONFIRM:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_conf
 SFX_PICKUP_SPAWN:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_spawn.wav")
 SFX_PICKUP_COLLECT:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_collect.wav")
 SFX_PICKUP_EXPIRE:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_expire.wav")
+SFX_PICKUP_HEALTH:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_health.wav")
+SFX_PICKUP_SPEED:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_speed.wav")
+SFX_PICKUP_RELOAD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_reload.wav")
+SFX_PICKUP_SHIELD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav")
+SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_pop.wav")
+
+# Per-type pickup collect SFX lookup
+PICKUP_COLLECT_SFX: dict = {
+    "health": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_health.wav"),
+    "rapid_reload": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_reload.wav"),
+    "speed_boost": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_speed.wav"),
+    "shield": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav"),
+}
 
 # Music asset paths
 MUSIC_MENU:      str = _os.path.join(_ASSET_ROOT, "music", "music_menu.wav")
 MUSIC_GAMEPLAY:  str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay.wav")
 MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav")
+MUSIC_GAMEPLAY_INTENSE: str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay_intense.wav")
 
 # ---------------------------------------------------------------------------
 # UI

@@ -18,3 +18,10 @@ speed_boost:
   color: [60, 160, 220]
   radius: 18
   spawn_weight: 1
+
+shield:
+  display_name: "Shield Bubble"
+  value: 60
+  color: [100, 180, 255]
+  radius: 18
+  spawn_weight: 1

@@ -322,6 +322,7 @@ class TestGameplaySceneTankType:
         class _FakeAI:
             def set_owner(self, t): pass
             def set_obstacles_getter(self, g): pass
+            def set_pickups_getter(self, g): pass
             def tick(self, dt): pass
 
         class _FakeCamera:

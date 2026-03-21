@@ -269,9 +269,16 @@ class Tank:
     # Status effects (v0.19)
     # ------------------------------------------------------------------
 
-    def apply_status(self, name: str, value: float, duration: float) -> None:
-        """Apply or refresh a named status effect."""
-        self._status_effects[name] = {"value": value, "timer": duration}
+    def apply_status(self, name: str, value: float, duration: float, **kwargs) -> None:
+        """Apply or refresh a named status effect.
+
+        For shield: pass shield_hp=float via kwargs. The shield absorbs damage
+        and expires when either its HP or timer reaches zero.
+        """
+        data = {"value": value, "timer": duration}
+        if name == "shield" and "shield_hp" in kwargs:
+            data["shield_hp"] = float(kwargs["shield_hp"])
+        self._status_effects[name] = data
         log.debug("Status applied: %s value=%.1f duration=%.1f", name, value, duration)
 
     def tick_status_effects(self, dt: float) -> None:
@@ -304,16 +311,35 @@ class Tank:
         """Read-only access to active status effects for rendering."""
         return self._status_effects
 
+    @property
+    def shield_hp(self) -> float:
+        """Current shield hit-points, or 0.0 if no shield active."""
+        if "shield" in self._status_effects:
+            return self._status_effects["shield"].get("shield_hp", 0.0)
+        return 0.0
+
     # ------------------------------------------------------------------
     # Damage
     # ------------------------------------------------------------------
 
     def take_damage(self, amount: int) -> None:
-        """Apply damage. Sets is_alive=False when health reaches 0."""
+        """Apply damage. Shield absorbs first; remainder hits health.
+        Sets is_alive=False when health reaches 0."""
         if not self.is_alive:
             return
-        self.health = clamp(self.health - amount, 0, self.max_health)
-        log.debug("Tank took %d damage, hp=%d/%d", amount, self.health, self.max_health)
+        remaining = amount
+        if "shield" in self._status_effects:
+            shield = self._status_effects["shield"]
+            absorbed = min(remaining, shield["shield_hp"])
+            shield["shield_hp"] -= absorbed
+            remaining -= int(absorbed)
+            if shield["shield_hp"] <= 0:
+                del self._status_effects["shield"]
+                log.debug("Shield broken by damage")
+        if remaining > 0:
+            self.health = clamp(self.health - remaining, 0, self.max_health)
+        log.debug("Tank took %d damage (absorbed=%d), hp=%d/%d",
+                  amount, amount - remaining, self.health, self.max_health)
         if self.health <= 0:
             self.is_alive = False
             log.info("Tank destroyed (type=%s)", self.tank_type)

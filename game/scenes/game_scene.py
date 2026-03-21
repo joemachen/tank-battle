@@ -72,6 +72,13 @@ from game.utils.constants import (
     KEYBIND_SLOT_3,
     MAPS_DIR,
     MUSIC_GAMEPLAY,
+    PICKUP_COLLECT_SFX,
+    SFX_SHIELD_POP,
+    VFX_REGEN_COLOR,
+    VFX_SHIELD_COLOR,
+    VFX_SHIELD_POP_COLOR,
+    VFX_SPEED_COLOR,
+    VFX_RELOAD_COLOR,
     OBSTACLE_BORDER_COLOR,
     PICKUP_GLOW_ALPHA,
     PICKUP_GLOW_SCALE,
@@ -269,6 +276,7 @@ class GameplayScene(BaseScene):
             )
             controller.set_owner(ai_tank)
             controller.set_obstacles_getter(live_obstacles)
+            controller.set_pickups_getter(lambda: self._pickup_spawner.active_pickups)
             # AI always uses standard_shell
             std_cfg = self._weapon_configs["standard_shell"]
             ai_tank.load_weapons([std_cfg])
@@ -292,6 +300,11 @@ class GameplayScene(BaseScene):
         self._damage_dealt = 0
         self._damage_taken = 0
         self._match_start_time = time.monotonic()
+
+        # Shield pop detection — tracks which tanks had shield last frame
+        self._had_shield: dict[int, bool] = {}
+        # Music intensity state
+        self._music_intense: bool = False
 
         music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
         get_audio_manager().play_music(music_track)
@@ -471,6 +484,27 @@ class GameplayScene(BaseScene):
         # Update debris particles
         self._debris.update(dt)
 
+        # Shield pop detection — spawn debris when shield breaks
+        for tank in all_tanks:
+            tid = id(tank)
+            has_shield = tank.has_status("shield")
+            if self._had_shield.get(tid, False) and not has_shield:
+                # Shield just broke — spawn blue debris
+                self._debris.spawn_debris(
+                    tank.x, tank.y, 30, 30, VFX_SHIELD_POP_COLOR, 8,
+                )
+                audio.play_sfx(SFX_SHIELD_POP)
+            self._had_shield[tid] = has_shield
+
+        # Music intensity: switch to intense track when any tank has an active buff
+        any_buff = any(
+            tank.status_effects
+            for tank in all_tanks if tank.is_alive
+        )
+        if any_buff != self._music_intense:
+            self._music_intense = any_buff
+            audio.set_music_intensity(any_buff)
+
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]
         _, ex, ey, eangle, weapon_type = event
@@ -521,10 +555,10 @@ class GameplayScene(BaseScene):
 
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
-        # Buff indicators above tanks
-        _draw_buff_icons(surface, self._tank, self._camera)
+        # Per-type VFX on tanks
+        _draw_tank_effects(surface, self._tank, self._camera)
         for ai_tank in self._ai_tanks:
-            _draw_buff_icons(surface, ai_tank, self._camera)
+            _draw_tank_effects(surface, ai_tank, self._camera)
 
         _draw_bullets(surface, self._bullets, self._camera)
 
@@ -603,7 +637,7 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
     pygame.draw.line(surface, bright, (ax_i + ARENA_WIDTH - 1, ay_i), (ax_i + ARENA_WIDTH - 1, ay_i + ARENA_HEIGHT - 1))   # right inner
 
 
-_PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S"}
+_PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S", "shield": "D"}
 
 
 def _draw_pickups(
@@ -741,33 +775,60 @@ def _draw_tank(
     )
 
 
-_BUFF_ICONS = {
-    "regen":        {"symbol": "+",  "color": (80, 200, 80)},
-    "speed_boost":  {"symbol": ">>", "color": (200, 180, 60)},
-    "rapid_reload": {"symbol": "R",  "color": (60, 160, 220)},
-}
-
-
-def _draw_buff_icons(
+def _draw_tank_effects(
     surface: pygame.Surface,
     tank: Tank,
     camera: Camera,
 ) -> None:
-    """Draw small status-effect icons above a tank."""
+    """Draw per-type visual effects around a tank with active status effects."""
     if not tank.is_alive or not tank.status_effects:
         return
     sx, sy = camera.world_to_screen(tank.x, tank.y)
-    font = pygame.font.Font(None, BUFF_ICON_FONT_SIZE)
-    icons = [_BUFF_ICONS[name] for name in tank.status_effects if name in _BUFF_ICONS]
-    if not icons:
-        return
-    total_width = len(icons) * BUFF_ICON_SPACING
-    start_x = int(sx) - total_width // 2 + BUFF_ICON_SPACING // 2
-    y = int(sy) - BUFF_ICON_OFFSET_Y
-    for i, icon in enumerate(icons):
-        txt = font.render(icon["symbol"], True, icon["color"])
-        x = start_x + i * BUFF_ICON_SPACING - txt.get_width() // 2
-        surface.blit(txt, (x, y - txt.get_height() // 2))
+    cx, cy = int(sx), int(sy)
+    t = time.monotonic()
+
+    if tank.has_status("regen"):
+        # Pulsing heart / cross above tank
+        pulse = (math.sin(t * 4.0) + 1.0) / 2.0
+        size = int(6 + 3 * pulse)
+        hx, hy = cx, cy - BUFF_ICON_OFFSET_Y
+        pygame.draw.line(surface, VFX_REGEN_COLOR, (hx - size, hy), (hx + size, hy), 2)
+        pygame.draw.line(surface, VFX_REGEN_COLOR, (hx, hy - size), (hx, hy + size), 2)
+
+    if tank.has_status("speed_boost"):
+        # Speed lines behind the tank
+        for i in range(3):
+            offset = int(8 + i * 5)
+            alpha = max(60, 180 - i * 50)
+            y_off = -6 + i * 6
+            line_surf = pygame.Surface((offset, 2), pygame.SRCALPHA)
+            line_surf.fill((*VFX_SPEED_COLOR, alpha))
+            surface.blit(line_surf, (cx - TANK_BODY_WIDTH // 2 - offset, cy + y_off))
+
+    if tank.has_status("rapid_reload"):
+        # Spinning rings around tank
+        ring_r = int(TANK_BODY_WIDTH * 0.7 + 3 * math.sin(t * 6.0))
+        overlay = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(overlay, (*VFX_RELOAD_COLOR, 100),
+                           (ring_r + 2, ring_r + 2), ring_r, 2)
+        surface.blit(overlay, (cx - ring_r - 2, cy - ring_r - 2))
+
+    if tank.has_status("shield"):
+        # Soap bubble — translucent circle with shimmer
+        shield_data = tank.status_effects.get("shield", {})
+        shield_hp = shield_data.get("shield_hp", 0)
+        # Bubble radius pulsates gently
+        bubble_r = int(TANK_BODY_WIDTH * 0.85 + 2 * math.sin(t * 3.0))
+        bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
+        alpha = max(40, min(120, int(shield_hp * 2)))
+        pygame.draw.circle(bubble_surf, (*VFX_SHIELD_COLOR, alpha),
+                           (bubble_r + 2, bubble_r + 2), bubble_r, 3)
+        # Shimmer highlight
+        highlight_angle = t * 2.0
+        hx2 = int(bubble_r + 2 + bubble_r * 0.5 * math.cos(highlight_angle))
+        hy2 = int(bubble_r + 2 + bubble_r * 0.5 * math.sin(highlight_angle))
+        pygame.draw.circle(bubble_surf, (255, 255, 255, 60), (hx2, hy2), 4)
+        surface.blit(bubble_surf, (cx - bubble_r - 2, cy - bubble_r - 2))
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:

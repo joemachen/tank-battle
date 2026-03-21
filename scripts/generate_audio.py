@@ -284,6 +284,80 @@ def gen_pickup_expire(sr: int) -> list[float]:
     return out
 
 
+def gen_pickup_health(sr: int) -> list[float]:
+    """Warm ascending chime: C5→E5→G5 with soft harmonics."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    freqs = [523.0, 659.0, 784.0]
+    note_dur = dur / 3.0
+    for i in range(n):
+        t = i / sr
+        idx = min(int(t / note_dur), 2)
+        nt = t - idx * note_dur
+        env = adsr(nt, note_dur, attack=0.005, decay=0.03, sustain_level=0.5, release=0.05)
+        tone = sine(t, freqs[idx]) * 0.5 + sine(t, freqs[idx] * 2) * 0.1
+        out.append(env * tone * 0.6)
+    return out
+
+
+def gen_pickup_speed(sr: int) -> list[float]:
+    """Quick rising sweep — whoosh feel."""
+    dur = 0.2
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.005, decay=0.05, sustain_level=0.4, release=0.14)
+        freq = 400 + 1200 * (t / dur)
+        tone = sawtooth(t, freq) * 0.3 + noise() * 0.15 * math.exp(-t * 20)
+        out.append(env * tone * 0.5)
+    return out
+
+
+def gen_pickup_reload(sr: int) -> list[float]:
+    """Mechanical click-clack: two sharp transients."""
+    dur = 0.18
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        click1 = sine(t, 1200) * math.exp(-t * 60) * 0.5 if t < 0.08 else 0.0
+        click2 = sine(t - 0.09, 900) * math.exp(-(t - 0.09) * 50) * 0.4 if t >= 0.09 else 0.0
+        env = adsr(t, dur, attack=0.001, decay=0.03, sustain_level=0.1, release=0.14)
+        out.append(env * (click1 + click2) * 0.7)
+    return out
+
+
+def gen_pickup_shield(sr: int) -> list[float]:
+    """Crystalline shimmer: high sine with chorus detune."""
+    dur = 0.35
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.02, decay=0.08, sustain_level=0.4, release=0.25)
+        tone = sine(t, 1047.0) * 0.35
+        chorus = sine(t, 1055.0) * 0.2 + sine(t, 1570.0) * 0.15
+        shimmer = sine(t, 2093.0) * 0.1 * math.exp(-t * 8)
+        out.append(env * (tone + chorus + shimmer) * 0.55)
+    return out
+
+
+def gen_shield_pop(sr: int) -> list[float]:
+    """Bubble pop: quick noise burst + falling tone."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.001, decay=0.04, sustain_level=0.1, release=0.2)
+        pop = noise() * 0.5 * math.exp(-t * 40)
+        fall = sine(t, 800 * math.exp(-t * 12)) * 0.4
+        out.append(env * (pop + fall) * 0.6)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Music generators — Outrun/Synthwave style
 # ---------------------------------------------------------------------------
@@ -424,6 +498,25 @@ def gen_music_gameplay(sr: int) -> list[float]:
     return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
 
 
+def gen_music_gameplay_intense(sr: int) -> list[float]:
+    """
+    High-energy synthwave — 140 BPM, 8 bars, aggressive A minor.
+    Used during active buff periods for heightened tension.
+    """
+    bpm = 140.0
+    bars = 8
+    bass = [(-12, 1), (-12, 0.5), (-10, 0.5), (-8, 1), (-7, 1)]
+    arp = [0, 12, 7, 12, 3, 10, 15, 12,
+           0, 7, 12, 15, 12, 7, 3, 0]
+    pads = [
+        [0, 7, 3],
+        [-3, 3, 7],
+        [-5, 0, 3],
+        [-7, -3, 3],
+    ]
+    return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
+
+
 def gen_music_game_over(sr: int) -> list[float]:
     """
     Short melancholic sting — 70 BPM, 4 bars, descending minor motif.
@@ -461,6 +554,11 @@ def main() -> None:
         ("sfx_pickup_spawn.wav",        gen_pickup_spawn),
         ("sfx_pickup_collect.wav",      gen_pickup_collect),
         ("sfx_pickup_expire.wav",       gen_pickup_expire),
+        ("sfx_pickup_health.wav",       gen_pickup_health),
+        ("sfx_pickup_speed.wav",        gen_pickup_speed),
+        ("sfx_pickup_reload.wav",       gen_pickup_reload),
+        ("sfx_pickup_shield.wav",       gen_pickup_shield),
+        ("sfx_shield_pop.wav",          gen_shield_pop),
     ]
 
     print("--- SFX ---")
@@ -470,9 +568,10 @@ def main() -> None:
         _write_wav(path, samples)
 
     music_jobs = [
-        ("music_menu.wav",      gen_music_menu),
-        ("music_gameplay.wav",  gen_music_gameplay),
-        ("music_game_over.wav", gen_music_game_over),
+        ("music_menu.wav",              gen_music_menu),
+        ("music_gameplay.wav",          gen_music_gameplay),
+        ("music_gameplay_intense.wav",  gen_music_gameplay_intense),
+        ("music_game_over.wav",         gen_music_game_over),
     ]
 
     print("\n--- Music ---")

@@ -18,6 +18,8 @@ from game.utils.constants import (
     AUDIO_CHANNELS,
     MASTER_VOLUME_DEFAULT,
     MUSIC_FADEOUT_MS,
+    MUSIC_GAMEPLAY,
+    MUSIC_GAMEPLAY_INTENSE,
     MUSIC_VOLUME_DEFAULT,
     SFX_VOLUME_DEFAULT,
 )
@@ -87,6 +89,11 @@ class AudioManager:
         pygame.mixer.music.fadeout(MUSIC_FADEOUT_MS)
         self._current_music = None
         log.debug("Music stopped.")
+
+    def set_music_intensity(self, intense: bool) -> None:
+        """Crossfade between normal and intense gameplay music."""
+        target = MUSIC_GAMEPLAY_INTENSE if intense else MUSIC_GAMEPLAY
+        self.play_music(target)
 
     # ------------------------------------------------------------------
     # SFX

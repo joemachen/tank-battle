@@ -7,7 +7,14 @@ Effect type and value defined in pickup config passed at spawn.
 
 import math
 
-from game.utils.constants import PICKUP_EFFECT_DURATION, PICKUP_PULSE_SPEED, SFX_PICKUP_COLLECT
+from game.utils.constants import (
+    PICKUP_COLLECT_SFX,
+    PICKUP_EFFECT_DURATION,
+    PICKUP_PULSE_SPEED,
+    SHIELD_DEFAULT_DURATION,
+    SHIELD_DEFAULT_HP,
+    SFX_PICKUP_COLLECT,
+)
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -53,10 +60,16 @@ class Pickup:
             tank._slot_cooldowns = [0.0] * len(tank._slot_cooldowns)
         elif self.pickup_type == "speed_boost":
             tank.apply_status("speed_boost", self.value, duration=PICKUP_EFFECT_DURATION)
+        elif self.pickup_type == "shield":
+            tank.apply_status(
+                "shield", 0.0, duration=SHIELD_DEFAULT_DURATION,
+                shield_hp=self.value or SHIELD_DEFAULT_HP,
+            )
         self.is_alive = False
         try:
             from game.ui.audio_manager import get_audio_manager
-            get_audio_manager().play_sfx(SFX_PICKUP_COLLECT)
+            sfx = PICKUP_COLLECT_SFX.get(self.pickup_type, SFX_PICKUP_COLLECT)
+            get_audio_manager().play_sfx(sfx)
         except Exception:
             pass
         log.info("Pickup '%s' applied to %s", self.pickup_type, tank.tank_type)
