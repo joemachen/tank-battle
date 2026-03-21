@@ -3,13 +3,12 @@ game/scenes/settings_scene.py
 
 SettingsScene — full implementation, v0.13.
 
-Five sections, each navigable by UP/DOWN with LEFT/RIGHT adjusting values:
+Four sections, each navigable by UP/DOWN with LEFT/RIGHT adjusting values:
 
   [ AUDIO ]      Master / Music / SFX volume sliders
   [ DISPLAY ]    Resolution + Fullscreen cycle selectors
   [ CONTROLS ]   Four rebindable movement keys; Fire + Mute shown as read-only
   [ GAMEPLAY ]   Default AI difficulty cycle
-  [ PROFILE ]    Auto-login (skip_profile_select toggle)
   BACK           Fades back to main menu
 
 Persistence:
@@ -283,8 +282,6 @@ class SettingsScene(BaseScene):
                 self._restart_needed = True
             elif row.settings_key == "ai_difficulty":
                 self._settings["ai_difficulty"] = val.lower()
-            elif row.settings_key == "skip_profile_select":
-                self._settings["skip_profile_select"] = (val == "ON")
 
         self._save_manager.save_settings(self._settings)
 
@@ -472,13 +469,6 @@ class SettingsScene(BaseScene):
         rows.append(_Row("cycle", "AI Difficulty",
             CycleComponent("AI Difficulty", diff_opts, diff_idx),
             "ai_difficulty"))
-
-        # PROFILE
-        rows.append(_Row("section", "PROFILE", focusable=False))
-        autologin_idx = 1 if s.get("skip_profile_select", False) else 0
-        rows.append(_Row("cycle", "Auto-login",
-            CycleComponent("Auto-login", ["OFF", "ON"], autologin_idx),
-            "skip_profile_select"))
 
         # BACK
         rows.append(_Row("back", "BACK", focusable=True))

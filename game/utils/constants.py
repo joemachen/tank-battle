@@ -318,5 +318,4 @@ DEFAULT_SETTINGS: dict = {
     },
     "ai_difficulty": "medium",
     "fullscreen": False,
-    "skip_profile_select": False,
 }
