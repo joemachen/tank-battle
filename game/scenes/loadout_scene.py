@@ -507,17 +507,11 @@ class LoadoutScene(BaseScene):
             wname_surf = font_wep.render(wlabel, True, wname_col)
             surface.blit(wname_surf, (cx + 34, slot_row_y + (slot_row_h - wname_surf.get_height()) // 2))
 
-            # Arrow indicators on focused slot
-            if is_focused_slot:
-                arr_font = pygame.font.SysFont(None, 22)
-                arr = arr_font.render("← →", True, COLOR_GRAY)
-                surface.blit(arr, (cx + _PANEL_W - arr.get_width() - 10,
-                                   slot_row_y + (slot_row_h - arr.get_height()) // 2))
-
-            # Colored dot for weapon type (only when NOT focused — arrows replace it)
-            elif wtype:
+            # Colored dot — neon pink when focused, weapon color otherwise
+            if wtype or is_focused_slot:
+                dot_col = COLOR_NEON_PINK if is_focused_slot else wcolor
                 pygame.draw.circle(
-                    surface, wcolor,
+                    surface, dot_col,
                     (cx + _PANEL_W - 24, slot_row_y + slot_row_h // 2), 5,
                 )
 
