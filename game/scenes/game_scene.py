@@ -52,6 +52,7 @@ from game.utils.constants import (
     ARENA_GRID_COLOR,
     ARENA_GRID_STEP,
     ARENA_HEIGHT,
+    ARENA_WALL_THICKNESS,
     ARENA_WIDTH,
     BULLET_COLOR,
     BULLET_RADIUS,
@@ -581,7 +582,25 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
     for wy in range(0, ARENA_HEIGHT + 1, ARENA_GRID_STEP):
         sy = ay_i + wy
         pygame.draw.line(surface, grid_color, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
-    pygame.draw.rect(surface, border_color, floor_rect, border_thick)
+
+    # Themed perimeter walls
+    wall_color = tuple(theme.get("wall_color", border_color)) if theme else border_color
+    wt = ARENA_WALL_THICKNESS
+    # Top wall
+    pygame.draw.rect(surface, wall_color, (ax_i, ay_i - wt, ARENA_WIDTH, wt))
+    # Bottom wall
+    pygame.draw.rect(surface, wall_color, (ax_i, ay_i + ARENA_HEIGHT, ARENA_WIDTH, wt))
+    # Left wall (spans full height including corners)
+    pygame.draw.rect(surface, wall_color, (ax_i - wt, ay_i - wt, wt, ARENA_HEIGHT + 2 * wt))
+    # Right wall
+    pygame.draw.rect(surface, wall_color, (ax_i + ARENA_WIDTH, ay_i - wt, wt, ARENA_HEIGHT + 2 * wt))
+
+    # 1px inner-edge highlight for 3D wall effect
+    bright = tuple(min(255, c + 40) for c in wall_color)
+    pygame.draw.line(surface, bright, (ax_i, ay_i), (ax_i + ARENA_WIDTH - 1, ay_i))                         # top inner
+    pygame.draw.line(surface, bright, (ax_i, ay_i + ARENA_HEIGHT - 1), (ax_i + ARENA_WIDTH - 1, ay_i + ARENA_HEIGHT - 1))  # bottom inner
+    pygame.draw.line(surface, bright, (ax_i, ay_i), (ax_i, ay_i + ARENA_HEIGHT - 1))                         # left inner
+    pygame.draw.line(surface, bright, (ax_i + ARENA_WIDTH - 1, ay_i), (ax_i + ARENA_WIDTH - 1, ay_i + ARENA_HEIGHT - 1))   # right inner
 
 
 _PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S"}

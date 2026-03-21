@@ -9,4 +9,5 @@ border_color: [60, 80, 60]
 border_thickness: 4
 obstacle_tint: [100, 100, 100]
 ambient_label: "Classic"
+wall_color: [55, 65, 55]
 music_override: null

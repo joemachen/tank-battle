@@ -9,4 +9,5 @@ border_color: [180, 200, 220]
 border_thickness: 5
 obstacle_tint: [200, 210, 225]
 ambient_label: "Frozen"
+wall_color: [160, 170, 180]
 music_override: null

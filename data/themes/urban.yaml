@@ -9,4 +9,5 @@ border_color: [50, 50, 55]
 border_thickness: 4
 obstacle_tint: [90, 90, 95]
 ambient_label: "Downtown"
+wall_color: [40, 40, 45]
 music_override: null

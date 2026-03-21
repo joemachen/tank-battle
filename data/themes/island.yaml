@@ -9,4 +9,5 @@ border_color: [100, 160, 200]
 border_thickness: 8
 obstacle_tint: [160, 140, 100]
 ambient_label: "Coastal"
+wall_color: [80, 130, 160]
 music_override: null

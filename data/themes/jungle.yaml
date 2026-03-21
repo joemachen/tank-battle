@@ -9,4 +9,5 @@ border_color: [30, 60, 25]
 border_thickness: 6
 obstacle_tint: [60, 100, 50]
 ambient_label: "Dense"
+wall_color: [45, 55, 35]
 music_override: null
