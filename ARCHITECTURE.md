@@ -261,9 +261,16 @@ Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `update(dt: float)` | `None` | Advance position; despawn if max_range exceeded |
+| `update(dt: float)` | `None` | Track target (if homing), advance position, despawn if max_range exceeded |
 | `reflect(normal_x: float, normal_y: float)` | `None` | Reflect velocity off surface normal; decrement bounces |
 | `destroy()` | `None` | Mark for removal |
+| `set_targets_getter(getter)` | `None` | Inject callable returning list of alive tanks for homing |
+
+#### Homing Tracking (`_track_target`)
+
+Called automatically by `update()`. No-op when `_tracking_strength == 0` or no targets getter.
+Finds nearest alive non-owner tank, computes desired angle, rotates heading by
+`tracking_strength * dt` radians/sec toward target. Updates `_dx`, `_dy`, `angle`.
 
 #### Properties
 

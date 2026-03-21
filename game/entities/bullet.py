@@ -9,7 +9,7 @@ import math
 
 from game.utils.constants import BULLET_DEFAULT_MAX_RANGE, DEFAULT_BULLET_SPEED
 from game.utils.logger import get_logger
-from game.utils.math_utils import heading_to_vec
+from game.utils.math_utils import angle_difference, angle_to, distance, heading_to_vec
 
 log = get_logger(__name__)
 
@@ -44,12 +44,50 @@ class Bullet:
 
         self._dx, self._dy = heading_to_vec(self.angle)
         self._distance_traveled: float = 0.0
+
+        # Homing support
+        self._tracking_strength: float = float(config.get("tracking_strength", 0.0))
+        self._targets_getter = None  # injected after construction for homing bullets
+
         log.debug("Bullet spawned at (%.0f, %.0f) angle=%.1f type=%s", x, y, angle, self.weapon_type)
+
+    def set_targets_getter(self, getter) -> None:
+        """Inject a callable returning list of alive tanks for homing behavior.
+        Called by GameplayScene after bullet construction."""
+        self._targets_getter = getter
+
+    def _track_target(self, dt: float) -> None:
+        """Adjust heading toward nearest enemy. No-op for non-homing bullets."""
+        if self._tracking_strength <= 0 or self._targets_getter is None:
+            return
+
+        targets = self._targets_getter()
+        candidates = [t for t in targets if t.is_alive and t is not self.owner]
+        if not candidates:
+            return
+
+        nearest = min(candidates, key=lambda t: distance((self.x, self.y), t.position))
+        desired = angle_to((self.x, self.y), nearest.position)
+        current = math.degrees(math.atan2(self._dy, self._dx))
+
+        max_turn = math.degrees(self._tracking_strength * dt)
+        diff = angle_difference(current, desired)
+
+        if abs(diff) <= max_turn:
+            new_angle = desired
+        else:
+            new_angle = current + max_turn * (1.0 if diff > 0 else -1.0)
+
+        rad = math.radians(new_angle)
+        self._dx = math.cos(rad)
+        self._dy = math.sin(rad)
+        self.angle = new_angle
 
     def update(self, dt: float) -> None:
         """Advance bullet position; despawn if max_range exceeded."""
         if not self.is_alive:
             return
+        self._track_target(dt)
         step = self.speed * dt
         self.x += self._dx * step
         self.y += self._dy * step

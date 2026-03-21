@@ -105,6 +105,8 @@ KEYBIND_SLOT_3: int = 51             # K_3
 BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
 BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml
+HOMING_BULLET_COLOR: tuple = COLOR_RED
+HOMING_BULLET_RADIUS: int = BULLET_RADIUS + 1
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29

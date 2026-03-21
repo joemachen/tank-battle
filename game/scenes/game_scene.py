@@ -55,6 +55,8 @@ from game.utils.constants import (
     ARENA_WIDTH,
     BULLET_COLOR,
     BULLET_RADIUS,
+    HOMING_BULLET_COLOR,
+    HOMING_BULLET_RADIUS,
     COLOR_BG,
     COLOR_NEON_PINK,
     DAMAGE_CRACK_DARKEN,
@@ -493,7 +495,10 @@ class GameplayScene(BaseScene):
             dx, dy = heading_to_vec(eangle)
             bx = ex + dx * TANK_BARREL_LENGTH
             by = ey + dy * TANK_BARREL_LENGTH
-            self._bullets.append(Bullet(bx, by, eangle, owner, weapon_cfg))
+            bullet = Bullet(bx, by, eangle, owner, weapon_cfg)
+            if float(weapon_cfg.get("tracking_strength", 0)) > 0:
+                bullet.set_targets_getter(lambda: [self._tank] + self._ai_tanks)
+            self._bullets.append(bullet)
 
     # ------------------------------------------------------------------
     # Draw
@@ -751,7 +756,10 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
         if not bullet.is_alive:
             continue
         sx, sy = camera.world_to_screen(bullet.x, bullet.y)
-        pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
+        if bullet._tracking_strength > 0:
+            pygame.draw.circle(surface, HOMING_BULLET_COLOR, (int(sx), int(sy)), HOMING_BULLET_RADIUS)
+        else:
+            pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
 
 
 def _draw_reticle(surface: pygame.Surface) -> None:
