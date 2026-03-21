@@ -116,6 +116,32 @@ OBSTACLE_COLOR = (72, 68, 50)            # fallback fill; normally overridden by
 OBSTACLE_BORDER_COLOR = (110, 105, 80)   # 2px border drawn on top of material fill
 OBSTACLE_DAMAGED_COLOR = (28, 26, 22)    # lerp target when obstacle hp reaches 0
 
+# Debris particles
+MAX_DEBRIS_PARTICLES: int = 200
+DEBRIS_GRAVITY: float = 150.0
+DEBRIS_FADE_MIN: float = 0.4
+DEBRIS_FADE_MAX: float = 0.7
+DEBRIS_SPEED_MIN: float = 80.0
+DEBRIS_SPEED_MAX: float = 200.0
+
+# Hit flash
+HIT_FLASH_DURATION: float = 0.15
+HIT_FLASH_BLEND: float = 0.6
+
+# Damage states
+DAMAGE_DARKEN_MEDIUM: float = 0.25
+DAMAGE_DARKEN_CRITICAL: float = 0.50
+DAMAGE_CRACK_DARKEN: float = 0.7
+
+# Debris count per material
+DEBRIS_COUNT: dict = {
+    "crate": 5,
+    "wood": 7,
+    "brick": 10,
+    "reinforced_steel": 12,
+}
+DEBRIS_COUNT_DEFAULT: int = 6
+
 # ---------------------------------------------------------------------------
 # File paths
 # ---------------------------------------------------------------------------
