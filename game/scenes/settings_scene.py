@@ -35,6 +35,7 @@ from game.ui.components import (
 )
 from game.utils.constants import (
     COLOR_BG,
+    COLOR_GRAY,
     COLOR_NEON_PINK,
     DEFAULT_SETTINGS,
     MASTER_VOLUME_DEFAULT,
