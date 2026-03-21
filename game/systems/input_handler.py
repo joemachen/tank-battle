@@ -39,6 +39,7 @@ _DEFAULT_KEYS: dict = {
     "rotate_left":     pygame.K_a,
     "rotate_right":    pygame.K_d,
     "fire":            pygame.K_SPACE,
+    "mute":            pygame.K_m,
     "cycle_next":      pygame.K_TAB,
     "cycle_prev":      pygame.K_q,
     "cycle_next_alt":  pygame.K_e,
@@ -155,6 +156,7 @@ class InputHandler:
             "rotate_left":   "rotate_left",
             "rotate_right":  "rotate_right",
             "fire":          "fire",
+            "mute":          "mute",
         }
         for action, key_name in keybinds.items():
             if action in key_map:

@@ -314,6 +314,7 @@ DEFAULT_SETTINGS: dict = {
         "rotate_left": "a",
         "rotate_right": "d",
         "fire": "space",
+        "mute": "m",
         "pause": "escape",
     },
     "ai_difficulty": "medium",

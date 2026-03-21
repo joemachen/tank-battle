@@ -240,6 +240,83 @@ class TestFindKeybindConflict:
         rows.append(_Row("section", "AUDIO", focusable=False))  # non-keybind
         assert find_keybind_conflict(rows, "x", "move_forward") is None
 
+    def test_fire_participates_in_conflict_detection(self):
+        from game.scenes.settings_scene import find_keybind_conflict
+        rows = self._build_rows({"fire": "space", "move_forward": "w"})
+        result = find_keybind_conflict(rows, "space", "move_forward")
+        assert result == "Fire"
+
+    def test_mute_participates_in_conflict_detection(self):
+        from game.scenes.settings_scene import find_keybind_conflict
+        rows = self._build_rows({"mute": "m", "move_forward": "w"})
+        result = find_keybind_conflict(rows, "m", "move_forward")
+        assert result == "Mute"
+
+
+# ---------------------------------------------------------------------------
+# Fire and Mute rebindable (v0.17.5)
+# ---------------------------------------------------------------------------
+
+class TestFireAndMuteRebindable:
+    """Fire and Mute rows are full KeybindComponent rows, not static/read-only."""
+
+    def _build_settings_rows(self):
+        from game.utils.constants import DEFAULT_SETTINGS
+        from game.scenes.settings_scene import SettingsScene
+
+        class _FakeManager:
+            def switch_to(self, *a, **kw): pass
+
+        scene = SettingsScene(_FakeManager())
+        return scene._build_rows(dict(DEFAULT_SETTINGS))
+
+    def test_fire_row_is_keybind(self):
+        rows = self._build_settings_rows()
+        fire_rows = [r for r in rows if r.settings_key == "fire"]
+        assert len(fire_rows) == 1
+        assert fire_rows[0].kind == "keybind"
+        assert fire_rows[0].focusable is True
+
+    def test_mute_row_is_keybind(self):
+        rows = self._build_settings_rows()
+        mute_rows = [r for r in rows if r.settings_key == "mute"]
+        assert len(mute_rows) == 1
+        assert mute_rows[0].kind == "keybind"
+        assert mute_rows[0].focusable is True
+
+    def test_fire_row_default_value_is_space(self):
+        rows = self._build_settings_rows()
+        fire = [r for r in rows if r.settings_key == "fire"][0]
+        assert fire.component.value == "space"
+
+    def test_mute_row_default_value_is_m(self):
+        rows = self._build_settings_rows()
+        mute = [r for r in rows if r.settings_key == "mute"][0]
+        assert mute.component.value == "m"
+
+    def test_fire_row_is_rebindable(self):
+        rows = self._build_settings_rows()
+        fire = [r for r in rows if r.settings_key == "fire"][0]
+        fire.component.activate_listen()
+        result = fire.component.try_bind(pygame.K_x)
+        assert result == "x"
+        fire.component.commit(result)
+        assert fire.component.value == "x"
+
+    def test_mute_row_is_rebindable(self):
+        rows = self._build_settings_rows()
+        mute = [r for r in rows if r.settings_key == "mute"][0]
+        mute.component.activate_listen()
+        result = mute.component.try_bind(pygame.K_n)
+        assert result == "n"
+        mute.component.commit(result)
+        assert mute.component.value == "n"
+
+    def test_no_static_rows_remain(self):
+        rows = self._build_settings_rows()
+        static_rows = [r for r in rows if r.kind == "static"]
+        assert len(static_rows) == 0
+
 
 # ---------------------------------------------------------------------------
 # SaveManager round-trip for settings

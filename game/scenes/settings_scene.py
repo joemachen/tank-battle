@@ -80,7 +80,7 @@ _SCANLINE_ALPHA: int = 14
 _SECTION_DIM: tuple = tuple(int(c * 0.28) for c in SETTINGS_SECTION_COLOR)
 _WARNING_DURATION: float = 2.0
 
-_STATIC_INFO: dict = {"Fire": "SPACE / LMB", "Mute": "M"}
+_FIRE_LMB_SUFFIX: str = " / LMB"  # always appended to Fire display (not editable)
 _VOLUME_CHANNEL: dict = {
     "master_volume": "master",
     "music_volume":  "music",
@@ -364,14 +364,6 @@ class SettingsScene(BaseScene):
                                  (_LABEL_X, y + _SECTION_H - 2), (_CTRL_END, y + _SECTION_H - 2))
                 y += _SECTION_H
 
-            elif row.kind == "static":
-                ty = y + (_ROW_H - f_info.get_linesize()) // 2
-                lbl = f_info.render(row.label, True, (95, 95, 100))
-                val = f_info.render(_STATIC_INFO.get(row.label, ""), True, (95, 95, 100))
-                surface.blit(lbl, (_LABEL_X, ty))
-                surface.blit(val, (_LABEL_X + 360, ty))
-                y += _ROW_H
-
             elif row.kind == "back":
                 y += _BACK_EXTRA_GAP
                 clr = COLOR_NEON_PINK if is_sel else (153, 153, 153)
@@ -386,6 +378,10 @@ class SettingsScene(BaseScene):
             else:
                 # slider / cycle / keybind
                 row.component.draw(surface, _LABEL_X, y, is_sel)
+                # Fire row: append non-editable "/ LMB" suffix
+                if row.settings_key == "fire":
+                    suffix = f_info.render(_FIRE_LMB_SUFFIX, True, COLOR_GRAY)
+                    surface.blit(suffix, (_LABEL_X + 360 + 80, y + (_ROW_H - f_info.get_linesize()) // 2))
                 y += _ROW_H
 
     def _draw_footer(self, surface: pygame.Surface) -> None:
@@ -453,13 +449,13 @@ class SettingsScene(BaseScene):
             ("move_backward", "Move Backward"),
             ("rotate_left",   "Rotate Left"),
             ("rotate_right",  "Rotate Right"),
+            ("fire",          "Fire"),
+            ("mute",          "Mute"),
         ):
             default_key = DEFAULT_SETTINGS["keybinds"].get(action, action[0])
             rows.append(_Row("keybind", label,
                 KeybindComponent(label, action, kb.get(action, default_key)),
                 action))
-        rows.append(_Row("static", "Fire", focusable=False))
-        rows.append(_Row("static", "Mute", focusable=False))
 
         # GAMEPLAY
         rows.append(_Row("section", "GAMEPLAY", focusable=False))

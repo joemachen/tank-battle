@@ -144,6 +144,10 @@ class GameplayScene(BaseScene):
         _settings = SaveManager().load_settings()
         _keybinds = _settings.get("keybinds", {})
 
+        # Resolve mute key from settings (rebindable as of v0.17.5)
+        mute_name = _keybinds.get("mute", "m")
+        self._mute_key: int = getattr(pygame, f"K_{mute_name}", pygame.K_m)
+
         # Resolve player tank type and opponent count from TankSelectScene kwargs
         tank_type = kwargs.get("tank_type", TANK_DEFAULT_TYPE)
         ai_difficulty_key = _settings.get("ai_difficulty", "medium")
@@ -290,7 +294,7 @@ class GameplayScene(BaseScene):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.manager.switch_to(SCENE_MENU)
-            elif event.key == pygame.K_m:
+            elif event.key == self._mute_key:
                 get_audio_manager().toggle_mute()
             # Number keys — jump directly to weapon slot (no-op if slot doesn't exist)
             elif event.key == KEYBIND_SLOT_1 and self._tank:
