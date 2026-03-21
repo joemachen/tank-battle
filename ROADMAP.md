@@ -23,18 +23,18 @@ are completed or plans change.
 | v0.17.0 | Multiple maps + environment themes — 3 maps, 6 themes, MapSelectScene |
 | v0.17.5 | Unified LoadoutScene + profile auto-create — collapse 3-scene pre-match chain |
 | v0.18.0 | Destructible obstacles — damage states, hit flash, debris particles, collision damage removed |
+| v0.19.0 | Pickup drops + polish — health HoT, rapid reload, speed boost, SFX, buff icons, AI retreat fire, front stripe |
 ---
 ## 🔨 In Progress
-| Branch               | Milestone                                            |
-|----------------------|------------------------------------------------------|
-| feature/pickups      | v0.19 — Pickup drops                                 |
+| Branch                    | Milestone                                            |
+|---------------------------|------------------------------------------------------|
+| feature/defensive-pickups | v0.20 — Defensive pickups                            |
 ---
 ## 🗺️ Planned
 ### Phase 2 — Content Expansion
 *More things to do and unlock.*
 | Version | Milestone                          | Notes                                                                                                                                                                                                                                                                                                    |
 |---------|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.19   | Pickup drops                      | Health packs, ammo, speed boost. Pickup entity already exists in entities/pickup.py.                                                                                                                                                                                                                     |
 | v0.20   | Defensive pickups                 | Shields (absorb X damage), repair kits (regen over time), decoys (confuse AI targeting), EMP (brief area slow). All defined in pickup config.                                                                                                                                                            |
 ---
 ### Phase 3 — Elemental Weapon System
@@ -139,5 +139,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.18.0 — v0.17 maps/themes, v0.17.5 unified loadout, v0.18 destructible obstacles completed;
-v0.19 pickup drops in progress*
+*Last updated: v0.19.0 — v0.19 pickup drops + polish completed;
+v0.20 defensive pickups in progress*
