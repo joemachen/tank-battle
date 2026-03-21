@@ -68,3 +68,10 @@ obstacles:
     height: 80
     material_type: crate
     reflective: false
+
+pickup_spawns:
+  - {x: 400,  y: 300}
+  - {x: 1200, y: 300}
+  - {x: 400,  y: 900}
+  - {x: 1200, y: 900}
+  - {x: 800,  y: 600}

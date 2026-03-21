@@ -105,6 +105,9 @@ class Tank:
         # Per-slot cooldown timers (seconds remaining until each weapon can fire)
         self._slot_cooldowns: list[float] = [0.0]
 
+        # Status effects (v0.19) — {name: {value, timer}}
+        self._status_effects: dict = {}
+
         log.debug(
             "Tank created at (%.0f, %.0f) type=%s hp=%d spd=%.0f",
             x, y, self.tank_type, self.max_health, self.speed,
@@ -214,6 +217,8 @@ class Tank:
         if not self.is_alive:
             return []
 
+        self.tick_status_effects(dt)
+
         events = []
         intent = self.controller.get_input()
 
@@ -230,8 +235,11 @@ class Tank:
         # Movement along facing direction
         prev_x, prev_y = self.x, self.y
         dx, dy = heading_to_vec(self.angle)
-        self.x += dx * intent.throttle * self.speed * dt
-        self.y += dy * intent.throttle * self.speed * dt
+        effective_speed = self.speed
+        if self.has_status("speed_boost"):
+            effective_speed *= self._status_effects["speed_boost"]["value"]
+        self.x += dx * intent.throttle * effective_speed * dt
+        self.y += dy * intent.throttle * effective_speed * dt
 
         # Velocity (world-space px/s) — used by CollisionSystem for damage scaling
         if dt > 0:
@@ -256,6 +264,45 @@ class Tank:
             )
 
         return events
+
+    # ------------------------------------------------------------------
+    # Status effects (v0.19)
+    # ------------------------------------------------------------------
+
+    def apply_status(self, name: str, value: float, duration: float) -> None:
+        """Apply or refresh a named status effect."""
+        self._status_effects[name] = {"value": value, "timer": duration}
+        log.debug("Status applied: %s value=%.1f duration=%.1f", name, value, duration)
+
+    def tick_status_effects(self, dt: float) -> None:
+        """Decrement all status timers, apply regen healing, and remove expired effects."""
+        # Regen: heal each frame (accumulate fractional HP)
+        if "regen" in self._status_effects:
+            regen = self._status_effects["regen"]
+            regen.setdefault("_accum", 0.0)
+            regen["_accum"] += regen["value"] * dt
+            whole = int(regen["_accum"])
+            if whole > 0:
+                self.health = min(self.max_health, self.health + whole)
+                regen["_accum"] -= whole
+
+        expired = []
+        for name, data in self._status_effects.items():
+            data["timer"] -= dt
+            if data["timer"] <= 0:
+                expired.append(name)
+        for name in expired:
+            del self._status_effects[name]
+            log.debug("Status expired: %s", name)
+
+    def has_status(self, name: str) -> bool:
+        """Check whether a named status effect is currently active."""
+        return name in self._status_effects
+
+    @property
+    def status_effects(self) -> dict:
+        """Read-only access to active status effects for rendering."""
+        return self._status_effects
 
     # ------------------------------------------------------------------
     # Damage

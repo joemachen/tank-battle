@@ -154,6 +154,33 @@ DEFAULT_MAP: str = "map_01"
 DEFAULT_THEME: str = "default"
 THEME_TINT_BLEND: float = 0.5        # 50/50 blend of material color + theme obstacle tint
 MATERIALS_CONFIG: str = "data/configs/materials.yaml"
+PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
+
+# Pickup spawner
+PICKUP_SPAWN_INTERVAL: float = 8.0
+PICKUP_MAX_ACTIVE: int = 4
+# DEPRECATED v0.19 — use PICKUP_EFFECT_DURATION instead
+SPEED_BOOST_DURATION: float = 5.0
+
+# Pickup rendering
+PICKUP_RENDER_RADIUS: int = 26
+PICKUP_PULSE_SPEED: float = 4.0
+PICKUP_PULSE_AMPLITUDE: float = 0.15
+PICKUP_GLOW_ALPHA: int = 40
+PICKUP_GLOW_SCALE: float = 1.5
+
+# Pickup effect duration (shared: HoT, speed boost)
+PICKUP_EFFECT_DURATION: float = 8.0
+PICKUP_LIFETIME: float = 30.0
+
+# Buff indicator
+BUFF_ICON_OFFSET_Y: int = 20
+BUFF_ICON_FONT_SIZE: int = 14
+BUFF_ICON_SPACING: int = 16
+
+# Tank front stripe
+TANK_FRONT_STRIPE_WIDTH: int = 2
+TANK_FRONT_STRIPE_BRIGHTEN: int = 60
 SAVES_DIR: str = "saves"
 LOGS_DIR: str = "logs"
 LOG_FILE: str = "logs/tank_battle.log"
@@ -168,9 +195,9 @@ XP_TABLE_CONFIG: str = "data/progression/xp_table.yaml"
 # ---------------------------------------------------------------------------
 # Audio
 # ---------------------------------------------------------------------------
-MUSIC_VOLUME_DEFAULT: float = 0.7
-SFX_VOLUME_DEFAULT: float = 0.8
-MASTER_VOLUME_DEFAULT: float = 1.0
+MUSIC_VOLUME_DEFAULT: float = 0.5
+SFX_VOLUME_DEFAULT: float = 0.5
+MASTER_VOLUME_DEFAULT: float = 0.5
 AUDIO_CHANNELS: int = 16
 MUSIC_FADEOUT_MS: int = 1000
 
@@ -186,6 +213,9 @@ SFX_TANK_EXPLOSION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_ex
 SFX_TANK_COLLISION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_collision.wav")
 SFX_UI_NAVIGATE:         str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_navigate.wav")
 SFX_UI_CONFIRM:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_confirm.wav")
+SFX_PICKUP_SPAWN:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_spawn.wav")
+SFX_PICKUP_COLLECT:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_collect.wav")
+SFX_PICKUP_EXPIRE:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_expire.wav")
 
 # Music asset paths
 MUSIC_MENU:      str = _os.path.join(_ASSET_ROOT, "music", "music_menu.wav")
@@ -276,7 +306,7 @@ LOADOUT_PANEL_COUNT: int = 3
 # AI
 # ---------------------------------------------------------------------------
 AI_DETECTION_RANGE: float = 550.0        # pixels — triggers PURSUE state
-AI_ATTACK_RANGE: float = 250.0           # pixels — triggers ATTACK state
+AI_ATTACK_RANGE: float = 375.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 
 # Predefined AI spawn positions in world space — all far from arena center

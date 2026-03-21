@@ -70,3 +70,10 @@ obstacles:
     height: 60
     material_type: brick
     reflective: false
+
+pickup_spawns:
+  - {x: 350,  y: 250}
+  - {x: 1250, y: 250}
+  - {x: 350,  y: 950}
+  - {x: 1250, y: 950}
+  - {x: 800,  y: 600}

@@ -190,6 +190,7 @@ _FAKE_MAP_DATA = {
         "ambient_label": "Classic",
     },
     "name": "Headquarters",
+    "pickup_spawns": [],
 }
 
 

@@ -235,6 +235,55 @@ def gen_ui_confirm(sr: int) -> list[float]:
     return out
 
 
+def gen_pickup_spawn(sr: int) -> list[float]:
+    """Rising three-note arpeggio chime: C5→E5→G5."""
+    dur = 0.3
+    n = _seconds(dur)
+    out = []
+    note_dur = dur / 3.0
+    freqs = [523.0, 659.0, 784.0]  # C5, E5, G5
+    for i in range(n):
+        t = i / sr
+        note_idx = min(int(t / note_dur), 2)
+        note_t = t - note_idx * note_dur
+        env = adsr(note_t, note_dur, attack=0.005, decay=0.03, sustain_level=0.5, release=0.06)
+        tone = sine(t, freqs[note_idx]) * 0.5
+        harm = sine(t, freqs[note_idx] * 2) * 0.15
+        out.append(env * (tone + harm) * 0.5)
+    return out
+
+
+def gen_pickup_collect(sr: int) -> list[float]:
+    """Bright two-note ding: G5→C6."""
+    dur = 0.2
+    n = _seconds(dur)
+    out = []
+    freqs = [784.0, 1047.0]  # G5, C6
+    for i in range(n):
+        t = i / sr
+        note_idx = 0 if t < 0.1 else 1
+        note_t = t if note_idx == 0 else t - 0.1
+        env = adsr(note_t, 0.1, attack=0.003, decay=0.02, sustain_level=0.4, release=0.07)
+        tone = sine(t, freqs[note_idx]) * 0.6
+        harm = sine(t, freqs[note_idx] * 1.5) * 0.2
+        out.append(env * (tone + harm) * 0.7)
+    return out
+
+
+def gen_pickup_expire(sr: int) -> list[float]:
+    """Soft descending tone: E5→C5."""
+    dur = 0.4
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.02, decay=0.1, sustain_level=0.2, release=0.28)
+        freq = 659.0 - (659.0 - 523.0) * (t / dur)  # E5 glide to C5
+        tone = sine(t, freq) * 0.4
+        out.append(env * tone * 0.3)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Music generators — Outrun/Synthwave style
 # ---------------------------------------------------------------------------
@@ -409,6 +458,9 @@ def main() -> None:
         ("sfx_tank_collision.wav",      gen_tank_collision),
         ("sfx_ui_navigate.wav",         gen_ui_navigate),
         ("sfx_ui_confirm.wav",          gen_ui_confirm),
+        ("sfx_pickup_spawn.wav",        gen_pickup_spawn),
+        ("sfx_pickup_collect.wav",      gen_pickup_collect),
+        ("sfx_pickup_expire.wav",       gen_pickup_expire),
     ]
 
     print("--- SFX ---")

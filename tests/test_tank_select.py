@@ -301,7 +301,8 @@ class TestGameplaySceneTankType:
                                               "evasion_threshold": 0.40})
         from game.utils.theme_loader import load_theme
         monkeypatch.setattr(gs, "load_map", lambda *a, **kw: {
-            "obstacles": [], "theme": load_theme("default"), "name": "Test Map"
+            "obstacles": [], "theme": load_theme("default"), "name": "Test Map",
+            "pickup_spawns": [],
         })
 
         class _FakeTank:

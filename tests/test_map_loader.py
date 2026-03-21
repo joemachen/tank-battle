@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from game.utils.map_loader import load_map
 
 # Required keys the returned dict must always contain
-_MAP_KEYS = {"obstacles", "theme", "name"}
+_MAP_KEYS = {"obstacles", "theme", "name", "pickup_spawns"}
 
 # Required theme keys every theme dict must contain
 _THEME_KEYS = {
