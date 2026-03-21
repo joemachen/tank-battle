@@ -252,6 +252,8 @@ class SettingsScene(BaseScene):
         row = self._active_row
         if row is None or row.component is None:
             return
+        if not hasattr(row.component, "handle_input"):
+            return
         if row.component.handle_input(key):
             self._on_value_change(row)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)

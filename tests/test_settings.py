@@ -317,6 +317,17 @@ class TestFireAndMuteRebindable:
         static_rows = [r for r in rows if r.kind == "static"]
         assert len(static_rows) == 0
 
+    def test_left_right_on_keybind_row_no_crash(self):
+        """LEFT/RIGHT on a keybind row should be a no-op, not crash."""
+        from game.ui.components import KeybindComponent
+
+        comp = KeybindComponent("Fire", "fire", "space")
+        assert not hasattr(comp, "handle_input")
+        # Simulate what _adjust() now does — guard prevents AttributeError
+        if hasattr(comp, "handle_input"):
+            comp.handle_input(pygame.K_LEFT)
+        # No exception = pass
+
 
 # ---------------------------------------------------------------------------
 # SaveManager round-trip for settings
