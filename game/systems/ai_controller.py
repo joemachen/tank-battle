@@ -322,7 +322,10 @@ class AIController:
         flee_angle += self._obstacle_steer_correction(flee_angle)
         diff = angle_difference(self._owner.angle, flee_angle)
         rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
-        return TankInput(throttle=1.0, rotate=rotate, fire=False,
+        # Fighting withdrawal: fire at targets within attack range
+        dist = distance(self._owner.position, target.position)
+        fire = dist <= AI_ATTACK_RANGE and random.random() < self.aggression
+        return TankInput(throttle=1.0, rotate=rotate, fire=fire,
                          turret_angle=turret_angle)
 
     def _recovery_input(self) -> TankInput:

@@ -275,7 +275,17 @@ class Tank:
         log.debug("Status applied: %s value=%.1f duration=%.1f", name, value, duration)
 
     def tick_status_effects(self, dt: float) -> None:
-        """Decrement all status timers and remove expired effects."""
+        """Decrement all status timers, apply regen healing, and remove expired effects."""
+        # Regen: heal each frame (accumulate fractional HP)
+        if "regen" in self._status_effects:
+            regen = self._status_effects["regen"]
+            regen.setdefault("_accum", 0.0)
+            regen["_accum"] += regen["value"] * dt
+            whole = int(regen["_accum"])
+            if whole > 0:
+                self.health = min(self.max_health, self.health + whole)
+                regen["_accum"] -= whole
+
         expired = []
         for name, data in self._status_effects.items():
             data["timer"] -= dt
@@ -288,6 +298,11 @@ class Tank:
     def has_status(self, name: str) -> bool:
         """Check whether a named status effect is currently active."""
         return name in self._status_effects
+
+    @property
+    def status_effects(self) -> dict:
+        """Read-only access to active status effects for rendering."""
+        return self._status_effects
 
     # ------------------------------------------------------------------
     # Damage

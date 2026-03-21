@@ -126,3 +126,44 @@ class TestSpeedBoostInUpdate:
         tank.apply_status("speed_boost", 1.6, 2.0)
         tank.update(1.0)
         assert abs(tank._status_effects["speed_boost"]["timer"] - 1.0) < 0.1
+
+
+class TestRegenStatus:
+    def test_regen_heals_over_time(self):
+        """Regen status should increase HP across multiple ticks."""
+        tank = _make_tank(hp=100)
+        tank.health = 60
+        # 40 HP over 8 seconds = 5 HP/s
+        tank.apply_status("regen", 5.0, 8.0)
+        # Tick 20 frames at 0.1s each = 2 seconds → expect ~10 HP healed
+        for _ in range(20):
+            tank.tick_status_effects(0.1)
+        assert tank.health >= 69  # 60 + ~10, conservative bound
+
+    def test_regen_does_not_exceed_max_health(self):
+        """Regen should cap healing at max_health."""
+        tank = _make_tank(hp=100)
+        tank.health = 95
+        tank.apply_status("regen", 10.0, 8.0)
+        for _ in range(50):
+            tank.tick_status_effects(0.1)
+        assert tank.health == 100
+
+    def test_regen_expires(self):
+        """Regen status should be removed after its timer expires."""
+        tank = _make_tank(hp=100)
+        tank.health = 60
+        tank.apply_status("regen", 5.0, 2.0)
+        tank.tick_status_effects(3.0)
+        assert not tank.has_status("regen")
+
+    def test_regen_accumulates_fractional_hp(self):
+        """Small per-frame heals should accumulate via the _accum float."""
+        tank = _make_tank(hp=100)
+        tank.health = 50
+        # 1 HP/s at small dt means each tick heals 0.016 HP — needs accumulation
+        tank.apply_status("regen", 1.0, 10.0)
+        for _ in range(60):
+            tank.tick_status_effects(1 / 60)
+        # After 1 second at 1 HP/s → expect ~1 HP healed
+        assert tank.health >= 51

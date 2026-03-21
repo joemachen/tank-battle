@@ -9,10 +9,25 @@ from __future__ import annotations
 import random
 
 from game.entities.pickup import Pickup
-from game.utils.constants import PICKUP_MAX_ACTIVE, PICKUP_SPAWN_INTERVAL
+from game.utils.constants import (
+    PICKUP_LIFETIME,
+    PICKUP_MAX_ACTIVE,
+    PICKUP_SPAWN_INTERVAL,
+    SFX_PICKUP_EXPIRE,
+    SFX_PICKUP_SPAWN,
+)
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+def _play_sfx(path: str) -> None:
+    """Play SFX if audio manager is available."""
+    try:
+        from game.ui.audio_manager import get_audio_manager
+        get_audio_manager().play_sfx(path)
+    except Exception:
+        pass
 
 
 class PickupSpawner:
@@ -35,12 +50,18 @@ class PickupSpawner:
         return self._active_pickups
 
     def update(self, dt: float) -> list[Pickup]:
-        """Tick pickups, prune collected, and attempt spawns."""
-        # Tick active pickups (pulse timer)
+        """Tick pickups, expire old ones, prune collected, and attempt spawns."""
+        # Tick active pickups (pulse timer + age)
         for p in self._active_pickups:
             p.update(dt)
 
-        # Prune collected pickups
+        # Expire old pickups
+        for p in self._active_pickups:
+            if p.is_alive and p.age >= PICKUP_LIFETIME:
+                p.is_alive = False
+                _play_sfx(SFX_PICKUP_EXPIRE)
+
+        # Prune collected/expired pickups
         self._active_pickups = [p for p in self._active_pickups if p.is_alive]
 
         # Spawn timer
@@ -72,6 +93,7 @@ class PickupSpawner:
             value=float(config.get("value", 1)),
         )
         self._active_pickups.append(pickup)
+        _play_sfx(SFX_PICKUP_SPAWN)
         log.debug("Pickup spawned: %s at %s", pickup_type, point)
 
     def _weighted_random_type(self) -> str:

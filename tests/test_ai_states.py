@@ -141,3 +141,31 @@ class TestAIStateTransitions:
             ctrl.tick(0.1)
         ctrl.get_input()
         assert ctrl.state_name == "RECOVERY"
+
+    def test_evade_fires_when_target_in_attack_range(self):
+        """AI in EVADE state should fire when the target is within attack range."""
+        owner = MockTank(x=0, y=0, health=10, max_health=100)
+        target = MockTank(x=AI_ATTACK_RANGE - 10, y=0)
+        ctrl = self._make_controller(owner, target, evasion_threshold=0.35)
+        # aggression=0.8 so most calls should fire — sample many times
+        fired_count = 0
+        for _ in range(100):
+            ctrl._state = AIState.EVADE  # force state
+            inp = ctrl.get_input()
+            if inp.fire:
+                fired_count += 1
+        # With 0.8 aggression, expect ~80 fires out of 100
+        assert fired_count > 50
+
+    def test_evade_does_not_fire_when_target_out_of_range(self):
+        """AI in EVADE state should NOT fire when the target is beyond attack range."""
+        owner = MockTank(x=0, y=0, health=10, max_health=100)
+        target = MockTank(x=AI_ATTACK_RANGE + 100, y=0)
+        ctrl = self._make_controller(owner, target, evasion_threshold=0.35)
+        fired_count = 0
+        for _ in range(50):
+            ctrl._state = AIState.EVADE
+            inp = ctrl.get_input()
+            if inp.fire:
+                fired_count += 1
+        assert fired_count == 0

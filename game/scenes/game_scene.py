@@ -18,6 +18,7 @@ Coordinate systems:
   Never mix the two; always convert explicitly via camera.world_to_screen().
 """
 
+import math
 import random
 import time
 
@@ -45,6 +46,9 @@ from game.utils.constants import (
     ARENA_BORDER_COLOR,
     ARENA_BORDER_THICKNESS,
     ARENA_FLOOR_COLOR,
+    BUFF_ICON_FONT_SIZE,
+    BUFF_ICON_OFFSET_Y,
+    BUFF_ICON_SPACING,
     ARENA_GRID_COLOR,
     ARENA_GRID_STEP,
     ARENA_HEIGHT,
@@ -66,6 +70,11 @@ from game.utils.constants import (
     MAPS_DIR,
     MUSIC_GAMEPLAY,
     OBSTACLE_BORDER_COLOR,
+    PICKUP_GLOW_ALPHA,
+    PICKUP_GLOW_SCALE,
+    PICKUP_PULSE_AMPLITUDE,
+    PICKUP_PULSE_SPEED,
+    PICKUP_RENDER_RADIUS,
     PICKUPS_CONFIG,
     RETICLE_COLOR,
     RETICLE_LINE_LENGTH,
@@ -83,6 +92,8 @@ from game.utils.constants import (
     TANK_BARREL_WIDTH,
     TANK_BODY_HEIGHT,
     TANK_BODY_WIDTH,
+    TANK_FRONT_STRIPE_BRIGHTEN,
+    TANK_FRONT_STRIPE_WIDTH,
     TANK_DEFAULT_TYPE,
     TANK_PLAYER_COLOR,
     TANKS_CONFIG,
@@ -503,6 +514,12 @@ class GameplayScene(BaseScene):
             _draw_tank(surface, ai_tank, ai_surf, self._camera)
 
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
+
+        # Buff indicators above tanks
+        _draw_buff_icons(surface, self._tank, self._camera)
+        for ai_tank in self._ai_tanks:
+            _draw_buff_icons(surface, ai_tank, self._camera)
+
         _draw_bullets(surface, self._bullets, self._camera)
 
         if self._hud:
@@ -562,7 +579,7 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
     pygame.draw.rect(surface, border_color, floor_rect, border_thick)
 
 
-_PICKUP_INITIALS = {"health": "H", "ammo": "A", "speed_boost": "S"}
+_PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S"}
 
 
 def _draw_pickups(
@@ -571,19 +588,31 @@ def _draw_pickups(
     camera: Camera,
     configs: dict,
 ) -> None:
-    """Draw active pickups as pulsing colored circles with type initials."""
-    font = pygame.font.Font(None, 20)
+    """Draw active pickups as pulsing colored circles with glow ring and type initials."""
+    font = pygame.font.Font(None, 24)
     for p in pickups:
         if not p.is_alive:
             continue
         cfg = configs.get(p.pickup_type, {})
         color = tuple(cfg.get("color", (200, 200, 200)))
-        base_r = int(cfg.get("radius", 14))
-        render_r = base_r + int(p.pulse * 3)
+        base_r = PICKUP_RENDER_RADIUS
+        scale = 1.0 + PICKUP_PULSE_AMPLITUDE * math.sin(p._pulse_timer * PICKUP_PULSE_SPEED)
+        render_r = int(base_r * scale)
         sx, sy = camera.world_to_screen(p.x, p.y)
         cx, cy = int(sx), int(sy)
+
+        # Glow ring
+        glow_r = int(render_r * PICKUP_GLOW_SCALE)
+        glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (*color, PICKUP_GLOW_ALPHA),
+                           (glow_r, glow_r), glow_r)
+        surface.blit(glow_surf, (cx - glow_r, cy - glow_r))
+
+        # Main circle
         pygame.draw.circle(surface, color, (cx, cy), render_r)
         pygame.draw.circle(surface, (255, 255, 255), (cx, cy), render_r, 2)
+
+        # Letter
         letter = _PICKUP_INITIALS.get(p.pickup_type, "?")
         txt = font.render(letter, True, (0, 0, 0))
         surface.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
@@ -657,14 +686,27 @@ def _draw_tank(
     hull_rect = rotated_hull.get_rect(center=(isx, isy))
     surface.blit(rotated_hull, hull_rect)
 
+    # Front stripe — bright accent line on leading edge
+    rad_hull = math.radians(tank.angle)
+    cos_a, sin_a = math.cos(rad_hull), math.sin(rad_hull)
+    hw = TANK_BODY_WIDTH / 2
+    hh = TANK_BODY_HEIGHT / 2
+    fcx = isx + int(cos_a * hw)
+    fcy = isy + int(sin_a * hw)
+    px, py = -sin_a * hh, cos_a * hh
+    p1 = (int(fcx + px), int(fcy + py))
+    p2 = (int(fcx - px), int(fcy - py))
+    tc = tank_surf.get_at((tank_surf.get_width() // 2, tank_surf.get_height() // 2))[:3]
+    bright = tuple(min(255, c + TANK_FRONT_STRIPE_BRIGHTEN) for c in tc)
+    pygame.draw.line(surface, bright, p1, p2, TANK_FRONT_STRIPE_WIDTH)
+
     # Pass 2: barrel — centered TANK_BARREL_LENGTH/2 + 4 pixels ahead of tank center
     # along turret_angle so it extends from center to (TANK_BARREL_LENGTH + 8) px forward.
     barrel_length = TANK_BARREL_LENGTH + 8   # total pixel length of barrel rect
     half_len = barrel_length / 2.0
-    import math as _math
-    rad = _math.radians(tank.turret_angle)
-    bcx = isx + int(_math.cos(rad) * half_len)
-    bcy = isy + int(_math.sin(rad) * half_len)
+    rad = math.radians(tank.turret_angle)
+    bcx = isx + int(math.cos(rad) * half_len)
+    bcy = isy + int(math.sin(rad) * half_len)
     draw_rotated_rect(
         surface,
         TANK_BARREL_COLOR,
@@ -673,6 +715,35 @@ def _draw_tank(
         height=TANK_BARREL_WIDTH,
         angle_deg=tank.turret_angle,
     )
+
+
+_BUFF_ICONS = {
+    "regen":        {"symbol": "+",  "color": (80, 200, 80)},
+    "speed_boost":  {"symbol": ">>", "color": (200, 180, 60)},
+    "rapid_reload": {"symbol": "R",  "color": (60, 160, 220)},
+}
+
+
+def _draw_buff_icons(
+    surface: pygame.Surface,
+    tank: Tank,
+    camera: Camera,
+) -> None:
+    """Draw small status-effect icons above a tank."""
+    if not tank.is_alive or not tank.status_effects:
+        return
+    sx, sy = camera.world_to_screen(tank.x, tank.y)
+    font = pygame.font.Font(None, BUFF_ICON_FONT_SIZE)
+    icons = [_BUFF_ICONS[name] for name in tank.status_effects if name in _BUFF_ICONS]
+    if not icons:
+        return
+    total_width = len(icons) * BUFF_ICON_SPACING
+    start_x = int(sx) - total_width // 2 + BUFF_ICON_SPACING // 2
+    y = int(sy) - BUFF_ICON_OFFSET_Y
+    for i, icon in enumerate(icons):
+        txt = font.render(icon["symbol"], True, icon["color"])
+        x = start_x + i * BUFF_ICON_SPACING - txt.get_width() // 2
+        surface.blit(txt, (x, y - txt.get_height() // 2))
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:
