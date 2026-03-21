@@ -29,6 +29,9 @@ log = get_logger(__name__)
 
 _instance: "AudioManager | None" = None
 
+# Intensity track plays at 50% of normal music volume to avoid being too loud
+_INTENSITY_VOLUME_SCALE: float = 0.5
+
 
 def get_audio_manager() -> "AudioManager":
     """Return the singleton AudioManager instance. Creates it on first call."""
@@ -79,6 +82,7 @@ class AudioManager:
         if self._current_music == path:
             return
         try:
+            self._stop_intensity()
             pygame.mixer.music.fadeout(MUSIC_FADEOUT_MS)
             pygame.mixer.music.load(path)
             pygame.mixer.music.set_volume(self._master * self._music_vol)
@@ -93,7 +97,15 @@ class AudioManager:
             return
         pygame.mixer.music.fadeout(MUSIC_FADEOUT_MS)
         self._current_music = None
+        self._stop_intensity()
         log.debug("Music stopped.")
+
+    def _stop_intensity(self) -> None:
+        """Fade out and clear the intensity channel."""
+        if self._intensity_channel is not None:
+            self._intensity_channel.fadeout(MUSIC_FADEOUT_MS)
+            self._intensity_channel = None
+        self._intensity_active = None
 
     def preload_intensity_tracks(self, normal_path: str, intense_path: str) -> None:
         """Pre-load both gameplay music tracks as Sound objects (in-memory).
@@ -135,7 +147,7 @@ class AudioManager:
             self._intensity_channel.fadeout(500)
         ch = sound.play(loops=-1, fade_ms=500)
         if ch:
-            ch.set_volume(self._master * self._music_vol)
+            ch.set_volume(self._master * self._music_vol * _INTENSITY_VOLUME_SCALE)
             self._intensity_channel = ch
         self._intensity_active = target
         log.debug("Music intensity → %s", "intense" if intense else "normal")
@@ -187,7 +199,8 @@ class AudioManager:
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
             if self._intensity_channel is not None:
-                self._intensity_channel.set_volume(self._master * self._music_vol)
+                self._intensity_channel.set_volume(
+                    self._master * self._music_vol * _INTENSITY_VOLUME_SCALE)
         log.debug("Volume set: %s = %.2f", channel, value)
 
     # ------------------------------------------------------------------
@@ -217,7 +230,8 @@ class AudioManager:
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
             if self._intensity_channel is not None:
-                self._intensity_channel.set_volume(self._master * self._music_vol)
+                self._intensity_channel.set_volume(
+                    self._master * self._music_vol * _INTENSITY_VOLUME_SCALE)
         log.info("Audio %s.", "muted" if self._muted else "unmuted")
         return self._muted
 
