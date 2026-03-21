@@ -230,12 +230,21 @@ TANK_STAT_MAX: dict = {
 # ---------------------------------------------------------------------------
 SCENE_PROFILE_SELECT: str = "profile_select"
 SCENE_MENU: str = "menu"
-SCENE_TANK_SELECT: str = "tank_select"
-SCENE_WEAPON_SELECT: str = "weapon_select"
-SCENE_MAP_SELECT: str = "map_select"
+SCENE_LOADOUT: str = "loadout"
+SCENE_TANK_SELECT: str = "tank_select"      # deprecated v0.17.5 — use SCENE_LOADOUT
+SCENE_WEAPON_SELECT: str = "weapon_select"  # deprecated v0.17.5 — use SCENE_LOADOUT
+SCENE_MAP_SELECT: str = "map_select"        # deprecated v0.17.5 — use SCENE_LOADOUT
 SCENE_GAME: str = "game"
 SCENE_SETTINGS: str = "settings"
 SCENE_GAME_OVER: str = "game_over"
+
+# ---------------------------------------------------------------------------
+# Loadout Screen (v0.17.5)
+# ---------------------------------------------------------------------------
+LOADOUT_PANEL_HULL: int = 0
+LOADOUT_PANEL_WEAPONS: int = 1
+LOADOUT_PANEL_MAP: int = 2
+LOADOUT_PANEL_COUNT: int = 3
 
 # ---------------------------------------------------------------------------
 # AI

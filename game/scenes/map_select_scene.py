@@ -1,6 +1,9 @@
 """
 game/scenes/map_select_scene.py
 
+# DEPRECATED as of v0.17.5 — replaced by LoadoutScene.
+# Retained for reference. Safe to delete after v0.20.
+
 MapSelectScene — pre-match map selection screen (v0.17).
 
 Flow:

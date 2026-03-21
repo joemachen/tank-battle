@@ -14,7 +14,7 @@ Visual design:
 Navigation:
   UP / DOWN (or W / S)  — move cursor
   ENTER / SPACE         — confirm selection
-  PLAY           → fade to black → TankSelectScene
+  PLAY           → fade to black → LoadoutScene
   SETTINGS       → SettingsScene
   SWITCH PROFILE → ProfileSelectScene
   QUIT           → pygame.QUIT event (clean exit)
@@ -35,9 +35,9 @@ from game.utils.constants import (
     MENU_FADE_DURATION,
     MENU_TITLE_ANIM_DURATION,
     MUSIC_MENU,
+    SCENE_LOADOUT,
     SCENE_PROFILE_SELECT,
     SCENE_SETTINGS,
-    SCENE_TANK_SELECT,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     SFX_UI_CONFIRM,
@@ -100,8 +100,18 @@ class MainMenuScene(BaseScene):
         self._cursor = 0
         self._profile = self._save_manager.load_profile()
 
+        # Load profile name for "Playing as: X" display
+        idx = self._save_manager.load_profiles_index()
+        slot = str(idx.get("active_slot", 0))
+        slot_meta = idx.get("profiles", {}).get(slot, {})
+        self._profile_name: str = slot_meta.get("name", "")
+
         # Rewire fade callback each enter (manager ref is always current)
-        self._fade.reset(on_complete=lambda: self.manager.switch_to(SCENE_TANK_SELECT))
+        # If no profile exists, PLAY routes to profile select instead of loadout
+        if self._profile_name:
+            self._fade.reset(on_complete=lambda: self.manager.switch_to(SCENE_LOADOUT))
+        else:
+            self._fade.reset(on_complete=lambda: self.manager.switch_to(SCENE_PROFILE_SELECT))
 
         # Build scanline overlay once (expensive, never changes)
         if self._scanline_surf is None:
@@ -262,6 +272,11 @@ class MainMenuScene(BaseScene):
 
         xp_s = font.render(xp_label, True, COLOR_GRAY)
         surface.blit(xp_s, (bar_x + _BADGE_BAR_W + 8, by))
+
+        # "Playing as: Name" — subtle, just below the XP bar
+        if getattr(self, "_profile_name", ""):
+            name_s = font.render(f"Playing as:  {self._profile_name}", True, COLOR_GRAY)
+            surface.blit(name_s, (_BADGE_MARGIN, SCREEN_HEIGHT - 10))
 
     def _draw_version(self, surface: pygame.Surface) -> None:
         font = pygame.font.SysFont(None, 20)

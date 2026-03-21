@@ -173,9 +173,7 @@ class ProfileSelectScene(BaseScene):
                 self._mode = "confirm_delete"
 
         elif event.key == pygame.K_ESCAPE:
-            # Only navigate back if at least one profile already exists
-            if self._has_any_profile():
-                self._fade.start()
+            self._fade.start()  # always return to menu
 
     def _handle_name_entry(self, event: pygame.event.Event) -> None:
         if event.key == pygame.K_RETURN:
