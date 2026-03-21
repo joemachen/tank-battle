@@ -72,6 +72,7 @@ from game.utils.constants import (
     KEYBIND_SLOT_3,
     MAPS_DIR,
     MUSIC_GAMEPLAY,
+    MUSIC_GAMEPLAY_INTENSE,
     PICKUP_COLLECT_SFX,
     SFX_SHIELD_POP,
     VFX_REGEN_COLOR,
@@ -307,7 +308,10 @@ class GameplayScene(BaseScene):
         self._music_intense: bool = False
 
         music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
-        get_audio_manager().play_music(music_track)
+        audio = get_audio_manager()
+        audio.play_music(music_track)
+        # Pre-load both intensity tracks into memory so switching is instant
+        audio.preload_intensity_tracks(MUSIC_GAMEPLAY, MUSIC_GAMEPLAY_INTENSE)
 
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapons: %s",

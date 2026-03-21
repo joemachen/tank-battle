@@ -55,6 +55,11 @@ class AudioManager:
         self._sfx_vol: float = SFX_VOLUME_DEFAULT
         self._current_music: str | None = None
 
+        # Pre-loaded intensity tracks (Sound objects held in memory)
+        self._intensity_sounds: dict[str, "pygame.mixer.Sound"] = {}
+        self._intensity_channel: "pygame.mixer.Channel | None" = None
+        self._intensity_active: str | None = None
+
         try:
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
             pygame.mixer.set_num_channels(AUDIO_CHANNELS)
@@ -90,10 +95,50 @@ class AudioManager:
         self._current_music = None
         log.debug("Music stopped.")
 
+    def preload_intensity_tracks(self, normal_path: str, intense_path: str) -> None:
+        """Pre-load both gameplay music tracks as Sound objects (in-memory).
+
+        Call once at scene start so that set_music_intensity() can switch
+        between them without any disk I/O.
+        """
+        if not self._initialized:
+            return
+        for path in (normal_path, intense_path):
+            if path not in self._intensity_sounds:
+                try:
+                    self._intensity_sounds[path] = pygame.mixer.Sound(path)
+                    log.debug("Intensity track pre-loaded: %s", path)
+                except (pygame.error, FileNotFoundError):
+                    log.warning("Failed to pre-load intensity track: %s", path)
+
     def set_music_intensity(self, intense: bool) -> None:
-        """Crossfade between normal and intense gameplay music."""
+        """Switch between pre-loaded intensity tracks with no disk I/O.
+
+        Falls back to stream-based play_music() if tracks were not pre-loaded.
+        """
         target = MUSIC_GAMEPLAY_INTENSE if intense else MUSIC_GAMEPLAY
-        self.play_music(target)
+        sound = self._intensity_sounds.get(target)
+        if sound is None:
+            # Fallback: stream from disk (causes hitch but still works)
+            self.play_music(target)
+            return
+        if self._intensity_active == target:
+            return
+        if not self._initialized:
+            return
+        # Stop stream-based music if it's playing (first transition)
+        if self._current_music is not None:
+            pygame.mixer.music.fadeout(500)
+            self._current_music = None
+        # Fade out current intensity channel
+        if self._intensity_channel is not None:
+            self._intensity_channel.fadeout(500)
+        ch = sound.play(loops=-1, fade_ms=500)
+        if ch:
+            ch.set_volume(self._master * self._music_vol)
+            self._intensity_channel = ch
+        self._intensity_active = target
+        log.debug("Music intensity → %s", "intense" if intense else "normal")
 
     # ------------------------------------------------------------------
     # SFX
@@ -141,6 +186,8 @@ class AudioManager:
         # Apply music volume change immediately
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
+            if self._intensity_channel is not None:
+                self._intensity_channel.set_volume(self._master * self._music_vol)
         log.debug("Volume set: %s = %.2f", channel, value)
 
     # ------------------------------------------------------------------
@@ -169,6 +216,8 @@ class AudioManager:
 
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
+            if self._intensity_channel is not None:
+                self._intensity_channel.set_volume(self._master * self._music_vol)
         log.info("Audio %s.", "muted" if self._muted else "unmuted")
         return self._muted
 
