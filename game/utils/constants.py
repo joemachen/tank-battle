@@ -287,16 +287,11 @@ AI_SPAWN_POSITIONS: list = [
 ]
 
 # ---------------------------------------------------------------------------
-# Tank-to-Tank Collision Damage
+# DEPRECATED v0.18 — collision damage removed, kept for reference
 # ---------------------------------------------------------------------------
-# Base damage by impact geometry (angle between struck tank's facing and
-# the vector from struck tank → striking tank)
-COLLISION_DAMAGE_FRONT: int = 5          # 0–45°  — nose-to-nose nudge
-COLLISION_DAMAGE_SIDE: int = 20          # 45–135° — T-bone
-COLLISION_DAMAGE_REAR: int = 12          # 135–180° — rear-end
-
-# Speed scaling: relative speed / COLLISION_SPEED_SCALE, capped at
-# COLLISION_SPEED_CAP so a head-on charge doesn't one-shot anything.
+COLLISION_DAMAGE_FRONT: int = 5
+COLLISION_DAMAGE_SIDE: int = 20
+COLLISION_DAMAGE_REAR: int = 12
 COLLISION_SPEED_SCALE: float = 150.0
 COLLISION_SPEED_CAP: float = 1.5
 
