@@ -514,8 +514,8 @@ class LoadoutScene(BaseScene):
                 surface.blit(arr, (cx + _PANEL_W - arr.get_width() - 10,
                                    slot_row_y + (slot_row_h - arr.get_height()) // 2))
 
-            # Colored dot for weapon type
-            if wtype:
+            # Colored dot for weapon type (only when NOT focused — arrows replace it)
+            elif wtype:
                 pygame.draw.circle(
                     surface, wcolor,
                     (cx + _PANEL_W - 24, slot_row_y + slot_row_h // 2), 5,
