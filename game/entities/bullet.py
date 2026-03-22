@@ -86,16 +86,25 @@ class Bullet:
         self.angle = new_angle
 
     def update(self, dt: float) -> None:
-        """Advance bullet position; despawn if max_range exceeded."""
+        """Advance bullet position; despawn if max_range exceeded.
+
+        Movement happens BEFORE tracking so that a homing bullet whose
+        current heading aims at a wall will move into it this frame.
+        CollisionSystem detects the overlap after all bullets update.
+        Tracking then adjusts the heading for the *next* frame only.
+        """
         if not self.is_alive:
             return
-        self._track_target(dt)
+        # Move first using current heading
         step = self.speed * dt
         self.x += self._dx * step
         self.y += self._dy * step
         self._distance_traveled += step
         if self._distance_traveled >= self.max_range:
             self.destroy()
+            return
+        # Adjust heading for next frame (homing missiles only)
+        self._track_target(dt)
 
     def reflect(self, normal_x: float, normal_y: float) -> None:
         """
