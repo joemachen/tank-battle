@@ -26,6 +26,9 @@ class _StubBullet:
         self.owner = owner
         self.damage = damage
         self.is_alive = True
+        # v0.21: CollisionSystem now passes bullet.damage_type through
+        from game.utils.damage_types import DamageType
+        self.damage_type = DamageType.STANDARD
 
     @property
     def position(self) -> tuple:
@@ -46,7 +49,7 @@ class _StubTank:
     def position(self) -> tuple:
         return (self.x, self.y)
 
-    def take_damage(self, amount: int) -> None:
+    def take_damage(self, amount: int, **kwargs) -> None:
         self.health -= amount
         if self.health <= 0:
             self.is_alive = False
@@ -307,7 +310,7 @@ class _StubTank2:
     def position(self):
         return (self.x, self.y)
 
-    def take_damage(self, amount: int) -> None:
+    def take_damage(self, amount: int, **kwargs) -> None:
         self.health -= amount
         if self.health <= 0:
             self.is_alive = False

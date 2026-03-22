@@ -69,9 +69,10 @@ class CollisionSystem:
         if not bullet.is_alive or not tank.is_alive or tank is bullet.owner:
             return False
         if self._circles_overlap(bullet.position, BULLET_RADIUS, tank.position, TANK_RADIUS):
-            tank.take_damage(bullet.damage)
+            tank.take_damage(bullet.damage, damage_type=bullet.damage_type)
             bullet.destroy()
-            log.debug("Bullet hit tank. Damage=%d, Tank HP=%d", bullet.damage, tank.health)
+            log.debug("Bullet hit tank. Damage=%d type=%s, Tank HP=%d",
+                      bullet.damage, bullet.damage_type.name, tank.health)
             return True
         return False
 
@@ -89,7 +90,7 @@ class CollisionSystem:
                     # Stat tuple: caller uses bullet.owner to attribute
                     # hits and damage without the CollisionSystem needing
                     # to know which tank is the player.
-                    events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage))
+                    events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage, bullet.damage_type))
                     break
         return events
 
@@ -106,11 +107,11 @@ class CollisionSystem:
                     if bullet.bounces_remaining > 0:
                         # obs.reflective reserved for future non-reflective surface variant.
                         # Bouncing bullets still transfer kinetic energy to the obstacle.
-                        obs.take_damage(bullet.damage, damage_type="standard")
+                        obs.take_damage(bullet.damage, damage_type=bullet.damage_type.name.lower())
                         self._reflect_bullet(bullet, obs)
                     else:
                         bullet.destroy()
-                        obs.take_damage(bullet.damage, damage_type="standard")
+                        obs.take_damage(bullet.damage, damage_type=bullet.damage_type.name.lower())
                     if was_alive and not obs.is_alive:
                         events.append("obstacle_destroy")
                     else:

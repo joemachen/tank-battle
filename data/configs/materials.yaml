@@ -38,7 +38,7 @@ wood:
 
 reinforced_steel:
   display_name: "Reinforced Steel"
-  hp: 500
+  hp: 250
   destructible: true
   damage_filters: ["explosive"]
   color: [65, 80, 95]

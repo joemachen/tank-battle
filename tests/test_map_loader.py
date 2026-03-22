@@ -80,7 +80,7 @@ class TestLoadMapReturnShape:
 class TestMap01:
     def test_obstacle_count(self):
         result = load_map(_real_map_path("map_01"))
-        assert len(result["obstacles"]) == 6
+        assert len(result["obstacles"]) == 8
 
     def test_theme_name_is_classic(self):
         result = load_map(_real_map_path("map_01"))

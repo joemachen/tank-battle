@@ -25,6 +25,7 @@ from game.utils.constants import (
     COLOR_NEON_PINK,
     COLOR_RED,
     COLOR_WHITE,
+    DAMAGE_TYPE_BULLET_COLORS,
     HUD_BAR_HEIGHT,
     HUD_BAR_WIDTH,
     HUD_BOTTOM_MARGIN,
@@ -165,7 +166,16 @@ class HUD:
             label = f"[{i + 1}: {wname}]"
             rendered = font.render(label, True, color)
             surface.blit(rendered, (cx, y))
-            cx += rendered.get_width() + 8
+            # Colored dot indicating damage type (v0.21)
+            if slot is not None:
+                dtype = slot.get("damage_type", "standard").upper()
+                dot_color = DAMAGE_TYPE_BULLET_COLORS.get(dtype, DAMAGE_TYPE_BULLET_COLORS["STANDARD"])
+                dot_x = cx + rendered.get_width() + 2
+                dot_y = y + rendered.get_height() // 2
+                pygame.draw.circle(surface, dot_color, (dot_x, dot_y), 4)
+                cx = dot_x + 6
+            else:
+                cx += rendered.get_width() + 8
 
     def _draw_health_bar(
         self,

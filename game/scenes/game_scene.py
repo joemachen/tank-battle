@@ -56,6 +56,7 @@ from game.utils.constants import (
     ARENA_WIDTH,
     BULLET_COLOR,
     BULLET_RADIUS,
+    DAMAGE_TYPE_BULLET_COLORS,
     HOMING_BULLET_COLOR,
     HOMING_BULLET_RADIUS,
     COLOR_BG,
@@ -449,7 +450,7 @@ class GameplayScene(BaseScene):
                         audio.play_sfx(sfx_path)
                     played.add(ev)
             elif isinstance(ev, tuple) and ev[0] == "bullet_hit_tank_stat":
-                _, owner, dmg = ev
+                _, owner, dmg, *_ = ev
                 if owner is self._tank:
                     self._shots_hit += 1
                     self._damage_dealt += dmg
@@ -880,7 +881,10 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
         if bullet._tracking_strength > 0:
             pygame.draw.circle(surface, HOMING_BULLET_COLOR, (int(sx), int(sy)), HOMING_BULLET_RADIUS)
         else:
-            pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
+            # Color by damage type (v0.21) — falls back to BULLET_COLOR for unknown types
+            dtype_name = bullet.damage_type.name if hasattr(bullet.damage_type, 'name') else "STANDARD"
+            color = DAMAGE_TYPE_BULLET_COLORS.get(dtype_name, BULLET_COLOR)
+            pygame.draw.circle(surface, color, (int(sx), int(sy)), BULLET_RADIUS)
 
 
 def _draw_reticle(surface: pygame.Surface) -> None:

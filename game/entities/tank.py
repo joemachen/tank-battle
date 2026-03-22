@@ -25,6 +25,7 @@ from game.utils.constants import (
     DEFAULT_WEAPON_TYPE,
     MAX_WEAPON_SLOTS,
 )
+from game.utils.damage_types import DamageType
 from game.utils.logger import get_logger
 from game.utils.math_utils import clamp, heading_to_vec
 
@@ -327,9 +328,15 @@ class Tank:
     # Damage
     # ------------------------------------------------------------------
 
-    def take_damage(self, amount: int) -> None:
+    def take_damage(self, amount: int, damage_type: DamageType = DamageType.STANDARD) -> None:
         """Apply damage. Shield absorbs first; remainder hits health.
-        Sets is_alive=False when health reaches 0."""
+        Sets is_alive=False when health reaches 0.
+
+        Args:
+            amount: raw damage points
+            damage_type: DamageType enum — stored for future type-specific
+                         reactions (burn, slow, etc.) but not acted on yet.
+        """
         if not self.is_alive:
             return
         remaining = amount
@@ -343,8 +350,8 @@ class Tank:
                 log.debug("Shield broken by damage")
         if remaining > 0:
             self.health = clamp(self.health - remaining, 0, self.max_health)
-        log.debug("Tank took %d damage (absorbed=%d), hp=%d/%d",
-                  amount, amount - remaining, self.health, self.max_health)
+        log.debug("Tank took %d %s damage (absorbed=%d), hp=%d/%d",
+                  amount, damage_type.name, amount - remaining, self.health, self.max_health)
         if self.health <= 0:
             self.is_alive = False
             log.info("Tank destroyed (type=%s)", self.tank_type)

@@ -8,6 +8,7 @@ Weapon stats come from weapons.yaml config.
 import math
 
 from game.utils.constants import BULLET_DEFAULT_MAX_RANGE, DEFAULT_BULLET_SPEED
+from game.utils.damage_types import DamageType, parse_damage_type
 from game.utils.logger import get_logger
 from game.utils.math_utils import angle_difference, angle_to, distance, heading_to_vec
 
@@ -41,6 +42,7 @@ class Bullet:
         self.bounces_remaining: int = self.max_bounces
         self.max_range: float = float(config.get("max_range", BULLET_DEFAULT_MAX_RANGE))
         self.weapon_type: str = config.get("type", "standard_shell")
+        self.damage_type: DamageType = parse_damage_type(config.get("damage_type", "standard"))
 
         self._dx, self._dy = heading_to_vec(self.angle)
         self._distance_traveled: float = 0.0
@@ -84,16 +86,25 @@ class Bullet:
         self.angle = new_angle
 
     def update(self, dt: float) -> None:
-        """Advance bullet position; despawn if max_range exceeded."""
+        """Advance bullet position; despawn if max_range exceeded.
+
+        Movement happens BEFORE tracking so that a homing bullet whose
+        current heading aims at a wall will move into it this frame.
+        CollisionSystem detects the overlap after all bullets update.
+        Tracking then adjusts the heading for the *next* frame only.
+        """
         if not self.is_alive:
             return
-        self._track_target(dt)
+        # Move first using current heading
         step = self.speed * dt
         self.x += self._dx * step
         self.y += self._dy * step
         self._distance_traveled += step
         if self._distance_traveled >= self.max_range:
             self.destroy()
+            return
+        # Adjust heading for next frame (homing missiles only)
+        self._track_target(dt)
 
     def reflect(self, normal_x: float, normal_y: float) -> None:
         """
