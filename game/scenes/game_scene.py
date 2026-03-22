@@ -306,6 +306,9 @@ class GameplayScene(BaseScene):
         self._had_shield: dict[int, bool] = {}
         # Per-pickup music layers — tracks which layers are currently playing
         self._active_buff_layers: set[str] = set()
+        # Speed boost trail history — position samples for physics-based speed lines
+        self._speed_trail_history: dict[int, list[tuple[float, float]]] = {}
+        self._trail_timer: float = 0.0
 
         music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
         audio = get_audio_manager()
@@ -387,6 +390,23 @@ class GameplayScene(BaseScene):
         all_tanks = [self._tank] + self._ai_tanks
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Record speed trail positions for physics-based speed lines
+        _TRAIL_MAX_POINTS = 6
+        _TRAIL_RECORD_INTERVAL = 0.03
+        self._trail_timer += dt
+        if self._trail_timer >= _TRAIL_RECORD_INTERVAL:
+            self._trail_timer = 0.0
+            for tank in all_tanks:
+                if not tank.is_alive or not tank.has_status("speed_boost"):
+                    self._speed_trail_history.pop(id(tank), None)
+                    continue
+                if math.hypot(tank.vx, tank.vy) < 20.0:
+                    continue
+                history = self._speed_trail_history.setdefault(id(tank), [])
+                history.append((tank.x, tank.y))
+                if len(history) > _TRAIL_MAX_POINTS:
+                    history.pop(0)
 
         # Tick pickup spawner
         self._pickup_spawner.update(dt)
@@ -566,9 +586,11 @@ class GameplayScene(BaseScene):
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
         # Per-type VFX on tanks
-        _draw_tank_effects(surface, self._tank, self._camera)
+        _draw_tank_effects(surface, self._tank, self._camera,
+                           self._speed_trail_history.get(id(self._tank)))
         for ai_tank in self._ai_tanks:
-            _draw_tank_effects(surface, ai_tank, self._camera)
+            _draw_tank_effects(surface, ai_tank, self._camera,
+                               self._speed_trail_history.get(id(ai_tank)))
 
         _draw_bullets(surface, self._bullets, self._camera)
 
@@ -789,6 +811,7 @@ def _draw_tank_effects(
     surface: pygame.Surface,
     tank: Tank,
     camera: Camera,
+    speed_trail: list[tuple[float, float]] | None = None,
 ) -> None:
     """Draw per-type visual effects around a tank with active status effects."""
     if not tank.is_alive or not tank.status_effects:
@@ -805,25 +828,23 @@ def _draw_tank_effects(
         pygame.draw.line(surface, VFX_REGEN_COLOR, (hx - size, hy), (hx + size, hy), 2)
         pygame.draw.line(surface, VFX_REGEN_COLOR, (hx, hy - size), (hx, hy + size), 2)
 
-    if tank.has_status("speed_boost"):
-        # Speed lines trail behind the tank's actual movement direction
-        move_speed = math.hypot(tank.vx, tank.vy)
-        if move_speed >= 20.0:
-            move_angle = math.atan2(tank.vy, tank.vx)
-            trail_angle = move_angle + math.pi  # opposite of movement
-            perp_angle = move_angle + math.pi / 2
-            for i, offset in enumerate([-5, -1, 3, 6]):
-                ox = math.cos(perp_angle) * offset
-                oy = math.sin(perp_angle) * offset
-                start_x = sx + ox + math.cos(trail_angle) * 8
-                start_y = sy + oy + math.sin(trail_angle) * 8
-                line_len = 15 + i * 5  # 15, 20, 25, 30
-                end_x = start_x + math.cos(trail_angle) * line_len
-                end_y = start_y + math.sin(trail_angle) * line_len
-                alpha = 140 - i * 25  # 140, 115, 90, 65
-                pygame.draw.line(surface, (*VFX_SPEED_COLOR, alpha),
-                                 (int(start_x), int(start_y)),
-                                 (int(end_x), int(end_y)), 2)
+    if tank.has_status("speed_boost") and speed_trail and len(speed_trail) >= 2:
+        # Physics-based speed lines — connect recent position history for organic curves
+        for i in range(len(speed_trail) - 1):
+            sx1, sy1 = camera.world_to_screen(*speed_trail[i])
+            sx2, sy2 = camera.world_to_screen(*speed_trail[i + 1])
+            # Alpha fades — older points are more transparent
+            alpha = int(60 + (i / len(speed_trail)) * 100)  # 60 → 160
+            width = 1 + (i // 2)  # thickens toward the tank
+            angle = math.atan2(sy2 - sy1, sx2 - sx1)
+            perp_x = math.cos(angle + math.pi / 2)
+            perp_y = math.sin(angle + math.pi / 2)
+            # 3 parallel trails with perpendicular spread
+            for offset in [-4, 0, 4]:
+                pygame.draw.line(
+                    surface, (*VFX_SPEED_COLOR, alpha),
+                    (int(sx1 + perp_x * offset), int(sy1 + perp_y * offset)),
+                    (int(sx2 + perp_x * offset), int(sy2 + perp_y * offset)), width)
 
     if tank.has_status("rapid_reload"):
         # Spinning rings around tank

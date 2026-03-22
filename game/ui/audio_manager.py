@@ -27,8 +27,8 @@ log = get_logger(__name__)
 
 _instance: "AudioManager | None" = None
 
-# Music layers play slightly below the main music track
-_LAYER_VOLUME_SCALE: float = 0.6
+# Layers at same volume as base music; mix via generator amplitude
+_LAYER_VOLUME_SCALE: float = 1.0
 
 
 def get_audio_manager() -> "AudioManager":

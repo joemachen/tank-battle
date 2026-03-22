@@ -547,42 +547,58 @@ def gen_layer_speed(sr: int) -> list[float]:
 
 
 def gen_layer_heartbeat(sr: int) -> list[float]:
-    """Deep lub-dub heartbeat — pulsing bass overlay for health regen."""
-    cycle = 60.0 / 72.0  # ~0.833s per beat at 72 BPM
+    """Heavy heartbeat — lub-DUB pattern at 72 BPM.
+
+    Uses 80-120Hz fundamentals with square wave harmonics for speaker
+    audibility. Each beat has a percussive click transient that cuts
+    through the mix even on laptop speakers.
+    """
+    bpm = 72.0
+    beat_dur = 60.0 / bpm  # ~0.833s per beat
     cycles = 5
-    duration = cycle * cycles
-    n = int(sr * duration)
+    total = beat_dur * cycles
+    n = int(sr * total)
     out = [0.0] * n
 
-    for c in range(cycles):
-        base = c * cycle
-        # "Lub" — deep thump with sub-bass reinforcement
-        lub_start = int(base * sr)
-        lub_dur = 0.15
-        lub_len = int(lub_dur * sr)
-        for k in range(lub_len):
-            if lub_start + k >= n:
-                break
-            t = k / sr
-            env = math.exp(-t * 18)
-            out[lub_start + k] += sine(t, 40) * env * 0.8
-            # Sub-bass at half frequency — adds chest-thump feel
-            out[lub_start + k] += sine(t, 20) * env * 0.3
+    for cycle in range(cycles):
+        cycle_start = int(cycle * beat_dur * sr)
 
-        # "Dub" — slightly higher, after gap
-        dub_offset = 0.25
-        dub_start = int((base + dub_offset) * sr)
-        dub_dur = 0.10
-        dub_len = int(dub_dur * sr)
-        for k in range(dub_len):
+        # LUB — heavy thump at t=0 within cycle
+        lub_dur = 0.18
+        lub_samples = int(lub_dur * sr)
+        for k in range(min(lub_samples, n - cycle_start)):
+            t = k / sr
+            # Fast exponential envelope — punchy attack
+            env = math.exp(-t * 12.0)
+            # 80Hz fundamental (square wave for odd harmonics)
+            fund = square(t, 80, duty=0.5) * 0.5
+            # 160Hz second harmonic (laptop speakers reproduce this)
+            harm2 = sine(t, 160) * 0.4
+            # 240Hz third harmonic — adds "thock" character
+            harm3 = sine(t, 240) * 0.2
+            # Click transient — sharp noise burst for attack
+            click = noise() * 0.6 * math.exp(-t * 80.0)
+            out[cycle_start + k] += env * (fund + harm2 + harm3 + click)
+
+        # DUB — slightly higher, slightly softer, 0.25s after lub starts
+        dub_offset = int(0.25 * sr)
+        dub_dur = 0.12
+        dub_samples = int(dub_dur * sr)
+        dub_start = cycle_start + dub_offset
+        for k in range(min(dub_samples, max(0, n - dub_start))):
             if dub_start + k >= n:
                 break
             t = k / sr
-            env = math.exp(-t * 25)
-            out[dub_start + k] += sine(t, 48) * env * 0.6
+            env = math.exp(-t * 16.0)
+            fund = square(t, 100, duty=0.5) * 0.35
+            harm2 = sine(t, 200) * 0.3
+            harm3 = sine(t, 300) * 0.15
+            click = noise() * 0.4 * math.exp(-t * 100.0)
+            out[dub_start + k] += env * (fund + harm2 + harm3 + click)
 
+    # Normalize to 0.9 peak — playback volume handles final mix
     peak = max(abs(s) for s in out) or 1.0
-    return [s / peak * 0.7 for s in out]
+    return [s / peak * 0.9 for s in out]
 
 
 def gen_layer_underwater(sr: int) -> list[float]:

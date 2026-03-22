@@ -40,6 +40,12 @@ class TestMusicLayerConstants:
             "MUSIC_GAMEPLAY_INTENSE should have been removed"
         )
 
+    def test_layer_volume_scale_is_full(self):
+        from game.ui.audio_manager import _LAYER_VOLUME_SCALE
+        assert _LAYER_VOLUME_SCALE == 1.0, (
+            "Layers should play at full music volume; mix via generator amplitude"
+        )
+
 
 # ---------------------------------------------------------------------------
 # AudioManager layers (unit-level, no pygame mixer)
