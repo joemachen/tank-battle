@@ -11,6 +11,7 @@ from game.utils.constants import (
     HIT_FLASH_BLEND,
     HIT_FLASH_DURATION,
 )
+from game.utils.damage_types import DamageType
 from game.utils.logger import get_logger
 from game.utils.math_utils import blend_colors
 
@@ -119,9 +120,13 @@ class Obstacle:
     # Damage
     # ------------------------------------------------------------------
 
-    def take_damage(self, amount: int, damage_type: str = "standard") -> None:
+    def take_damage(self, amount: int, damage_type: DamageType | str = "standard") -> None:
         """
         Apply damage from a bullet or explosion.
+
+        Args:
+            amount: raw damage points
+            damage_type: DamageType enum or lowercase string — normalized internally
 
         Guards:
           - Not destructible → no-op
@@ -130,17 +135,22 @@ class Obstacle:
         """
         if not self.destructible:
             return
-        if self.damage_filters and damage_type not in self.damage_filters:
+        # Normalize to lowercase string for filter comparison
+        if isinstance(damage_type, DamageType):
+            dtype_str = damage_type.name.lower()
+        else:
+            dtype_str = str(damage_type).lower()
+        if self.damage_filters and dtype_str not in self.damage_filters:
             log.debug(
                 "Obstacle at (%.0f, %.0f) immune to damage_type='%s' (filters=%s).",
-                self.x, self.y, damage_type, self.damage_filters,
+                self.x, self.y, dtype_str, self.damage_filters,
             )
             return
         self.hp = max(0, self.hp - amount)
         self._hit_flash_timer = HIT_FLASH_DURATION
         log.debug(
             "Obstacle at (%.0f, %.0f) took %d %s damage — hp=%d/%d.",
-            self.x, self.y, amount, damage_type, self.hp, self.max_hp,
+            self.x, self.y, amount, dtype_str, self.hp, self.max_hp,
         )
         if self.hp == 0:
             self.is_alive = False

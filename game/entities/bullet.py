@@ -8,6 +8,7 @@ Weapon stats come from weapons.yaml config.
 import math
 
 from game.utils.constants import BULLET_DEFAULT_MAX_RANGE, DEFAULT_BULLET_SPEED
+from game.utils.damage_types import DamageType, parse_damage_type
 from game.utils.logger import get_logger
 from game.utils.math_utils import angle_difference, angle_to, distance, heading_to_vec
 
@@ -41,6 +42,7 @@ class Bullet:
         self.bounces_remaining: int = self.max_bounces
         self.max_range: float = float(config.get("max_range", BULLET_DEFAULT_MAX_RANGE))
         self.weapon_type: str = config.get("type", "standard_shell")
+        self.damage_type: DamageType = parse_damage_type(config.get("damage_type", "standard"))
 
         self._dx, self._dy = heading_to_vec(self.angle)
         self._distance_traveled: float = 0.0

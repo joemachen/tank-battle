@@ -108,6 +108,16 @@ BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml
 HOMING_BULLET_COLOR: tuple = COLOR_RED
 HOMING_BULLET_RADIUS: int = BULLET_RADIUS + 1
+
+# Damage-type → bullet render color (v0.21)
+DAMAGE_TYPE_BULLET_COLORS: dict = {
+    "STANDARD":  (255, 220, 50),   # bright yellow (same as BULLET_COLOR)
+    "EXPLOSIVE": (255, 120, 30),   # orange
+    "FIRE":      (255, 60, 20),    # red-orange
+    "ICE":       (100, 200, 255),  # light blue
+    "POISON":    (80, 220, 80),    # green
+    "ELECTRIC":  (180, 130, 255),  # purple
+}
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29

@@ -8,6 +8,7 @@
 #   fire_rate    - shots per second (overrides tank fire_rate when equipped)
 #   max_bounces  - number of wall bounces before destruction (0 = no bounce)
 #   max_range    - maximum travel distance in pixels before auto-despawn
+#   damage_type  - DamageType enum name: standard, explosive, fire, ice, poison, electric
 #   description  - human-readable label
 
 standard_shell:
@@ -17,6 +18,7 @@ standard_shell:
   fire_rate: 1.0
   max_bounces: 0
   max_range: 1400
+  damage_type: standard
   description: "Standard issue. No frills."
 
 spread_shot:
@@ -28,6 +30,7 @@ spread_shot:
   max_range: 900
   spread_count: 3
   spread_angle: 18
+  damage_type: standard
   description: "Fires 3 shells in a spread. Lower per-shot damage."
 
 bouncing_round:
@@ -37,6 +40,7 @@ bouncing_round:
   fire_rate: 0.9
   max_bounces: 3
   max_range: 2400
+  damage_type: standard
   description: "Ricochets off walls up to 3 times."
 
 homing_missile:
@@ -47,4 +51,5 @@ homing_missile:
   max_bounces: 0
   max_range: 2000
   tracking_strength: 2.5
+  damage_type: explosive
   description: "Slow but tracks the nearest enemy. High damage."
