@@ -221,13 +221,16 @@ Supported effects:
 - `"speed_boost"` — multiplies movement speed by `value` during `update()`
 - `"regen"` — heals `value` HP/s; fractional HP accumulated via `_accum` float key
 - `"rapid_reload"` — no ongoing effect; `apply()` resets all `_slot_cooldowns` to 0.0
+- `"shield"` — absorbs damage before health; dict includes `shield_hp` key. `take_damage()` reduces `shield_hp` first; if shield_hp <= 0, shield is removed and remaining damage hits health. Expires by timer even with HP remaining.
 
 `tick_status_effects(dt)`:
 1. If `"regen"` active: accumulate `value * dt` into `_accum`, apply whole-number HP (capped at max_health)
 2. Decrement all timers by dt
 3. Remove effects with timer <= 0
 
-`apply_status()` overwrites existing effect of same name (refresh, no stack).
+`apply_status(name, value, duration, **kwargs)` overwrites existing effect of same name (refresh, no stack). Shield uses `shield_hp=float` kwarg.
+
+Properties: `shield_hp -> float` (current shield HP or 0.0), `active_status_names -> list[str]` (names of active effects).
 
 ---
 
@@ -359,7 +362,10 @@ Pickup(x: float, y: float, pickup_type: str, value: float)
 - `"health"`: If tank at full HP, returns without consuming. Otherwise applies `"regen"` status with `value / PICKUP_EFFECT_DURATION` HP/s.
 - `"rapid_reload"`: Resets all `tank._slot_cooldowns` to 0.0.
 - `"speed_boost"`: Applies `"speed_boost"` status with `value` multiplier for PICKUP_EFFECT_DURATION seconds.
+- `"shield"`: Applies `"shield"` status with `shield_hp=value` (or `SHIELD_DEFAULT_HP`) for SHIELD_DEFAULT_DURATION seconds.
 - Unknown type: consumes pickup, applies no effect.
+
+Per-type SFX: `PICKUP_COLLECT_SFX` dict maps pickup type → SFX path (health, speed, reload, shield).
 
 #### Properties
 
@@ -447,7 +453,17 @@ This is repulsion, not pathfinding — stuck recovery catches what it misses.
 |--------|-----------|---------|
 | `set_owner(tank)` | GameplayScene | Link controller to its tank |
 | `set_obstacles_getter(getter)` | GameplayScene | Inject `() -> list[Obstacle]` for avoidance |
+| `set_pickups_getter(getter)` | GameplayScene | Inject `() -> list[Pickup]` for pickup awareness |
 | `tick(dt)` | GameplayScene (before tank.update) | Advance stuck detector + recovery timer |
+
+#### Pickup Awareness (v0.20)
+
+AI seeks pickups based on state:
+- **EVADE**: Health-seeking within `AI_PICKUP_SEEK_RANGE` (550px) — only `"health"` type
+- **PATROL/PURSUE**: Opportunistic grab within `AI_PICKUP_OPPORTUNISTIC_RANGE` (150px) — any type
+- **ATTACK**: Ignores pickups
+
+`_nearest_pickup(max_range, type_filter=None)` scans live pickups from the injected getter.
 
 ---
 
@@ -765,6 +781,18 @@ GameplayScene(tank_type, weapon_types, map_name, ai_count)
          map YAML via MapLoader, theme via ThemeLoader, settings (keybinds, AI difficulty)
   creates: Camera, InputHandler, Tank (player + AI), PhysicsSystem,
            CollisionSystem, DebrisSystem, PickupSpawner, HUD
+
+#### Speed Trail History (v0.20)
+
+`_speed_trail_history: dict[int, list[tuple[float, float]]]` — keyed by `id(tank)`,
+stores recent world positions sampled every 30ms while speed-boosted. Max 6 points.
+Used by `_draw_tank_effects()` to render physics-based speed lines that curve
+organically during turns. Trail auto-clears when speed boost expires or tank stops.
+
+#### Shield Pop Detection (v0.20)
+
+`_had_shield: dict[int, bool]` — tracks which tanks had shield last frame. When a
+tank transitions from shield → no-shield, spawns debris particles and plays `SFX_SHIELD_POP`.
   ai_count: from settings or default, capped at 3
   → player dies     → GameOverScene(result: MatchResult)
   → all AI dead     → GameOverScene(result: MatchResult)
@@ -796,14 +824,37 @@ Initializes pygame.mixer: 44100 Hz, 16-bit, stereo, 512 buffer, 16 channels.
 | Method | Description |
 |--------|-------------|
 | `play_music(path: str, loop: bool = True)` | Crossfade (1000ms fadeout) + load + play |
-| `stop_music()` | Fadeout 1000ms |
+| `stop_music()` | Fadeout 1000ms; also calls `stop_all_layers()` |
 | `play_sfx(path: str)` | Lazy-load, cache, play at master * sfx volume |
-| `set_volume(channel: str, value: float)` | channel = "master" / "music" / "sfx"; clamped [0, 1] |
+| `set_volume(channel: str, value: float)` | channel = "master" / "music" / "sfx"; clamped [0, 1]; updates layer volumes |
 | `toggle_mute() -> bool` | Store/restore pre-mute volumes; returns True if now muted |
+| `start_music_layer(name, path, fade_ms=500)` | Start looping audio layer on dedicated channel |
+| `stop_music_layer(name, fade_ms=800)` | Fade out and remove named layer |
+| `stop_all_layers(fade_ms=500)` | Stop all active music layers (scene exit cleanup) |
 
 Property: `is_muted -> bool`
 
 Volume hierarchy: effective volume = master_volume * channel_volume.
+
+#### Music Layer System (v0.20)
+
+Per-pickup looping audio overlays that play on dedicated `pygame.mixer.Sound` channels
+alongside the base music stream (`pygame.mixer.music`). Multiple layers can play simultaneously.
+
+Layer volume: `master * music_vol * _LAYER_VOLUME_SCALE` (1.0 — mixing via generator amplitude).
+
+Layers are cached in `_layer_cache` (path → Sound), tracked in `_active_layers` (name → Sound)
+and `_layer_channels` (name → Channel). `PICKUP_MUSIC_LAYERS` dict maps pickup type → WAV path.
+
+| Layer | Pickup Type | Audio Character |
+|-------|-------------|-----------------|
+| `layer_speed.wav` | speed_boost | Buzzy double-time arpeggio |
+| `layer_heartbeat.wav` | regen | Heavy lub-DUB heartbeat with click transients |
+| `layer_underwater.wav` | shield | Dreamy underwater warble |
+| `layer_rapid_reload.wav` | rapid_reload | Mechanical tick loop with drone |
+
+GameplayScene tracks `_active_buff_layers: set[str]` — each frame computes active buffs
+via set difference, starts new layers, stops expired ones. `on_exit()` calls `stop_all_layers()`.
 
 Mute toggle: M key (handled in InputHandler key mapping, routed by GameplayScene).
 
@@ -1174,6 +1225,8 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | AI_DETECTION_RANGE | 550.0 | PATROL → PURSUE |
 | AI_ATTACK_RANGE | 375.0 | PURSUE → ATTACK |
 | AI_EVASION_HEALTH_RATIO | 0.30 | Default evasion threshold |
+| AI_PICKUP_SEEK_RANGE | 550.0 | EVADE health-seek range (matches detection range) |
+| AI_PICKUP_OPPORTUNISTIC_RANGE | 150.0 | PATROL/PURSUE grab-if-nearby range |
 | AI_SPAWN_POSITIONS | list of 3 tuples | Fixed spawn locations |
 
 ### Pickups
@@ -1189,6 +1242,8 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | PICKUP_PULSE_AMPLITUDE | 0.15 | |
 | PICKUP_GLOW_ALPHA | 40 | |
 | PICKUP_GLOW_SCALE | 1.5 | |
+| SHIELD_DEFAULT_DURATION | 12.0 | Shield buff duration |
+| SHIELD_DEFAULT_HP | 60.0 | Default shield hit points |
 | SPEED_BOOST_DURATION | 5.0 | **DEPRECATED v0.19** — use PICKUP_EFFECT_DURATION |
 
 ### Audio
@@ -1214,6 +1269,17 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | MUSIC_MENU | assets/music/music_menu.wav | |
 | MUSIC_GAMEPLAY | assets/music/music_gameplay.wav | |
 | MUSIC_GAME_OVER | assets/music/music_game_over.wav | |
+| MUSIC_LAYER_SPEED | assets/music/layer_speed.wav | Speed boost layer |
+| MUSIC_LAYER_HEARTBEAT | assets/music/layer_heartbeat.wav | Regen layer |
+| MUSIC_LAYER_UNDERWATER | assets/music/layer_underwater.wav | Shield layer |
+| MUSIC_LAYER_RAPID_RELOAD | assets/music/layer_rapid_reload.wav | Reload layer |
+| PICKUP_MUSIC_LAYERS | dict | Maps pickup type → layer WAV path |
+| SFX_PICKUP_HEALTH | assets/sounds/sfx_pickup_health.wav | |
+| SFX_PICKUP_SPEED | assets/sounds/sfx_pickup_speed.wav | |
+| SFX_PICKUP_RELOAD | assets/sounds/sfx_pickup_reload.wav | |
+| SFX_PICKUP_SHIELD | assets/sounds/sfx_pickup_shield.wav | |
+| SFX_SHIELD_POP | assets/sounds/sfx_shield_pop.wav | Shield break SFX |
+| PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
 
 ### UI / HUD
 

@@ -24,18 +24,12 @@ are completed or plans change.
 | v0.17.5 | Unified LoadoutScene + profile auto-create — collapse 3-scene pre-match chain |
 | v0.18.0 | Destructible obstacles — damage states, hit flash, debris particles, collision damage removed |
 | v0.19.0 | Pickup drops + polish — health HoT, rapid reload, speed boost, SFX, buff icons, AI retreat fire, front stripe |
+| v0.20.0 | Shield pickup, per-type VFX/SFX, music layers, AI pickup awareness, homing fix, arena bounce, themed walls |
 ---
 ## 🔨 In Progress
 | Branch                    | Milestone                                            |
 |---------------------------|------------------------------------------------------|
-| feature/defensive-pickups | v0.20 — Defensive pickups                            |
----
-## 🗺️ Planned
-### Phase 2 — Content Expansion
-*More things to do and unlock.*
-| Version | Milestone                          | Notes                                                                                                                                                                                                                                                                                                    |
-|---------|-----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.20   | Defensive pickups                 | Shields (absorb X damage), repair kits (regen over time), decoys (confuse AI targeting), EMP (brief area slow). All defined in pickup config.                                                                                                                                                            |
+| feature/damage-types      | v0.21 — Damage type system                           |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -139,5 +133,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.19.0 — v0.19 pickup drops + polish completed;
-v0.20 defensive pickups in progress*
+*Last updated: v0.20.0 — v0.20 shield pickup, VFX, music layers, AI pickup awareness completed;
+v0.21 damage type system in progress*
