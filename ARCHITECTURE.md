@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.19.0*
+*Last updated: v0.21.0*
 
 ---
 
@@ -51,6 +51,7 @@ game/
     camera.py                       World-to-screen transform with lerp tracking
     config_loader.py                YAML loader + typed config getters
     constants.py                    All numeric/string constants — single source
+    damage_types.py                 DamageType enum + parse_damage_type() helper
     logger.py                       Rotating file + console logger factory
     map_loader.py                   Map YAML → obstacles + theme + spawn points
     math_utils.py                   Geometry: distance, angles, lerp, rotation
@@ -66,7 +67,7 @@ data/
     tanks.yaml                      Four tank type definitions
     weapons.yaml                    Four weapon type definitions
   maps/
-    map_01.yaml                     "Headquarters" — default theme, 6 obstacles
+    map_01.yaml                     "Headquarters" — default theme, 8 obstacles (incl. 2 reinforced_steel)
     map_02.yaml                     "Dunes" — desert theme, 7 obstacles
     map_03.yaml                     "Tundra" — snow theme, 12 obstacles
   progression/
@@ -87,11 +88,13 @@ tests/
   conftest.py                       Shared pytest fixtures
   test_ai_states.py                 AI state machine transitions + recovery
   test_collision.py                 Collision detection + resolution
+  test_damage_types.py              DamageType enum, bullet/collision/obstacle routing, color dict
   test_debris.py                    Debris particle lifecycle + cap
   test_loadout.py                   Loadout scene selection logic
   test_map_loader.py                Map YAML parsing
   test_match_calculator.py          XP formula + MatchResult factory
   test_math_utils.py                Geometry utility functions
+  test_music_layers.py              Music layer system + constants
   test_obstacles.py                 Obstacle damage states + hit flash
   test_pickup.py                    Pickup apply effects + pulse animation
   test_pickup_spawner.py            Spawn timing + caps + lifetime
@@ -194,7 +197,7 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `update(dt: float)` | `list` | Advance state; returns fire event list `[("fire", x, y, angle, weapon_config)]` |
-| `take_damage(amount: int)` | `None` | Apply damage; sets is_alive=False at 0 HP |
+| `take_damage(amount: int, damage_type: DamageType = DamageType.STANDARD)` | `None` | Apply damage (shield absorbs first); sets is_alive=False at 0 HP |
 | `load_weapons(configs: list[dict])` | `None` | Equip up to MAX_WEAPON_SLOTS weapons; rejects empty/duplicates |
 | `cycle_weapon(direction: int)` | `None` | Cycle active slot (+1 next, -1 prev) with wrapping |
 | `set_active_slot(index: int)` | `None` | Jump to slot by index; no-op if out of range |
@@ -242,7 +245,7 @@ Properties: `shield_hp -> float` (current shield HP or 0.0), `active_status_name
 Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 ```
 
-`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type).
+`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type), `damage_type`, `tracking_strength`.
 
 #### Public Fields
 
@@ -259,12 +262,13 @@ Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 | bounces_remaining | int | Decremented on each bounce |
 | max_range | float | Max travel distance before despawn |
 | weapon_type | str | Weapon identifier from config |
+| damage_type | DamageType | Enum from config via parse_damage_type() (v0.21) |
 
 #### Public Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `update(dt: float)` | `None` | Track target (if homing), advance position, despawn if max_range exceeded |
+| `update(dt: float)` | `None` | Advance position first, then track target (if homing); despawn if max_range exceeded |
 | `reflect(normal_x: float, normal_y: float)` | `None` | Reflect velocity off surface normal; decrement bounces |
 | `destroy()` | `None` | Mark for removal |
 | `set_targets_getter(getter)` | `None` | Inject callable returning list of alive tanks for homing |
@@ -280,6 +284,28 @@ Finds nearest alive non-owner tank, computes desired angle, rotates heading by
 | Property | Type | Description |
 |----------|------|-------------|
 | position | tuple[float, float] | (x, y) |
+
+---
+
+### DamageType (game/utils/damage_types.py)
+
+Enum introduced in v0.21. Flows from weapon config → Bullet → CollisionSystem → Tank/Obstacle.
+
+```python
+class DamageType(Enum):
+    STANDARD = auto()   # kinetic/ballistic — most weapons
+    EXPLOSIVE = auto()  # splash damage, AoE — homing_missile
+    FIRE = auto()       # burn DoT — future
+    ICE = auto()        # movement slow — future
+    POISON = auto()     # damage over time — future
+    ELECTRIC = auto()   # fire rate slow — future
+```
+
+`parse_damage_type(value: str) -> DamageType` — case-insensitive, returns STANDARD on unknown/None.
+
+Pipeline: `weapons.yaml damage_type:` → `Bullet.damage_type` (enum) → `CollisionSystem` passes to `tank.take_damage(damage_type=)` and `obs.take_damage(damage_type=.name.lower())` → Obstacle normalizes enum or string to lowercase for `damage_filters` comparison.
+
+Rendering: `DAMAGE_TYPE_BULLET_COLORS` dict maps enum name → RGB. HUD weapon slots show 4px colored dot per slot.
 
 ---
 
@@ -318,7 +344,7 @@ Obstacle(x: float, y: float, width: float, height: float,
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `update(dt: float)` | `None` | Decrement hit-flash timer |
-| `take_damage(amount: int, damage_type: str = "standard")` | `None` | Apply damage (guarded by destructible + damage_filters); triggers hit flash |
+| `take_damage(amount: int, damage_type: DamageType \| str = "standard")` | `None` | Apply damage (guarded by destructible + damage_filters); accepts enum or string, normalizes to lowercase for filter comparison (v0.21) |
 | `destroy()` | `None` | Force-destroy if destructible |
 
 #### Properties
@@ -504,7 +530,7 @@ Returns a list of audio event strings and stat-tracking tuples.
 | `"bullet_hit_obstacle"` | str | Bullet hits obstacle (not destroyed) |
 | `"obstacle_destroy"` | str | Bullet destroys obstacle |
 | `"tank_collision"` | str | Two tanks overlap |
-| `("bullet_hit_tank_stat", owner, damage)` | tuple | Every bullet-tank hit (for stat tracking) |
+| `("bullet_hit_tank_stat", owner, damage, damage_type)` | tuple | Every bullet-tank hit (for stat tracking); damage_type is DamageType enum (v0.21) |
 
 Note: `_tanks_vs_obstacles` and `_tanks_vs_pickups` emit no audio events.
 
@@ -1211,8 +1237,9 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | DEFAULT_WEAPON_TYPE | "standard_shell" | |
 | MAX_WEAPON_SLOTS | 3 | |
 | BULLET_RADIUS | 5 | |
-| BULLET_COLOR | (255, 220, 50) | |
+| BULLET_COLOR | (255, 220, 50) | Fallback; prefer DAMAGE_TYPE_BULLET_COLORS |
 | BULLET_DEFAULT_MAX_RANGE | 1400.0 | |
+| DAMAGE_TYPE_BULLET_COLORS | dict | Per-DamageType RGB: STANDARD yellow, EXPLOSIVE orange, FIRE red, ICE blue, POISON green, ELECTRIC purple (v0.21) |
 | WEAPON_CARD_COLORS | dict | Per-weapon RGB for UI |
 | WEAPON_STAT_MAX | dict | Stat bar max values |
 | MAX_BAR_WIDTH | 120 | UI stat bar width |
