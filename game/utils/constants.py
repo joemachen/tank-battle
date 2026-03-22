@@ -59,6 +59,7 @@ ARENA_HEIGHT: int = 1200
 ARENA_FLOOR_COLOR = (28, 35, 28)         # dark muted green — ground
 ARENA_BORDER_COLOR = (70, 90, 70)        # lighter green border
 ARENA_BORDER_THICKNESS: int = 4
+ARENA_WALL_THICKNESS: int = 12
 ARENA_GRID_STEP: int = 100               # world units between grid lines
 ARENA_GRID_COLOR = (38, 48, 38)          # slightly lighter than floor; makes scrolling visible
 
@@ -105,6 +106,8 @@ KEYBIND_SLOT_3: int = 51             # K_3
 BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
 BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml
+HOMING_BULLET_COLOR: tuple = COLOR_RED
+HOMING_BULLET_RADIUS: int = BULLET_RADIUS + 1
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29
@@ -173,10 +176,25 @@ PICKUP_GLOW_SCALE: float = 1.5
 PICKUP_EFFECT_DURATION: float = 8.0
 PICKUP_LIFETIME: float = 30.0
 
+# Shield pickup
+SHIELD_DEFAULT_HP: float = 60.0
+SHIELD_DEFAULT_DURATION: float = 12.0
+
 # Buff indicator
 BUFF_ICON_OFFSET_Y: int = 20
 BUFF_ICON_FONT_SIZE: int = 14
 BUFF_ICON_SPACING: int = 16
+
+# Pickup VFX colors
+VFX_REGEN_COLOR: tuple = (80, 200, 80)
+VFX_SPEED_COLOR: tuple = (60, 160, 220)
+VFX_RELOAD_COLOR: tuple = (200, 180, 60)
+VFX_SHIELD_COLOR: tuple = (100, 180, 255)
+VFX_SHIELD_POP_COLOR: tuple = (150, 210, 255)
+
+# AI pickup-seeking ranges
+AI_PICKUP_SEEK_RANGE: float = 550.0    # EVADE: health-seek range — matches AI_DETECTION_RANGE
+AI_PICKUP_OPPORTUNISTIC_RANGE: float = 150.0  # PATROL/PURSUE: grab if nearby
 
 # Tank front stripe
 TANK_FRONT_STRIPE_WIDTH: int = 2
@@ -216,11 +234,37 @@ SFX_UI_CONFIRM:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_conf
 SFX_PICKUP_SPAWN:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_spawn.wav")
 SFX_PICKUP_COLLECT:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_collect.wav")
 SFX_PICKUP_EXPIRE:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_expire.wav")
+SFX_PICKUP_HEALTH:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_health.wav")
+SFX_PICKUP_SPEED:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_speed.wav")
+SFX_PICKUP_RELOAD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_reload.wav")
+SFX_PICKUP_SHIELD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav")
+SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_pop.wav")
+
+# Per-type pickup collect SFX lookup
+PICKUP_COLLECT_SFX: dict = {
+    "health": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_health.wav"),
+    "rapid_reload": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_reload.wav"),
+    "speed_boost": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_speed.wav"),
+    "shield": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav"),
+}
 
 # Music asset paths
 MUSIC_MENU:      str = _os.path.join(_ASSET_ROOT, "music", "music_menu.wav")
 MUSIC_GAMEPLAY:  str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay.wav")
 MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav")
+
+# Per-pickup music layers (looping overlays that play on top of base music)
+MUSIC_LAYER_SPEED:        str = _os.path.join(_ASSET_ROOT, "music", "layer_speed.wav")
+MUSIC_LAYER_HEARTBEAT:    str = _os.path.join(_ASSET_ROOT, "music", "layer_heartbeat.wav")
+MUSIC_LAYER_UNDERWATER:   str = _os.path.join(_ASSET_ROOT, "music", "layer_underwater.wav")
+MUSIC_LAYER_RAPID_RELOAD: str = _os.path.join(_ASSET_ROOT, "music", "layer_rapid_reload.wav")
+
+PICKUP_MUSIC_LAYERS: dict = {
+    "speed_boost":  MUSIC_LAYER_SPEED,
+    "regen":        MUSIC_LAYER_HEARTBEAT,
+    "shield":       MUSIC_LAYER_UNDERWATER,
+    "rapid_reload": MUSIC_LAYER_RAPID_RELOAD,
+}
 
 # ---------------------------------------------------------------------------
 # UI

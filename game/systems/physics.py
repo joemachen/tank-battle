@@ -5,7 +5,9 @@ PhysicsSystem — applies movement updates and enforces arena bounds.
 Does NOT handle collision response between entities; that belongs to CollisionSystem.
 """
 
-from game.utils.constants import ARENA_HEIGHT, ARENA_PADDING, ARENA_WIDTH, TANK_MOVEMENT_MARGIN
+import math
+
+from game.utils.constants import ARENA_HEIGHT, ARENA_WIDTH, TANK_MOVEMENT_MARGIN
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -52,14 +54,29 @@ class PhysicsSystem:
         tank.y = max(TANK_MOVEMENT_MARGIN, min(ARENA_HEIGHT - TANK_MOVEMENT_MARGIN, tank.y))
 
     def _check_bullet_boundary(self, bullet) -> None:
-        """Destroy bullet (or bounce, if supported) when it leaves the arena."""
-        out_x = bullet.x < 0 or bullet.x > ARENA_WIDTH
-        out_y = bullet.y < 0 or bullet.y > ARENA_HEIGHT
+        """Reflect or destroy bullet when it leaves the arena.
 
-        if out_x or out_y:
-            if bullet.bounces_remaining > 0:
-                # TODO: implement reflect logic in a later milestone
-                bullet.bounces_remaining -= 1
-                log.debug("Bullet bounced off boundary. Remaining: %d", bullet.bounces_remaining)
-            else:
-                bullet.destroy()
+        Bouncing bullets reflect off arena edges (invert _dx/_dy as needed).
+        Corner hits (both axes out) reflect both in a single bounce.
+        Non-bouncing bullets are destroyed on contact.
+        """
+        out_left = bullet.x < 0
+        out_right = bullet.x > ARENA_WIDTH
+        out_top = bullet.y < 0
+        out_bottom = bullet.y > ARENA_HEIGHT
+
+        if not (out_left or out_right or out_top or out_bottom):
+            return
+
+        if bullet.bounces_remaining > 0:
+            if out_left or out_right:
+                bullet._dx = -bullet._dx
+            if out_top or out_bottom:
+                bullet._dy = -bullet._dy
+            bullet.angle = math.degrees(math.atan2(bullet._dy, bullet._dx))
+            bullet.bounces_remaining -= 1
+            bullet.x = max(0, min(ARENA_WIDTH, bullet.x))
+            bullet.y = max(0, min(ARENA_HEIGHT, bullet.y))
+            log.debug("Bullet reflected off arena wall. Remaining: %d", bullet.bounces_remaining)
+        else:
+            bullet.destroy()

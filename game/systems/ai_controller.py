@@ -29,6 +29,8 @@ from game.utils.constants import (
     AI_ATTACK_RANGE,
     AI_DETECTION_RANGE,
     AI_EVASION_HEALTH_RATIO,
+    AI_PICKUP_OPPORTUNISTIC_RANGE,
+    AI_PICKUP_SEEK_RANGE,
 )
 from game.utils.logger import get_logger
 from game.utils.math_utils import angle_difference, angle_to, distance
@@ -119,6 +121,9 @@ class AIController:
         # returning a list of live Obstacle instances.
         self._obstacles_getter = None
 
+        # Pickup awareness (v0.20) — injected by the scene
+        self._pickups_getter = None
+
         log.debug(
             "AIController created. Difficulty: reaction=%.2f acc=%.2f agg=%.2f evade_thresh=%.2f",
             self.reaction_time, self.accuracy, self.aggression, self.evasion_threshold,
@@ -131,6 +136,10 @@ class AIController:
     def set_owner(self, tank) -> None:
         """Called by the game when the AI tank is created so the controller can read self state."""
         self._owner = tank
+
+    def set_pickups_getter(self, getter) -> None:
+        """Inject a zero-arg callable returning live Pickup instances."""
+        self._pickups_getter = getter
 
     def set_obstacles_getter(self, getter) -> None:
         """
@@ -265,16 +274,28 @@ class AIController:
     # ------------------------------------------------------------------
 
     def _patrol_input(self) -> TankInput:
-        """Wander by slowly rotating on a timer. Turret faces same direction as hull."""
+        """Wander by slowly rotating on a timer. Turret faces same direction as hull.
+        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE."""
+        # Opportunistic pickup grab
+        pickup = self._nearest_pickup(AI_PICKUP_OPPORTUNISTIC_RANGE)
+        if pickup is not None:
+            return self._steer_toward(pickup.position)
         # Stub: just rotate slowly; waypoint patrol implemented later
         turret = self._owner.angle if self._owner is not None else 0.0
         return TankInput(throttle=0.5, rotate=0.3, fire=False, turret_angle=turret)
 
     def _pursue_input(self, target) -> TankInput:
         """Turn and move toward target with lightweight obstacle avoidance.
-        Turret independently tracks the player while the hull steers."""
+        Turret independently tracks the player while the hull steers.
+        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE."""
         if self._owner is None or target is None:
             return TankInput()
+        # Opportunistic pickup grab while pursuing
+        pickup = self._nearest_pickup(AI_PICKUP_OPPORTUNISTIC_RANGE)
+        if pickup is not None:
+            inp = self._steer_toward(pickup.position)
+            inp.turret_angle = angle_to(self._owner.position, target.position)
+            return inp
         desired_angle = angle_to(self._owner.position, target.position)
         turret_angle = desired_angle   # track player even while steering
         desired_angle += self._obstacle_steer_correction(desired_angle)
@@ -301,9 +322,21 @@ class AIController:
                          turret_angle=turret_angle)
 
     def _evade_input(self, target) -> TankInput:
-        """Retreat away from the target. Turret keeps watching the player while fleeing."""
+        """Retreat away from the target. Turret keeps watching the player while fleeing.
+        Prioritises health pickups within AI_PICKUP_SEEK_RANGE when low on HP."""
         if self._owner is None or target is None:
             return TankInput(throttle=-1.0, rotate=0.5, fire=False, turret_angle=0.0)
+
+        # Health-seeking: prioritise health pickups when evading
+        health_pickup = self._nearest_pickup(AI_PICKUP_SEEK_RANGE, type_filter="health")
+        if health_pickup is not None:
+            inp = self._steer_toward(health_pickup.position)
+            inp.turret_angle = angle_to(self._owner.position, target.position)
+            # Still fire at targets in attack range while seeking health
+            dist = distance(self._owner.position, target.position)
+            inp.fire = dist <= AI_ATTACK_RANGE and random.random() < self.aggression
+            return inp
+
         # Turret faces the player (threatening even while retreating)
         turret_angle = angle_to(self._owner.position, target.position)
 
@@ -349,6 +382,46 @@ class AIController:
             # Phase 2 — rolling forward in the new heading
             return TankInput(throttle=0.7, rotate=self._recovery_direction * 0.4, fire=False,
                              turret_angle=turret)
+
+    # ------------------------------------------------------------------
+    # Pickup awareness helper (v0.20)
+    # ------------------------------------------------------------------
+
+    def _nearest_pickup(self, max_range: float, type_filter: str | None = None):
+        """Return the nearest pickup within max_range, or None.
+
+        Args:
+            max_range: maximum distance in pixels.
+            type_filter: if set, only consider pickups of this type.
+        """
+        if self._pickups_getter is None or self._owner is None:
+            return None
+        pickups = self._pickups_getter()
+        if not pickups:
+            return None
+        best = None
+        best_dist = max_range
+        for p in pickups:
+            if not p.is_alive:
+                continue
+            if type_filter and p.pickup_type != type_filter:
+                continue
+            d = distance(self._owner.position, p.position)
+            if d < best_dist:
+                best = p
+                best_dist = d
+        return best
+
+    def _steer_toward(self, target_pos: tuple) -> TankInput:
+        """Produce TankInput that drives toward a world position."""
+        desired = angle_to(self._owner.position, target_pos)
+        desired += self._obstacle_steer_correction(desired)
+        diff = angle_difference(self._owner.angle, desired)
+        rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
+        throttle = 1.0 if abs(diff) < 45 else 0.3
+        turret = self._owner.angle if self._owner else 0.0
+        return TankInput(throttle=throttle, rotate=rotate, fire=False,
+                         turret_angle=turret)
 
     # ------------------------------------------------------------------
     # Obstacle avoidance helper (Layer 3)

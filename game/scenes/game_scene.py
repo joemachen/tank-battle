@@ -52,9 +52,12 @@ from game.utils.constants import (
     ARENA_GRID_COLOR,
     ARENA_GRID_STEP,
     ARENA_HEIGHT,
+    ARENA_WALL_THICKNESS,
     ARENA_WIDTH,
     BULLET_COLOR,
     BULLET_RADIUS,
+    HOMING_BULLET_COLOR,
+    HOMING_BULLET_RADIUS,
     COLOR_BG,
     COLOR_NEON_PINK,
     DAMAGE_CRACK_DARKEN,
@@ -69,6 +72,14 @@ from game.utils.constants import (
     KEYBIND_SLOT_3,
     MAPS_DIR,
     MUSIC_GAMEPLAY,
+    PICKUP_COLLECT_SFX,
+    PICKUP_MUSIC_LAYERS,
+    SFX_SHIELD_POP,
+    VFX_REGEN_COLOR,
+    VFX_SHIELD_COLOR,
+    VFX_SHIELD_POP_COLOR,
+    VFX_SPEED_COLOR,
+    VFX_RELOAD_COLOR,
     OBSTACLE_BORDER_COLOR,
     PICKUP_GLOW_ALPHA,
     PICKUP_GLOW_SCALE,
@@ -266,6 +277,7 @@ class GameplayScene(BaseScene):
             )
             controller.set_owner(ai_tank)
             controller.set_obstacles_getter(live_obstacles)
+            controller.set_pickups_getter(lambda: self._pickup_spawner.active_pickups)
             # AI always uses standard_shell
             std_cfg = self._weapon_configs["standard_shell"]
             ai_tank.load_weapons([std_cfg])
@@ -290,8 +302,17 @@ class GameplayScene(BaseScene):
         self._damage_taken = 0
         self._match_start_time = time.monotonic()
 
+        # Shield pop detection — tracks which tanks had shield last frame
+        self._had_shield: dict[int, bool] = {}
+        # Per-pickup music layers — tracks which layers are currently playing
+        self._active_buff_layers: set[str] = set()
+        # Speed boost trail history — position samples for physics-based speed lines
+        self._speed_trail_history: dict[int, list[tuple[float, float]]] = {}
+        self._trail_timer: float = 0.0
+
         music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
-        get_audio_manager().play_music(music_track)
+        audio = get_audio_manager()
+        audio.play_music(music_track)
 
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapons: %s",
@@ -300,6 +321,7 @@ class GameplayScene(BaseScene):
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
+        get_audio_manager().stop_all_layers()
         # Restore system cursor for all non-gameplay scenes
         pygame.mouse.set_visible(True)
         self._tank = None
@@ -368,6 +390,23 @@ class GameplayScene(BaseScene):
         all_tanks = [self._tank] + self._ai_tanks
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Record speed trail positions for physics-based speed lines
+        _TRAIL_MAX_POINTS = 6
+        _TRAIL_RECORD_INTERVAL = 0.03
+        self._trail_timer += dt
+        if self._trail_timer >= _TRAIL_RECORD_INTERVAL:
+            self._trail_timer = 0.0
+            for tank in all_tanks:
+                if not tank.is_alive or not tank.has_status("speed_boost"):
+                    self._speed_trail_history.pop(id(tank), None)
+                    continue
+                if math.hypot(tank.vx, tank.vy) < 20.0:
+                    continue
+                history = self._speed_trail_history.setdefault(id(tank), [])
+                history.append((tank.x, tank.y))
+                if len(history) > _TRAIL_MAX_POINTS:
+                    history.pop(0)
 
         # Tick pickup spawner
         self._pickup_spawner.update(dt)
@@ -468,6 +507,34 @@ class GameplayScene(BaseScene):
         # Update debris particles
         self._debris.update(dt)
 
+        # Shield pop detection — spawn debris when shield breaks
+        for tank in all_tanks:
+            tid = id(tank)
+            has_shield = tank.has_status("shield")
+            if self._had_shield.get(tid, False) and not has_shield:
+                # Shield just broke — spawn blue debris
+                self._debris.spawn_debris(
+                    tank.x, tank.y, 30, 30, VFX_SHIELD_POP_COLOR, 8,
+                )
+                audio.play_sfx(SFX_SHIELD_POP)
+            self._had_shield[tid] = has_shield
+
+        # Music layers: start/stop per-pickup audio layers based on active buffs
+        current_buffs: set[str] = set()
+        for tank in all_tanks:
+            if tank.is_alive:
+                for name in tank.active_status_names:
+                    current_buffs.add(name)
+        for buff in current_buffs - self._active_buff_layers:
+            path = PICKUP_MUSIC_LAYERS.get(buff)
+            if path:
+                audio.start_music_layer(buff, path)
+        for buff in self._active_buff_layers - current_buffs:
+            path = PICKUP_MUSIC_LAYERS.get(buff)
+            if path:
+                audio.stop_music_layer(buff)
+        self._active_buff_layers = current_buffs
+
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]
         _, ex, ey, eangle, weapon_type = event
@@ -493,7 +560,10 @@ class GameplayScene(BaseScene):
             dx, dy = heading_to_vec(eangle)
             bx = ex + dx * TANK_BARREL_LENGTH
             by = ey + dy * TANK_BARREL_LENGTH
-            self._bullets.append(Bullet(bx, by, eangle, owner, weapon_cfg))
+            bullet = Bullet(bx, by, eangle, owner, weapon_cfg)
+            if float(weapon_cfg.get("tracking_strength", 0)) > 0:
+                bullet.set_targets_getter(lambda: [self._tank] + self._ai_tanks)
+            self._bullets.append(bullet)
 
     # ------------------------------------------------------------------
     # Draw
@@ -515,10 +585,12 @@ class GameplayScene(BaseScene):
 
         _draw_tank(surface, self._tank, self._tank_surf, self._camera)
 
-        # Buff indicators above tanks
-        _draw_buff_icons(surface, self._tank, self._camera)
+        # Per-type VFX on tanks
+        _draw_tank_effects(surface, self._tank, self._camera,
+                           self._speed_trail_history.get(id(self._tank)))
         for ai_tank in self._ai_tanks:
-            _draw_buff_icons(surface, ai_tank, self._camera)
+            _draw_tank_effects(surface, ai_tank, self._camera,
+                               self._speed_trail_history.get(id(ai_tank)))
 
         _draw_bullets(surface, self._bullets, self._camera)
 
@@ -576,10 +648,28 @@ def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = No
     for wy in range(0, ARENA_HEIGHT + 1, ARENA_GRID_STEP):
         sy = ay_i + wy
         pygame.draw.line(surface, grid_color, (ax_i, sy), (ax_i + ARENA_WIDTH, sy))
-    pygame.draw.rect(surface, border_color, floor_rect, border_thick)
+
+    # Themed perimeter walls
+    wall_color = tuple(theme.get("wall_color", border_color)) if theme else border_color
+    wt = ARENA_WALL_THICKNESS
+    # Top wall
+    pygame.draw.rect(surface, wall_color, (ax_i, ay_i - wt, ARENA_WIDTH, wt))
+    # Bottom wall
+    pygame.draw.rect(surface, wall_color, (ax_i, ay_i + ARENA_HEIGHT, ARENA_WIDTH, wt))
+    # Left wall (spans full height including corners)
+    pygame.draw.rect(surface, wall_color, (ax_i - wt, ay_i - wt, wt, ARENA_HEIGHT + 2 * wt))
+    # Right wall
+    pygame.draw.rect(surface, wall_color, (ax_i + ARENA_WIDTH, ay_i - wt, wt, ARENA_HEIGHT + 2 * wt))
+
+    # 1px inner-edge highlight for 3D wall effect
+    bright = tuple(min(255, c + 40) for c in wall_color)
+    pygame.draw.line(surface, bright, (ax_i, ay_i), (ax_i + ARENA_WIDTH - 1, ay_i))                         # top inner
+    pygame.draw.line(surface, bright, (ax_i, ay_i + ARENA_HEIGHT - 1), (ax_i + ARENA_WIDTH - 1, ay_i + ARENA_HEIGHT - 1))  # bottom inner
+    pygame.draw.line(surface, bright, (ax_i, ay_i), (ax_i, ay_i + ARENA_HEIGHT - 1))                         # left inner
+    pygame.draw.line(surface, bright, (ax_i + ARENA_WIDTH - 1, ay_i), (ax_i + ARENA_WIDTH - 1, ay_i + ARENA_HEIGHT - 1))   # right inner
 
 
-_PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S"}
+_PICKUP_INITIALS = {"health": "H", "rapid_reload": "R", "speed_boost": "S", "shield": "D"}
 
 
 def _draw_pickups(
@@ -717,33 +807,69 @@ def _draw_tank(
     )
 
 
-_BUFF_ICONS = {
-    "regen":        {"symbol": "+",  "color": (80, 200, 80)},
-    "speed_boost":  {"symbol": ">>", "color": (200, 180, 60)},
-    "rapid_reload": {"symbol": "R",  "color": (60, 160, 220)},
-}
-
-
-def _draw_buff_icons(
+def _draw_tank_effects(
     surface: pygame.Surface,
     tank: Tank,
     camera: Camera,
+    speed_trail: list[tuple[float, float]] | None = None,
 ) -> None:
-    """Draw small status-effect icons above a tank."""
+    """Draw per-type visual effects around a tank with active status effects."""
     if not tank.is_alive or not tank.status_effects:
         return
     sx, sy = camera.world_to_screen(tank.x, tank.y)
-    font = pygame.font.Font(None, BUFF_ICON_FONT_SIZE)
-    icons = [_BUFF_ICONS[name] for name in tank.status_effects if name in _BUFF_ICONS]
-    if not icons:
-        return
-    total_width = len(icons) * BUFF_ICON_SPACING
-    start_x = int(sx) - total_width // 2 + BUFF_ICON_SPACING // 2
-    y = int(sy) - BUFF_ICON_OFFSET_Y
-    for i, icon in enumerate(icons):
-        txt = font.render(icon["symbol"], True, icon["color"])
-        x = start_x + i * BUFF_ICON_SPACING - txt.get_width() // 2
-        surface.blit(txt, (x, y - txt.get_height() // 2))
+    cx, cy = int(sx), int(sy)
+    t = time.monotonic()
+
+    if tank.has_status("regen"):
+        # Pulsing heart / cross above tank
+        pulse = (math.sin(t * 4.0) + 1.0) / 2.0
+        size = int(6 + 3 * pulse)
+        hx, hy = cx, cy - BUFF_ICON_OFFSET_Y
+        pygame.draw.line(surface, VFX_REGEN_COLOR, (hx - size, hy), (hx + size, hy), 2)
+        pygame.draw.line(surface, VFX_REGEN_COLOR, (hx, hy - size), (hx, hy + size), 2)
+
+    if tank.has_status("speed_boost") and speed_trail and len(speed_trail) >= 2:
+        # Physics-based speed lines — connect recent position history for organic curves
+        for i in range(len(speed_trail) - 1):
+            sx1, sy1 = camera.world_to_screen(*speed_trail[i])
+            sx2, sy2 = camera.world_to_screen(*speed_trail[i + 1])
+            # Alpha fades — older points are more transparent
+            alpha = int(60 + (i / len(speed_trail)) * 100)  # 60 → 160
+            width = 1 + (i // 2)  # thickens toward the tank
+            angle = math.atan2(sy2 - sy1, sx2 - sx1)
+            perp_x = math.cos(angle + math.pi / 2)
+            perp_y = math.sin(angle + math.pi / 2)
+            # 3 parallel trails with perpendicular spread
+            for offset in [-4, 0, 4]:
+                pygame.draw.line(
+                    surface, (*VFX_SPEED_COLOR, alpha),
+                    (int(sx1 + perp_x * offset), int(sy1 + perp_y * offset)),
+                    (int(sx2 + perp_x * offset), int(sy2 + perp_y * offset)), width)
+
+    if tank.has_status("rapid_reload"):
+        # Spinning rings around tank
+        ring_r = int(TANK_BODY_WIDTH * 0.7 + 3 * math.sin(t * 6.0))
+        overlay = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(overlay, (*VFX_RELOAD_COLOR, 100),
+                           (ring_r + 2, ring_r + 2), ring_r, 2)
+        surface.blit(overlay, (cx - ring_r - 2, cy - ring_r - 2))
+
+    if tank.has_status("shield"):
+        # Soap bubble — translucent circle with shimmer
+        shield_data = tank.status_effects.get("shield", {})
+        shield_hp = shield_data.get("shield_hp", 0)
+        # Bubble radius pulsates gently
+        bubble_r = int(TANK_BODY_WIDTH * 0.85 + 2 * math.sin(t * 3.0))
+        bubble_surf = pygame.Surface((bubble_r * 2 + 4, bubble_r * 2 + 4), pygame.SRCALPHA)
+        alpha = max(40, min(120, int(shield_hp * 2)))
+        pygame.draw.circle(bubble_surf, (*VFX_SHIELD_COLOR, alpha),
+                           (bubble_r + 2, bubble_r + 2), bubble_r, 3)
+        # Shimmer highlight
+        highlight_angle = t * 2.0
+        hx2 = int(bubble_r + 2 + bubble_r * 0.5 * math.cos(highlight_angle))
+        hy2 = int(bubble_r + 2 + bubble_r * 0.5 * math.sin(highlight_angle))
+        pygame.draw.circle(bubble_surf, (255, 255, 255, 60), (hx2, hy2), 4)
+        surface.blit(bubble_surf, (cx - bubble_r - 2, cy - bubble_r - 2))
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:
@@ -751,7 +877,10 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
         if not bullet.is_alive:
             continue
         sx, sy = camera.world_to_screen(bullet.x, bullet.y)
-        pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
+        if bullet._tracking_strength > 0:
+            pygame.draw.circle(surface, HOMING_BULLET_COLOR, (int(sx), int(sy)), HOMING_BULLET_RADIUS)
+        else:
+            pygame.draw.circle(surface, BULLET_COLOR, (int(sx), int(sy)), BULLET_RADIUS)
 
 
 def _draw_reticle(surface: pygame.Surface) -> None:

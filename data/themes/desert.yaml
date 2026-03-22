@@ -9,4 +9,5 @@ border_color: [160, 110, 60]
 border_thickness: 6
 obstacle_tint: [200, 160, 100]
 ambient_label: "Arid"
+wall_color: [140, 120, 80]
 music_override: null

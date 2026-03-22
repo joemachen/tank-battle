@@ -284,6 +284,80 @@ def gen_pickup_expire(sr: int) -> list[float]:
     return out
 
 
+def gen_pickup_health(sr: int) -> list[float]:
+    """Warm ascending chime: C5→E5→G5 with soft harmonics."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    freqs = [523.0, 659.0, 784.0]
+    note_dur = dur / 3.0
+    for i in range(n):
+        t = i / sr
+        idx = min(int(t / note_dur), 2)
+        nt = t - idx * note_dur
+        env = adsr(nt, note_dur, attack=0.005, decay=0.03, sustain_level=0.5, release=0.05)
+        tone = sine(t, freqs[idx]) * 0.5 + sine(t, freqs[idx] * 2) * 0.1
+        out.append(env * tone * 0.6)
+    return out
+
+
+def gen_pickup_speed(sr: int) -> list[float]:
+    """Quick rising sweep — whoosh feel."""
+    dur = 0.2
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.005, decay=0.05, sustain_level=0.4, release=0.14)
+        freq = 400 + 1200 * (t / dur)
+        tone = sawtooth(t, freq) * 0.3 + noise() * 0.15 * math.exp(-t * 20)
+        out.append(env * tone * 0.5)
+    return out
+
+
+def gen_pickup_reload(sr: int) -> list[float]:
+    """Mechanical click-clack: two sharp transients."""
+    dur = 0.18
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        click1 = sine(t, 1200) * math.exp(-t * 60) * 0.5 if t < 0.08 else 0.0
+        click2 = sine(t - 0.09, 900) * math.exp(-(t - 0.09) * 50) * 0.4 if t >= 0.09 else 0.0
+        env = adsr(t, dur, attack=0.001, decay=0.03, sustain_level=0.1, release=0.14)
+        out.append(env * (click1 + click2) * 0.7)
+    return out
+
+
+def gen_pickup_shield(sr: int) -> list[float]:
+    """Crystalline shimmer: high sine with chorus detune."""
+    dur = 0.35
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.02, decay=0.08, sustain_level=0.4, release=0.25)
+        tone = sine(t, 1047.0) * 0.35
+        chorus = sine(t, 1055.0) * 0.2 + sine(t, 1570.0) * 0.15
+        shimmer = sine(t, 2093.0) * 0.1 * math.exp(-t * 8)
+        out.append(env * (tone + chorus + shimmer) * 0.55)
+    return out
+
+
+def gen_shield_pop(sr: int) -> list[float]:
+    """Bubble pop: quick noise burst + falling tone."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.001, decay=0.04, sustain_level=0.1, release=0.2)
+        pop = noise() * 0.5 * math.exp(-t * 40)
+        fall = sine(t, 800 * math.exp(-t * 12)) * 0.4
+        out.append(env * (pop + fall) * 0.6)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Music generators — Outrun/Synthwave style
 # ---------------------------------------------------------------------------
@@ -424,6 +498,169 @@ def gen_music_gameplay(sr: int) -> list[float]:
     return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
 
 
+# ---------------------------------------------------------------------------
+# Per-pickup music layers (short seamless loops, ~4 seconds each)
+# ---------------------------------------------------------------------------
+
+def gen_layer_speed(sr: int) -> list[float]:
+    """Tempo-doubled buzzy arpeggio — energetic overlay for speed boost."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    # Fast 16th-note arpeggio using pentatonic scale
+    bpm = 240.0  # double-time
+    note_dur = 60.0 / bpm
+    arp_notes = [0, 3, 5, 7, 10, 12, 10, 7, 5, 3]  # Am pentatonic cycle
+    step = 0
+    t_note = 0.0
+    while t_note < duration:
+        semi = arp_notes[step % len(arp_notes)]
+        freq = _note_freq(semi)
+        start = int(t_note * sr)
+        slen = int(note_dur * sr)
+        for k in range(slen):
+            if start + k >= n:
+                break
+            t = k / sr
+            env = adsr(t, note_dur, attack=0.005, decay=0.03,
+                       sustain_level=0.5, release=0.02)
+            out[start + k] += sawtooth(t, freq) * env * 0.3
+        t_note += note_dur
+        step += 1
+
+    # Subtle hi-hat noise bursts on every other 16th
+    hat_interval = note_dur
+    t_hat = hat_interval
+    while t_hat < duration:
+        start = int(t_hat * sr)
+        hat_len = int(0.015 * sr)
+        for k in range(hat_len):
+            if start + k >= n:
+                break
+            t = k / sr
+            out[start + k] += noise() * math.exp(-t * 200) * 0.12
+        t_hat += hat_interval * 2
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.35 for s in out]
+
+
+def gen_layer_heartbeat(sr: int) -> list[float]:
+    """Heavy heartbeat — lub-DUB pattern at 72 BPM.
+
+    Uses 80-120Hz fundamentals with square wave harmonics for speaker
+    audibility. Each beat has a percussive click transient that cuts
+    through the mix even on laptop speakers.
+    """
+    bpm = 72.0
+    beat_dur = 60.0 / bpm  # ~0.833s per beat
+    cycles = 5
+    total = beat_dur * cycles
+    n = int(sr * total)
+    out = [0.0] * n
+
+    for cycle in range(cycles):
+        cycle_start = int(cycle * beat_dur * sr)
+
+        # LUB — heavy thump at t=0 within cycle
+        lub_dur = 0.18
+        lub_samples = int(lub_dur * sr)
+        for k in range(min(lub_samples, n - cycle_start)):
+            t = k / sr
+            # Fast exponential envelope — punchy attack
+            env = math.exp(-t * 12.0)
+            # 80Hz fundamental (square wave for odd harmonics)
+            fund = square(t, 80, duty=0.5) * 0.5
+            # 160Hz second harmonic (laptop speakers reproduce this)
+            harm2 = sine(t, 160) * 0.4
+            # 240Hz third harmonic — adds "thock" character
+            harm3 = sine(t, 240) * 0.2
+            # Click transient — sharp noise burst for attack
+            click = noise() * 0.6 * math.exp(-t * 80.0)
+            out[cycle_start + k] += env * (fund + harm2 + harm3 + click)
+
+        # DUB — slightly higher, slightly softer, 0.25s after lub starts
+        dub_offset = int(0.25 * sr)
+        dub_dur = 0.12
+        dub_samples = int(dub_dur * sr)
+        dub_start = cycle_start + dub_offset
+        for k in range(min(dub_samples, max(0, n - dub_start))):
+            if dub_start + k >= n:
+                break
+            t = k / sr
+            env = math.exp(-t * 16.0)
+            fund = square(t, 100, duty=0.5) * 0.35
+            harm2 = sine(t, 200) * 0.3
+            harm3 = sine(t, 300) * 0.15
+            click = noise() * 0.4 * math.exp(-t * 100.0)
+            out[dub_start + k] += env * (fund + harm2 + harm3 + click)
+
+    # Normalize to 0.9 peak — playback volume handles final mix
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.9 for s in out]
+
+
+def gen_layer_underwater(sr: int) -> list[float]:
+    """Dreamy underwater warble — atmospheric overlay for shield."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    base_freq_root = 220.0
+    base_freq_fifth = 330.0
+
+    for i in range(n):
+        t = i / sr
+        # Slow pitch wobble ±3%
+        wobble = 1.0 + 0.03 * math.sin(2 * math.pi * 0.8 * t)
+        # Slow amplitude pulsing
+        amp_mod = 0.5 + 0.5 * math.sin(2 * math.pi * 1.5 * t)
+        # Chord: root + fifth
+        sample = (sine(t, base_freq_root * wobble) +
+                  sine(t, base_freq_fifth * wobble) * 0.7)
+        sample *= amp_mod * 0.35
+        # Subtle noise floor
+        sample += noise() * 0.05
+        out[i] = sample
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.25 for s in out]
+
+
+def gen_layer_rapid_reload(sr: int) -> list[float]:
+    """Mechanical tick loop — metronomic overlay for rapid reload."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    tick_rate = 8.0  # 8 ticks per second
+    tick_interval = 1.0 / tick_rate
+    tick_count = int(duration * tick_rate)
+
+    for i in range(tick_count):
+        t_start = i * tick_interval
+        start = int(t_start * sr)
+        tick_dur = 0.01
+        tick_len = int(tick_dur * sr)
+        # Every 4th tick is accented
+        amp = 0.5 if (i % 4 == 0) else 0.3
+        for k in range(tick_len):
+            if start + k >= n:
+                break
+            t = k / sr
+            env = math.exp(-t * 300)
+            out[start + k] += square(t, 1200) * env * amp
+
+    # Low constant drone
+    for i in range(n):
+        t = i / sr
+        out[i] += sine(t, 80) * 0.15
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.3 for s in out]
+
+
 def gen_music_game_over(sr: int) -> list[float]:
     """
     Short melancholic sting — 70 BPM, 4 bars, descending minor motif.
@@ -461,6 +698,11 @@ def main() -> None:
         ("sfx_pickup_spawn.wav",        gen_pickup_spawn),
         ("sfx_pickup_collect.wav",      gen_pickup_collect),
         ("sfx_pickup_expire.wav",       gen_pickup_expire),
+        ("sfx_pickup_health.wav",       gen_pickup_health),
+        ("sfx_pickup_speed.wav",        gen_pickup_speed),
+        ("sfx_pickup_reload.wav",       gen_pickup_reload),
+        ("sfx_pickup_shield.wav",       gen_pickup_shield),
+        ("sfx_shield_pop.wav",          gen_shield_pop),
     ]
 
     print("--- SFX ---")
@@ -470,9 +712,13 @@ def main() -> None:
         _write_wav(path, samples)
 
     music_jobs = [
-        ("music_menu.wav",      gen_music_menu),
-        ("music_gameplay.wav",  gen_music_gameplay),
-        ("music_game_over.wav", gen_music_game_over),
+        ("music_menu.wav",              gen_music_menu),
+        ("music_gameplay.wav",          gen_music_gameplay),
+        ("music_game_over.wav",         gen_music_game_over),
+        ("layer_speed.wav",             gen_layer_speed),
+        ("layer_heartbeat.wav",         gen_layer_heartbeat),
+        ("layer_underwater.wav",        gen_layer_underwater),
+        ("layer_rapid_reload.wav",      gen_layer_rapid_reload),
     ]
 
     print("\n--- Music ---")
