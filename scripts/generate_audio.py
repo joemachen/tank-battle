@@ -556,7 +556,7 @@ def gen_layer_heartbeat(sr: int) -> list[float]:
 
     for c in range(cycles):
         base = c * cycle
-        # "Lub" — deep thump
+        # "Lub" — deep thump with sub-bass reinforcement
         lub_start = int(base * sr)
         lub_dur = 0.15
         lub_len = int(lub_dur * sr)
@@ -565,7 +565,9 @@ def gen_layer_heartbeat(sr: int) -> list[float]:
                 break
             t = k / sr
             env = math.exp(-t * 18)
-            out[lub_start + k] += sine(t, 45) * env * 0.8
+            out[lub_start + k] += sine(t, 40) * env * 0.8
+            # Sub-bass at half frequency — adds chest-thump feel
+            out[lub_start + k] += sine(t, 20) * env * 0.3
 
         # "Dub" — slightly higher, after gap
         dub_offset = 0.25
@@ -577,10 +579,10 @@ def gen_layer_heartbeat(sr: int) -> list[float]:
                 break
             t = k / sr
             env = math.exp(-t * 25)
-            out[dub_start + k] += sine(t, 55) * env * 0.6
+            out[dub_start + k] += sine(t, 48) * env * 0.6
 
     peak = max(abs(s) for s in out) or 1.0
-    return [s / peak * 0.4 for s in out]
+    return [s / peak * 0.7 for s in out]
 
 
 def gen_layer_underwater(sr: int) -> list[float]:

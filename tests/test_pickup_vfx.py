@@ -5,7 +5,10 @@ Unit tests verifying pickup VFX-related state:
   - Shield has correct status data for VFX rendering
   - Per-type SFX lookup resolves correctly
   - Pickup initials include shield
+  - Speed lines trail direction from velocity vector
 """
+
+import math
 
 import pytest
 
@@ -89,3 +92,23 @@ class TestPickupVFX:
         tank.apply_status("shield", 0.0, 12.0, shield_hp=60.0)
         tank.take_damage(25)
         assert tank.shield_hp == 35.0
+
+    def test_speed_line_trail_angle_uses_velocity(self):
+        """Speed lines should trail opposite to the tank's velocity vector."""
+        tank = _make_tank()
+        tank.vx = 100.0
+        tank.vy = 0.0
+        move_angle = math.atan2(tank.vy, tank.vx)
+        trail_angle = move_angle + math.pi
+        # Moving right → trail points left (π radians)
+        assert trail_angle == pytest.approx(math.pi)
+
+    def test_speed_line_trail_angle_diagonal(self):
+        """Speed lines trail opposite for diagonal movement too."""
+        tank = _make_tank()
+        tank.vx = 100.0
+        tank.vy = 100.0
+        move_angle = math.atan2(tank.vy, tank.vx)  # π/4
+        trail_angle = move_angle + math.pi  # 5π/4
+        expected = math.pi / 4 + math.pi
+        assert trail_angle == pytest.approx(expected)

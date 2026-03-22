@@ -806,14 +806,24 @@ def _draw_tank_effects(
         pygame.draw.line(surface, VFX_REGEN_COLOR, (hx, hy - size), (hx, hy + size), 2)
 
     if tank.has_status("speed_boost"):
-        # Speed lines behind the tank
-        for i in range(3):
-            offset = int(8 + i * 5)
-            alpha = max(60, 180 - i * 50)
-            y_off = -6 + i * 6
-            line_surf = pygame.Surface((offset, 2), pygame.SRCALPHA)
-            line_surf.fill((*VFX_SPEED_COLOR, alpha))
-            surface.blit(line_surf, (cx - TANK_BODY_WIDTH // 2 - offset, cy + y_off))
+        # Speed lines trail behind the tank's actual movement direction
+        move_speed = math.hypot(tank.vx, tank.vy)
+        if move_speed >= 20.0:
+            move_angle = math.atan2(tank.vy, tank.vx)
+            trail_angle = move_angle + math.pi  # opposite of movement
+            perp_angle = move_angle + math.pi / 2
+            for i, offset in enumerate([-5, -1, 3, 6]):
+                ox = math.cos(perp_angle) * offset
+                oy = math.sin(perp_angle) * offset
+                start_x = sx + ox + math.cos(trail_angle) * 8
+                start_y = sy + oy + math.sin(trail_angle) * 8
+                line_len = 15 + i * 5  # 15, 20, 25, 30
+                end_x = start_x + math.cos(trail_angle) * line_len
+                end_y = start_y + math.sin(trail_angle) * line_len
+                alpha = 140 - i * 25  # 140, 115, 90, 65
+                pygame.draw.line(surface, (*VFX_SPEED_COLOR, alpha),
+                                 (int(start_x), int(start_y)),
+                                 (int(end_x), int(end_y)), 2)
 
     if tank.has_status("rapid_reload"):
         # Spinning rings around tank

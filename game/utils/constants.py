@@ -193,8 +193,8 @@ VFX_SHIELD_COLOR: tuple = (100, 180, 255)
 VFX_SHIELD_POP_COLOR: tuple = (150, 210, 255)
 
 # AI pickup-seeking ranges
-AI_PICKUP_SEEK_RANGE: float = 300.0    # EVADE: health-seek range (px)
-AI_PICKUP_OPPORTUNISTIC_RANGE: float = 100.0  # PATROL/PURSUE: grab if nearby
+AI_PICKUP_SEEK_RANGE: float = 550.0    # EVADE: health-seek range — matches AI_DETECTION_RANGE
+AI_PICKUP_OPPORTUNISTIC_RANGE: float = 150.0  # PATROL/PURSUE: grab if nearby
 
 # Tank front stripe
 TANK_FRONT_STRIPE_WIDTH: int = 2
