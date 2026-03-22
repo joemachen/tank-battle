@@ -498,23 +498,149 @@ def gen_music_gameplay(sr: int) -> list[float]:
     return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
 
 
-def gen_music_gameplay_intense(sr: int) -> list[float]:
-    """
-    High-energy synthwave — 140 BPM, 8 bars, aggressive A minor.
-    Used during active buff periods for heightened tension.
-    """
-    bpm = 140.0
-    bars = 8
-    bass = [(-12, 1), (-12, 0.5), (-10, 0.5), (-8, 1), (-7, 1)]
-    arp = [0, 12, 7, 12, 3, 10, 15, 12,
-           0, 7, 12, 15, 12, 7, 3, 0]
-    pads = [
-        [0, 7, 3],
-        [-3, 3, 7],
-        [-5, 0, 3],
-        [-7, -3, 3],
-    ]
-    return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
+# ---------------------------------------------------------------------------
+# Per-pickup music layers (short seamless loops, ~4 seconds each)
+# ---------------------------------------------------------------------------
+
+def gen_layer_speed(sr: int) -> list[float]:
+    """Tempo-doubled buzzy arpeggio — energetic overlay for speed boost."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    # Fast 16th-note arpeggio using pentatonic scale
+    bpm = 240.0  # double-time
+    note_dur = 60.0 / bpm
+    arp_notes = [0, 3, 5, 7, 10, 12, 10, 7, 5, 3]  # Am pentatonic cycle
+    step = 0
+    t_note = 0.0
+    while t_note < duration:
+        semi = arp_notes[step % len(arp_notes)]
+        freq = _note_freq(semi)
+        start = int(t_note * sr)
+        slen = int(note_dur * sr)
+        for k in range(slen):
+            if start + k >= n:
+                break
+            t = k / sr
+            env = adsr(t, note_dur, attack=0.005, decay=0.03,
+                       sustain_level=0.5, release=0.02)
+            out[start + k] += sawtooth(t, freq) * env * 0.3
+        t_note += note_dur
+        step += 1
+
+    # Subtle hi-hat noise bursts on every other 16th
+    hat_interval = note_dur
+    t_hat = hat_interval
+    while t_hat < duration:
+        start = int(t_hat * sr)
+        hat_len = int(0.015 * sr)
+        for k in range(hat_len):
+            if start + k >= n:
+                break
+            t = k / sr
+            out[start + k] += noise() * math.exp(-t * 200) * 0.12
+        t_hat += hat_interval * 2
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.35 for s in out]
+
+
+def gen_layer_heartbeat(sr: int) -> list[float]:
+    """Deep lub-dub heartbeat — pulsing bass overlay for health regen."""
+    cycle = 60.0 / 72.0  # ~0.833s per beat at 72 BPM
+    cycles = 5
+    duration = cycle * cycles
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    for c in range(cycles):
+        base = c * cycle
+        # "Lub" — deep thump
+        lub_start = int(base * sr)
+        lub_dur = 0.15
+        lub_len = int(lub_dur * sr)
+        for k in range(lub_len):
+            if lub_start + k >= n:
+                break
+            t = k / sr
+            env = math.exp(-t * 18)
+            out[lub_start + k] += sine(t, 45) * env * 0.8
+
+        # "Dub" — slightly higher, after gap
+        dub_offset = 0.25
+        dub_start = int((base + dub_offset) * sr)
+        dub_dur = 0.10
+        dub_len = int(dub_dur * sr)
+        for k in range(dub_len):
+            if dub_start + k >= n:
+                break
+            t = k / sr
+            env = math.exp(-t * 25)
+            out[dub_start + k] += sine(t, 55) * env * 0.6
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.4 for s in out]
+
+
+def gen_layer_underwater(sr: int) -> list[float]:
+    """Dreamy underwater warble — atmospheric overlay for shield."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    base_freq_root = 220.0
+    base_freq_fifth = 330.0
+
+    for i in range(n):
+        t = i / sr
+        # Slow pitch wobble ±3%
+        wobble = 1.0 + 0.03 * math.sin(2 * math.pi * 0.8 * t)
+        # Slow amplitude pulsing
+        amp_mod = 0.5 + 0.5 * math.sin(2 * math.pi * 1.5 * t)
+        # Chord: root + fifth
+        sample = (sine(t, base_freq_root * wobble) +
+                  sine(t, base_freq_fifth * wobble) * 0.7)
+        sample *= amp_mod * 0.35
+        # Subtle noise floor
+        sample += noise() * 0.05
+        out[i] = sample
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.25 for s in out]
+
+
+def gen_layer_rapid_reload(sr: int) -> list[float]:
+    """Mechanical tick loop — metronomic overlay for rapid reload."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    tick_rate = 8.0  # 8 ticks per second
+    tick_interval = 1.0 / tick_rate
+    tick_count = int(duration * tick_rate)
+
+    for i in range(tick_count):
+        t_start = i * tick_interval
+        start = int(t_start * sr)
+        tick_dur = 0.01
+        tick_len = int(tick_dur * sr)
+        # Every 4th tick is accented
+        amp = 0.5 if (i % 4 == 0) else 0.3
+        for k in range(tick_len):
+            if start + k >= n:
+                break
+            t = k / sr
+            env = math.exp(-t * 300)
+            out[start + k] += square(t, 1200) * env * amp
+
+    # Low constant drone
+    for i in range(n):
+        t = i / sr
+        out[i] += sine(t, 80) * 0.15
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.3 for s in out]
 
 
 def gen_music_game_over(sr: int) -> list[float]:
@@ -570,8 +696,11 @@ def main() -> None:
     music_jobs = [
         ("music_menu.wav",              gen_music_menu),
         ("music_gameplay.wav",          gen_music_gameplay),
-        ("music_gameplay_intense.wav",  gen_music_gameplay_intense),
         ("music_game_over.wav",         gen_music_game_over),
+        ("layer_speed.wav",             gen_layer_speed),
+        ("layer_heartbeat.wav",         gen_layer_heartbeat),
+        ("layer_underwater.wav",        gen_layer_underwater),
+        ("layer_rapid_reload.wav",      gen_layer_rapid_reload),
     ]
 
     print("\n--- Music ---")

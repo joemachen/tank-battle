@@ -252,7 +252,19 @@ PICKUP_COLLECT_SFX: dict = {
 MUSIC_MENU:      str = _os.path.join(_ASSET_ROOT, "music", "music_menu.wav")
 MUSIC_GAMEPLAY:  str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay.wav")
 MUSIC_GAME_OVER: str = _os.path.join(_ASSET_ROOT, "music", "music_game_over.wav")
-MUSIC_GAMEPLAY_INTENSE: str = _os.path.join(_ASSET_ROOT, "music", "music_gameplay_intense.wav")
+
+# Per-pickup music layers (looping overlays that play on top of base music)
+MUSIC_LAYER_SPEED:        str = _os.path.join(_ASSET_ROOT, "music", "layer_speed.wav")
+MUSIC_LAYER_HEARTBEAT:    str = _os.path.join(_ASSET_ROOT, "music", "layer_heartbeat.wav")
+MUSIC_LAYER_UNDERWATER:   str = _os.path.join(_ASSET_ROOT, "music", "layer_underwater.wav")
+MUSIC_LAYER_RAPID_RELOAD: str = _os.path.join(_ASSET_ROOT, "music", "layer_rapid_reload.wav")
+
+PICKUP_MUSIC_LAYERS: dict = {
+    "speed_boost":  MUSIC_LAYER_SPEED,
+    "regen":        MUSIC_LAYER_HEARTBEAT,
+    "shield":       MUSIC_LAYER_UNDERWATER,
+    "rapid_reload": MUSIC_LAYER_RAPID_RELOAD,
+}
 
 # ---------------------------------------------------------------------------
 # UI

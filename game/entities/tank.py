@@ -312,6 +312,11 @@ class Tank:
         return self._status_effects
 
     @property
+    def active_status_names(self) -> list[str]:
+        """Return list of active status effect names."""
+        return list(self._status_effects.keys())
+
+    @property
     def shield_hp(self) -> float:
         """Current shield hit-points, or 0.0 if no shield active."""
         if "shield" in self._status_effects:

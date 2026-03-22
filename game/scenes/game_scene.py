@@ -72,8 +72,8 @@ from game.utils.constants import (
     KEYBIND_SLOT_3,
     MAPS_DIR,
     MUSIC_GAMEPLAY,
-    MUSIC_GAMEPLAY_INTENSE,
     PICKUP_COLLECT_SFX,
+    PICKUP_MUSIC_LAYERS,
     SFX_SHIELD_POP,
     VFX_REGEN_COLOR,
     VFX_SHIELD_COLOR,
@@ -304,14 +304,12 @@ class GameplayScene(BaseScene):
 
         # Shield pop detection — tracks which tanks had shield last frame
         self._had_shield: dict[int, bool] = {}
-        # Music intensity state
-        self._music_intense: bool = False
+        # Per-pickup music layers — tracks which layers are currently playing
+        self._active_buff_layers: set[str] = set()
 
         music_track = self._theme.get("music_override") or MUSIC_GAMEPLAY
         audio = get_audio_manager()
         audio.play_music(music_track)
-        # Pre-load both intensity tracks into memory so switching is instant
-        audio.preload_intensity_tracks(MUSIC_GAMEPLAY, MUSIC_GAMEPLAY_INTENSE)
 
         log.info(
             "GameplayScene ready. Player: %s  AI count: %d  Difficulty: %s  Weapons: %s",
@@ -320,6 +318,7 @@ class GameplayScene(BaseScene):
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
+        get_audio_manager().stop_all_layers()
         # Restore system cursor for all non-gameplay scenes
         pygame.mouse.set_visible(True)
         self._tank = None
@@ -500,14 +499,21 @@ class GameplayScene(BaseScene):
                 audio.play_sfx(SFX_SHIELD_POP)
             self._had_shield[tid] = has_shield
 
-        # Music intensity: switch to intense track when any tank has an active buff
-        any_buff = any(
-            tank.status_effects
-            for tank in all_tanks if tank.is_alive
-        )
-        if any_buff != self._music_intense:
-            self._music_intense = any_buff
-            audio.set_music_intensity(any_buff)
+        # Music layers: start/stop per-pickup audio layers based on active buffs
+        current_buffs: set[str] = set()
+        for tank in all_tanks:
+            if tank.is_alive:
+                for name in tank.active_status_names:
+                    current_buffs.add(name)
+        for buff in current_buffs - self._active_buff_layers:
+            path = PICKUP_MUSIC_LAYERS.get(buff)
+            if path:
+                audio.start_music_layer(buff, path)
+        for buff in self._active_buff_layers - current_buffs:
+            path = PICKUP_MUSIC_LAYERS.get(buff)
+            if path:
+                audio.stop_music_layer(buff)
+        self._active_buff_layers = current_buffs
 
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]

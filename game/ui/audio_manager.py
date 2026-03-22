@@ -18,8 +18,6 @@ from game.utils.constants import (
     AUDIO_CHANNELS,
     MASTER_VOLUME_DEFAULT,
     MUSIC_FADEOUT_MS,
-    MUSIC_GAMEPLAY,
-    MUSIC_GAMEPLAY_INTENSE,
     MUSIC_VOLUME_DEFAULT,
     SFX_VOLUME_DEFAULT,
 )
@@ -29,8 +27,8 @@ log = get_logger(__name__)
 
 _instance: "AudioManager | None" = None
 
-# Intensity track plays at 50% of normal music volume to avoid being too loud
-_INTENSITY_VOLUME_SCALE: float = 0.5
+# Music layers play slightly below the main music track
+_LAYER_VOLUME_SCALE: float = 0.6
 
 
 def get_audio_manager() -> "AudioManager":
@@ -58,10 +56,10 @@ class AudioManager:
         self._sfx_vol: float = SFX_VOLUME_DEFAULT
         self._current_music: str | None = None
 
-        # Pre-loaded intensity tracks (Sound objects held in memory)
-        self._intensity_sounds: dict[str, "pygame.mixer.Sound"] = {}
-        self._intensity_channel: "pygame.mixer.Channel | None" = None
-        self._intensity_active: str | None = None
+        # Music layers — per-pickup looping audio overlays
+        self._layer_cache: dict[str, "pygame.mixer.Sound"] = {}
+        self._active_layers: dict[str, "pygame.mixer.Sound"] = {}
+        self._layer_channels: dict[str, "pygame.mixer.Channel"] = {}
 
         try:
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
@@ -82,7 +80,7 @@ class AudioManager:
         if self._current_music == path:
             return
         try:
-            self._stop_intensity()
+            self.stop_all_layers()
             pygame.mixer.music.fadeout(MUSIC_FADEOUT_MS)
             pygame.mixer.music.load(path)
             pygame.mixer.music.set_volume(self._master * self._music_vol)
@@ -97,63 +95,65 @@ class AudioManager:
             return
         pygame.mixer.music.fadeout(MUSIC_FADEOUT_MS)
         self._current_music = None
-        self._stop_intensity()
+        self.stop_all_layers()
         log.debug("Music stopped.")
 
-    def _stop_intensity(self) -> None:
-        """Fade out and clear the intensity channel."""
-        if self._intensity_channel is not None:
-            self._intensity_channel.fadeout(MUSIC_FADEOUT_MS)
-            self._intensity_channel = None
-        self._intensity_active = None
+    # ------------------------------------------------------------------
+    # Music layers
+    # ------------------------------------------------------------------
 
-    def preload_intensity_tracks(self, normal_path: str, intense_path: str) -> None:
-        """Pre-load both gameplay music tracks as Sound objects (in-memory).
+    def start_music_layer(self, name: str, path: str, fade_ms: int = 500) -> None:
+        """Start a looping audio layer on a dedicated channel.
 
-        Call once at scene start so that set_music_intensity() can switch
-        between them without any disk I/O.
+        Args:
+            name: unique layer identifier (e.g. "speed_boost", "regen")
+            path: .wav file path for the loop
+            fade_ms: fade-in duration in milliseconds
         """
         if not self._initialized:
             return
-        for path in (normal_path, intense_path):
-            if path not in self._intensity_sounds:
-                try:
-                    self._intensity_sounds[path] = pygame.mixer.Sound(path)
-                    log.debug("Intensity track pre-loaded: %s", path)
-                except (pygame.error, FileNotFoundError):
-                    log.warning("Failed to pre-load intensity track: %s", path)
+        if name in self._active_layers:
+            return  # already playing
 
-    def set_music_intensity(self, intense: bool) -> None:
-        """Switch between pre-loaded intensity tracks with no disk I/O.
-
-        Falls back to stream-based play_music() if tracks were not pre-loaded.
-        """
-        target = MUSIC_GAMEPLAY_INTENSE if intense else MUSIC_GAMEPLAY
-        sound = self._intensity_sounds.get(target)
+        sound = self._layer_cache.get(path)
         if sound is None:
-            # Fallback: stream from disk (causes hitch but still works)
-            self.play_music(target)
+            try:
+                sound = pygame.mixer.Sound(path)
+                self._layer_cache[path] = sound
+            except (pygame.error, FileNotFoundError):
+                log.warning("Failed to load music layer: %s", path)
+                return
+
+        channel = pygame.mixer.find_channel()
+        if channel is None:
+            log.warning("No free channel for music layer '%s'", name)
             return
-        if self._intensity_active == target:
-            return
+
+        sound.set_volume(self._master * self._music_vol * _LAYER_VOLUME_SCALE)
+        channel.play(sound, loops=-1, fade_ms=fade_ms)
+        self._active_layers[name] = sound
+        self._layer_channels[name] = channel
+        log.debug("Music layer started: %s", name)
+
+    def stop_music_layer(self, name: str, fade_ms: int = 800) -> None:
+        """Stop a playing music layer with fade-out.
+
+        Args:
+            name: layer identifier passed to start_music_layer
+            fade_ms: fade-out duration in milliseconds
+        """
         if not self._initialized:
             return
-        # Stop stream-based music if it's playing (first transition)
-        if self._current_music is not None:
-            pygame.mixer.music.fadeout(500)
-            self._current_music = None
-        # Fade out current intensity channel
-        if self._intensity_channel is not None:
-            self._intensity_channel.fadeout(500)
-        ch = sound.play(loops=-1, fade_ms=500)
-        if ch:
-            vol = self._master * self._music_vol
-            if intense:
-                vol *= _INTENSITY_VOLUME_SCALE
-            ch.set_volume(vol)
-            self._intensity_channel = ch
-        self._intensity_active = target
-        log.debug("Music intensity → %s", "intense" if intense else "normal")
+        channel = self._layer_channels.pop(name, None)
+        self._active_layers.pop(name, None)
+        if channel is not None:
+            channel.fadeout(fade_ms)
+        log.debug("Music layer stopped: %s", name)
+
+    def stop_all_layers(self, fade_ms: int = 500) -> None:
+        """Stop all active music layers. Called on scene exit."""
+        for name in list(self._active_layers.keys()):
+            self.stop_music_layer(name, fade_ms)
 
     # ------------------------------------------------------------------
     # SFX
@@ -201,11 +201,9 @@ class AudioManager:
         # Apply music volume change immediately
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
-            if self._intensity_channel is not None:
-                vol = self._master * self._music_vol
-                if self._intensity_active == MUSIC_GAMEPLAY_INTENSE:
-                    vol *= _INTENSITY_VOLUME_SCALE
-                self._intensity_channel.set_volume(vol)
+            layer_vol = self._master * self._music_vol * _LAYER_VOLUME_SCALE
+            for sound in self._active_layers.values():
+                sound.set_volume(layer_vol)
         log.debug("Volume set: %s = %.2f", channel, value)
 
     # ------------------------------------------------------------------
@@ -234,11 +232,9 @@ class AudioManager:
 
         if self._initialized:
             pygame.mixer.music.set_volume(self._master * self._music_vol)
-            if self._intensity_channel is not None:
-                vol = self._master * self._music_vol
-                if self._intensity_active == MUSIC_GAMEPLAY_INTENSE:
-                    vol *= _INTENSITY_VOLUME_SCALE
-                self._intensity_channel.set_volume(vol)
+            layer_vol = self._master * self._music_vol * _LAYER_VOLUME_SCALE
+            for sound in self._active_layers.values():
+                sound.set_volume(layer_vol)
         log.info("Audio %s.", "muted" if self._muted else "unmuted")
         return self._muted
 
