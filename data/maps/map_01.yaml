@@ -53,6 +53,25 @@ obstacles:
     material_type: brick
     reflective: false
 
+  # Center corridor barrier — reinforced steel; explosive damage only (v0.21)
+  # Blocks the direct crossing between the two stone lane dividers.
+  # Homing missiles (5 hits) or flank via outer lanes.
+  - x: 720
+    y: 570
+    width: 160
+    height: 50
+    material_type: reinforced_steel
+    reflective: false
+
+  # Upper-right chokepoint — reinforced steel; guards path to AI spawn
+  # Sits between upper-right brick and right stone wall.
+  - x: 1100
+    y: 310
+    width: 100
+    height: 70
+    material_type: reinforced_steel
+    reflective: false
+
   # Lower-left block — wood; fragile, goes down in a few hits
   - x: 430
     y: 940
