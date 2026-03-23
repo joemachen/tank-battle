@@ -82,7 +82,7 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _TANK_ORDER: list[str] = ["light_tank", "medium_tank", "heavy_tank", "scout_tank"]
-_WEAPON_ORDER: list[str] = ["standard_shell", "spread_shot", "bouncing_round", "homing_missile"]
+_WEAPON_ORDER: list[str] = ["standard_shell", "spread_shot", "bouncing_round", "homing_missile", "grenade_launcher"]
 _MAP_NAMES: list[str] = ["map_01", "map_02", "map_03"]
 
 _TANK_STATS: list[tuple[str, str]] = [
