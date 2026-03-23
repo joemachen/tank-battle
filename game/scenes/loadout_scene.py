@@ -216,6 +216,12 @@ class LoadoutScene(BaseScene):
     def on_enter(self, **kwargs) -> None:
         # --- Profile ---
         profile = self._save_manager.load_profile()
+
+        # Retroactive unlock check — backfill rewards added after player leveled (v0.22)
+        profile, backfilled = self._progression.backfill_unlocks(profile)
+        if backfilled:
+            self._save_manager.save_profile(profile)
+
         self._unlocked_tanks = list(profile.get("unlocked_tanks", ["light_tank"]))
         self._unlocked_weapons = set(profile.get("unlocked_weapons", ["standard_shell"]))
         self._level = int(profile.get("level", 1))

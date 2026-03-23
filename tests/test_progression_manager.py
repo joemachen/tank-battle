@@ -175,3 +175,52 @@ class TestMatchCounters:
         profile = _profile(losses=1)
         new_profile, _ = pm.apply_match_result(profile, _result(xp_earned=10, won=False))
         assert new_profile["losses"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Retroactive backfill
+# ---------------------------------------------------------------------------
+
+class TestBackfillUnlocks:
+    def test_backfills_missing_weapon(self):
+        """Level 4 player missing spread_shot gets it backfilled."""
+        pm = _make_pm()
+        profile = _profile(level=4, xp=700, unlocked_weapons=["standard_shell"])
+        new_profile, backfilled = pm.backfill_unlocks(profile)
+        assert "spread_shot" in backfilled
+        assert "spread_shot" in new_profile["unlocked_weapons"]
+
+    def test_backfills_missing_tank(self):
+        """Level 3 player missing medium_tank gets it backfilled."""
+        pm = _make_pm()
+        profile = _profile(level=3, xp=350, unlocked_tanks=["light_tank"])
+        new_profile, backfilled = pm.backfill_unlocks(profile)
+        assert "medium_tank" in backfilled
+        assert "medium_tank" in new_profile["unlocked_tanks"]
+
+    def test_no_backfill_when_up_to_date(self):
+        """Profile with all expected unlocks returns empty backfill."""
+        pm = _make_pm()
+        profile = _profile(
+            level=4, xp=700,
+            unlocked_tanks=["light_tank", "medium_tank"],
+            unlocked_weapons=["standard_shell", "spread_shot"],
+        )
+        _, backfilled = pm.backfill_unlocks(profile)
+        assert backfilled == []
+
+    def test_does_not_grant_future_unlocks(self):
+        """Level 3 player should NOT receive level 4+ unlocks."""
+        pm = _make_pm()
+        profile = _profile(level=3, xp=350)
+        new_profile, backfilled = pm.backfill_unlocks(profile)
+        assert "spread_shot" not in backfilled
+        assert "heavy_tank" not in backfilled
+
+    def test_input_not_mutated(self):
+        """backfill_unlocks must return a new dict, not modify the input."""
+        pm = _make_pm()
+        profile = _profile(level=4, xp=700, unlocked_weapons=["standard_shell"])
+        original_weapons = list(profile["unlocked_weapons"])
+        pm.backfill_unlocks(profile)
+        assert profile["unlocked_weapons"] == original_weapons
