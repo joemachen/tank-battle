@@ -17,10 +17,12 @@
 
 stone:
   display_name: "Stone"
-  hp: 9999
-  destructible: false
+  hp: 400
+  destructible: true
   damage_filters: []
   color: [90, 85, 75]
+  partial_destruction: true
+  rubble_material: "rubble"
 
 brick:
   display_name: "Brick"
@@ -42,6 +44,14 @@ reinforced_steel:
   destructible: true
   damage_filters: ["explosive"]
   color: [65, 80, 95]
+
+rubble:
+  display_name: "Rubble"
+  hp: 80
+  destructible: true
+  damage_filters: []
+  color: [70, 65, 58]
+  partial_destruction: false
 
 crate:
   display_name: "Crate"

@@ -53,3 +53,15 @@ homing_missile:
   tracking_strength: 2.5
   damage_type: explosive
   description: "Slow but tracks the nearest enemy. High damage."
+
+grenade_launcher:
+  type: grenade_launcher
+  damage: 70
+  speed: 280
+  fire_rate: 0.25
+  max_bounces: 0
+  max_range: 600
+  damage_type: explosive
+  aoe_radius: 120
+  aoe_falloff: 0.25
+  description: "Lobs an explosive grenade. Devastating area damage, long cooldown."

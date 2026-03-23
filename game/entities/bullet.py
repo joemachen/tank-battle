@@ -47,6 +47,12 @@ class Bullet:
         self._dx, self._dy = heading_to_vec(self.angle)
         self._distance_traveled: float = 0.0
 
+        # AoE support (v0.22) — grenade launcher and future explosive weapons
+        self.aoe_radius: float = float(config.get("aoe_radius", 0))
+        self.aoe_falloff: float = float(config.get("aoe_falloff", 0.3))
+        self.is_explosive: bool = self.aoe_radius > 0
+        self._detonated: bool = False
+
         # Homing support
         self._tracking_strength: float = float(config.get("tracking_strength", 0.0))
         self._targets_getter = None  # injected after construction for homing bullets
@@ -101,6 +107,8 @@ class Bullet:
         self.y += self._dy * step
         self._distance_traveled += step
         if self._distance_traveled >= self.max_range:
+            if self.is_explosive:
+                self._detonated = True
             self.destroy()
             return
         # Adjust heading for next frame (homing missiles only)

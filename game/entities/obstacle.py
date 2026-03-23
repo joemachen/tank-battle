@@ -67,6 +67,10 @@ class Obstacle:
         self.base_color: tuple = self.color  # overwritten by GameplayScene with theme-tinted value
         self._hit_flash_timer: float = 0.0
 
+        # Partial destruction (v0.22) — stone walls crumble into rubble pieces
+        self.partial_destruction: bool = bool(cfg.get("partial_destruction", False))
+        self.rubble_material: str = cfg.get("rubble_material", "")
+
         log.debug(
             "Obstacle created: type=%s material=%s hp=%d destructible=%s",
             "rect", material_type, self.hp, self.destructible,
@@ -167,3 +171,57 @@ class Obstacle:
         if self.destructible:
             self.is_alive = False
             log.debug("Obstacle force-destroyed at (%.0f, %.0f).", self.x, self.y)
+
+    # ------------------------------------------------------------------
+    # Partial destruction (v0.22)
+    # ------------------------------------------------------------------
+
+    def get_rubble_pieces(self, materials: dict) -> list:
+        """
+        Generate 2-3 smaller Obstacle children when this obstacle is destroyed.
+        Called by GameplayScene when a partial_destruction obstacle dies.
+        Returns empty list if partial_destruction is False or rubble material missing.
+        """
+        if not self.partial_destruction or not self.rubble_material:
+            return []
+
+        rubble_cfg = materials.get(self.rubble_material)
+        if rubble_cfg is None:
+            return []
+
+        pieces = []
+        min_dim = min(self.width, self.height)
+        num_pieces = 2 if min_dim < 80 else 3
+
+        if self.width >= self.height:
+            # Wide wall → split horizontally with gaps
+            piece_w = self.width / num_pieces * 0.7
+            gap = self.width / num_pieces * 0.3
+            for i in range(num_pieces):
+                px = self.x + i * (piece_w + gap)
+                ph = self.height * 0.5
+                py = self.y + self.height * 0.25
+                pieces.append(Obstacle(
+                    px, py, piece_w, ph,
+                    material_type=self.rubble_material,
+                    material_config=rubble_cfg,
+                ))
+        else:
+            # Tall wall → split vertically with gaps
+            piece_h = self.height / num_pieces * 0.7
+            gap = self.height / num_pieces * 0.3
+            for i in range(num_pieces):
+                py = self.y + i * (piece_h + gap)
+                pw = self.width * 0.5
+                px = self.x + self.width * 0.25
+                pieces.append(Obstacle(
+                    px, py, pw, piece_h,
+                    material_type=self.rubble_material,
+                    material_config=rubble_cfg,
+                ))
+
+        log.debug(
+            "Rubble: %d pieces from obstacle at (%.0f, %.0f) [%s → %s]",
+            len(pieces), self.x, self.y, self.material_type, self.rubble_material,
+        )
+        return pieces

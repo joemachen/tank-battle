@@ -25,6 +25,8 @@ import time
 import pygame
 
 from game.entities.bullet import Bullet
+from game.entities.explosion import Explosion
+from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController
@@ -57,8 +59,13 @@ from game.utils.constants import (
     BULLET_COLOR,
     BULLET_RADIUS,
     DAMAGE_TYPE_BULLET_COLORS,
+    EXPLOSION_COLOR,
+    EXPLOSION_RING_COLOR,
+    EXPLOSION_VISUAL_DURATION,
+    GRENADE_BULLET_RADIUS,
     HOMING_BULLET_COLOR,
     HOMING_BULLET_RADIUS,
+    MAX_RUBBLE_PIECES,
     COLOR_BG,
     COLOR_NEON_PINK,
     DAMAGE_CRACK_DARKEN,
@@ -96,6 +103,7 @@ from game.utils.constants import (
     SFX_BULLET_HIT_OBSTACLE,
     SFX_BULLET_HIT_TANK,
     SFX_OBSTACLE_DESTROY,
+    SFX_EXPLOSION,
     SFX_TANK_COLLISION,
     SFX_TANK_EXPLOSION,
     SFX_TANK_FIRE,
@@ -112,7 +120,7 @@ from game.utils.constants import (
     THEME_TINT_BLEND,
     WEAPONS_CONFIG,
 )
-from game.utils.map_loader import load_map
+from game.utils.map_loader import load_map, _load_materials
 from game.utils.math_utils import blend_colors
 from game.utils.save_manager import SaveManager
 from game.utils.logger import get_logger
@@ -238,11 +246,14 @@ class GameplayScene(BaseScene):
         map_path = _os.path.join(MAPS_DIR, f"{map_name}.yaml")
         map_data = load_map(map_path)
         self._bullets = []
+        self._explosions: list[Explosion] = []
         self._obstacles = map_data["obstacles"]
         self._theme = map_data["theme"]
+        self._materials: dict = _load_materials()
 
         # Pre-compute theme-tinted base color on each obstacle
         _tint = tuple(self._theme.get("obstacle_tint", (128, 128, 128)))
+        self._theme_tint = _tint
         for _obs in self._obstacles:
             _obs.base_color = blend_colors(_obs.color, _tint, THEME_TINT_BLEND)
 
@@ -339,6 +350,7 @@ class GameplayScene(BaseScene):
         self._weapon_configs = {}
         self._theme = {}
         self._bullets = []
+        self._explosions = []
 
     # ------------------------------------------------------------------
     # Update
@@ -390,6 +402,14 @@ class GameplayScene(BaseScene):
         # Physics: advance bullets, clamp all tanks to arena bounds
         all_tanks = [self._tank] + self._ai_tanks
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
+
+        # Check for max-range grenade detonations before pruning dead bullets
+        for bullet in self._bullets:
+            if getattr(bullet, '_detonated', False) and getattr(bullet, 'is_explosive', False):
+                self._explosions.append(
+                    Explosion(bullet.x, bullet.y, bullet.aoe_radius, bullet.damage,
+                              bullet.damage_type, bullet.owner, bullet.aoe_falloff)
+                )
         self._bullets = [b for b in self._bullets if b.is_alive]
 
         # Record speed trail positions for physics-based speed lines
@@ -416,13 +436,15 @@ class GameplayScene(BaseScene):
         player_hp_before = self._tank.health
         ai_alive_before = {id(t): t.is_alive for t in self._ai_tanks}
 
-        # Collision: bullets, obstacles, tank-to-tank
-        audio_events = self._collision.update(
+        # Collision: bullets, obstacles, tank-to-tank, explosions
+        audio_events, new_explosions = self._collision.update(
             tanks=all_tanks,
             bullets=self._bullets,
             obstacles=self._obstacles,
             pickups=self._pickup_spawner.active_pickups,
+            explosions=self._explosions,
         )
+        self._explosions.extend(new_explosions)
         self._bullets = [b for b in self._bullets if b.is_alive]
 
         # Accumulate damage taken by player
@@ -440,6 +462,7 @@ class GameplayScene(BaseScene):
             "bullet_hit_obstacle": SFX_BULLET_HIT_OBSTACLE,
             "obstacle_destroy":    SFX_OBSTACLE_DESTROY,
             "tank_collision":      SFX_TANK_COLLISION,
+            "explosion":           SFX_EXPLOSION,
         }
         played: set[str] = set()
         for ev in audio_events:
@@ -495,8 +518,8 @@ class GameplayScene(BaseScene):
             if obs.is_alive:
                 obs.update(dt)
 
-        # Detect newly destroyed obstacles → spawn debris
-        for obs in self._obstacles:
+        # Detect newly destroyed obstacles → spawn debris + rubble
+        for obs in list(self._obstacles):
             if not obs.is_alive and id(obs) not in self._destroyed_set:
                 self._destroyed_set.add(id(obs))
                 count = DEBRIS_COUNT.get(obs.material_type, DEBRIS_COUNT_DEFAULT)
@@ -504,9 +527,23 @@ class GameplayScene(BaseScene):
                     obs.x + obs.width / 2, obs.y + obs.height / 2,
                     obs.width, obs.height, obs.base_color, count,
                 )
+                # Partial destruction → spawn rubble pieces (v0.22)
+                if obs.partial_destruction:
+                    rubble_count = sum(1 for o in self._obstacles
+                                       if o.is_alive and o.material_type == "rubble")
+                    if rubble_count < MAX_RUBBLE_PIECES:
+                        for piece in obs.get_rubble_pieces(self._materials):
+                            piece.base_color = blend_colors(
+                                piece.color, self._theme_tint, THEME_TINT_BLEND)
+                            self._obstacles.append(piece)
 
         # Update debris particles
         self._debris.update(dt)
+
+        # Tick explosion visual timers and prune expired
+        for exp in self._explosions:
+            exp.update(dt)
+        self._explosions = [e for e in self._explosions if e.visual_alive]
 
         # Shield pop detection — spawn debris when shield breaks
         for tank in all_tanks:
@@ -594,12 +631,14 @@ class GameplayScene(BaseScene):
                                self._speed_trail_history.get(id(ai_tank)))
 
         _draw_bullets(surface, self._bullets, self._camera)
+        _draw_explosions(surface, self._explosions, self._camera)
 
         if self._hud:
             self._hud.draw(
                 surface, self._tank, self._ai_tanks,
                 weapon_slots=self._tank.weapon_slots,
                 active_slot=self._tank.active_slot,
+                slot_cooldowns=self._tank.slot_cooldowns,
             )
 
         # Reticle — drawn after entities, before debug; hidden when paused or player dead
@@ -878,13 +917,47 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
         if not bullet.is_alive:
             continue
         sx, sy = camera.world_to_screen(bullet.x, bullet.y)
-        if bullet._tracking_strength > 0:
+        if getattr(bullet, 'is_explosive', False):
+            # Grenade projectile — larger, orange with dark outline
+            pygame.draw.circle(surface, (80, 40, 10), (int(sx), int(sy)), GRENADE_BULLET_RADIUS + 1)
+            pygame.draw.circle(surface, EXPLOSION_COLOR, (int(sx), int(sy)), GRENADE_BULLET_RADIUS)
+        elif bullet._tracking_strength > 0:
             pygame.draw.circle(surface, HOMING_BULLET_COLOR, (int(sx), int(sy)), HOMING_BULLET_RADIUS)
         else:
             # Color by damage type (v0.21) — falls back to BULLET_COLOR for unknown types
             dtype_name = bullet.damage_type.name if hasattr(bullet.damage_type, 'name') else "STANDARD"
             color = DAMAGE_TYPE_BULLET_COLORS.get(dtype_name, BULLET_COLOR)
             pygame.draw.circle(surface, color, (int(sx), int(sy)), BULLET_RADIUS)
+
+
+def _draw_explosions(surface: pygame.Surface, explosions: list, camera: Camera) -> None:
+    """Draw expanding ring + flash animation for each active explosion."""
+    for exp in explosions:
+        if not exp.visual_alive:
+            continue
+        sx, sy = camera.world_to_screen(exp.x, exp.y)
+        cx, cy = int(sx), int(sy)
+        progress = exp.visual_progress  # 0.0 → 1.0
+
+        # Expanding ring — grows from 0 to full radius
+        ring_radius = max(1, int(exp.radius * progress))
+        ring_alpha = max(0, int(220 * (1.0 - progress)))
+        ring_width = max(1, int(4 * (1.0 - progress)))
+
+        ring_surf = pygame.Surface((ring_radius * 2 + 4, ring_radius * 2 + 4), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surf, (*EXPLOSION_RING_COLOR, ring_alpha),
+                           (ring_radius + 2, ring_radius + 2), ring_radius, ring_width)
+        surface.blit(ring_surf, (cx - ring_radius - 2, cy - ring_radius - 2))
+
+        # Inner flash — bright at start, shrinks and fades
+        if progress < 0.6:
+            flash_ratio = 1.0 - (progress / 0.6)
+            flash_radius = max(1, int(exp.radius * 0.5 * flash_ratio))
+            flash_alpha = max(0, int(180 * flash_ratio))
+            flash_surf = pygame.Surface((flash_radius * 2 + 4, flash_radius * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(flash_surf, (*EXPLOSION_COLOR, flash_alpha),
+                               (flash_radius + 2, flash_radius + 2), flash_radius)
+            surface.blit(flash_surf, (cx - flash_radius - 2, cy - flash_radius - 2))
 
 
 def _draw_reticle(surface: pygame.Surface) -> None:

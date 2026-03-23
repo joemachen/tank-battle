@@ -118,6 +118,15 @@ DAMAGE_TYPE_BULLET_COLORS: dict = {
     "POISON":    (80, 220, 80),    # green
     "ELECTRIC":  (180, 130, 255),  # purple
 }
+
+# Grenade / Explosion rendering (v0.22)
+GRENADE_BULLET_RADIUS: int = 8
+EXPLOSION_COLOR: tuple = (255, 160, 40)          # orange-yellow
+EXPLOSION_RING_COLOR: tuple = (255, 80, 20)      # darker orange
+EXPLOSION_VISUAL_DURATION: float = 0.4           # seconds
+
+# Rubble cap (v0.22)
+MAX_RUBBLE_PIECES: int = 20
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29
@@ -239,6 +248,7 @@ SFX_BULLET_HIT_OBSTACLE: str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_bullet_
 SFX_OBSTACLE_DESTROY:    str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_obstacle_destroy.wav")
 SFX_TANK_EXPLOSION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_explosion.wav")
 SFX_TANK_COLLISION:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_tank_collision.wav")
+SFX_EXPLOSION:           str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_explosion.wav")
 SFX_UI_NAVIGATE:         str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_navigate.wav")
 SFX_UI_CONFIRM:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ui_confirm.wav")
 SFX_PICKUP_SPAWN:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_spawn.wav")
@@ -314,11 +324,12 @@ WEAPON_CARD_COLORS: dict = {
     "spread_shot":    COLOR_BLUE,
     "bouncing_round": COLOR_YELLOW,
     "homing_missile": COLOR_RED,
+    "grenade_launcher": (255, 120, 30),  # orange
 }
 
 # Reference maxima for weapon stat bar normalisation (derived from weapons.yaml peak values)
 WEAPON_STAT_MAX: dict = {
-    "damage":    50.0,    # homing_missile
+    "damage":    70.0,    # grenade_launcher
     "speed":    420.0,    # standard_shell
     "fire_rate":  1.0,    # standard_shell
     "max_range": 2400.0,  # bouncing_round

@@ -358,6 +358,28 @@ def gen_shield_pop(sr: int) -> list[float]:
     return out
 
 
+def gen_explosion(sr: int) -> list[float]:
+    """Heavy AoE explosion: bass thump + pressure wave + crackle + sub-rumble."""
+    dur = 0.6
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        # Bass thump — 35 Hz sine
+        thump = sine(t, 35) * 0.8 * math.exp(-t * 8)
+        # Pressure wave — noise burst
+        pressure = noise() * 0.6 * math.exp(-t * 5)
+        # Crackle — high-freq noise
+        crackle = noise() * 0.3 * math.exp(-t * 20)
+        # Sub-rumble — 20 Hz sine
+        rumble = sine(t, 20) * 0.4 * math.exp(-t * 3)
+        out.append(thump + pressure + crackle + rumble)
+    # Normalize to 0.85 peak
+    peak = max(abs(s) for s in out) or 1.0
+    out = [s / peak * 0.85 for s in out]
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Music generators — Outrun/Synthwave style
 # ---------------------------------------------------------------------------
@@ -703,6 +725,7 @@ def main() -> None:
         ("sfx_pickup_reload.wav",       gen_pickup_reload),
         ("sfx_pickup_shield.wav",       gen_pickup_shield),
         ("sfx_shield_pop.wav",          gen_shield_pop),
+        ("sfx_explosion.wav",           gen_explosion),
     ]
 
     print("--- SFX ---")

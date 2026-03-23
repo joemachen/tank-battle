@@ -265,7 +265,7 @@ class TestStatNormalisers:
         assert _norm_tank(9999.0, "health") == pytest.approx(1.0)
 
     def test_weapon_damage_at_max(self):
-        assert _norm_weapon(50.0, "damage") == pytest.approx(1.0)
+        assert _norm_weapon(70.0, "damage") == pytest.approx(1.0)
 
     def test_weapon_speed_half(self):
         assert _norm_weapon(210.0, "speed") == pytest.approx(210 / 420, rel=1e-4)
