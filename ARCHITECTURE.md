@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.21.0*
+*Last updated: v0.22.0*
 
 ---
 
@@ -15,8 +15,9 @@ game/
   engine.py                         Main loop, scene registration, pygame init
   entities/
     __init__.py
-    bullet.py                       Projectile entity with bounce + range
-    obstacle.py                     Destructible/indestructible arena wall
+    bullet.py                       Projectile entity with bounce + range + AoE detonation
+    explosion.py                    AoE damage event with linear falloff + visual timer
+    obstacle.py                     Destructible/indestructible arena wall + partial destruction
     pickup.py                       Collectible pickup with pulse animation
     tank.py                         Tank entity, TankInput dataclass, status effects
   scenes/
@@ -45,7 +46,7 @@ game/
     __init__.py
     audio_manager.py                Singleton audio: SFX, music, volume control
     components.py                   ScrollingGrid, FadeTransition UI widgets
-    hud.py                          In-game health bars + weapon slot display
+    hud.py                          In-game health bars + weapon slot display + cooldown overlay
   utils/
     __init__.py
     camera.py                       World-to-screen transform with lerp tracking
@@ -62,10 +63,10 @@ game/
 data/
   configs/
     ai_difficulty.yaml              Three AI difficulty tiers
-    materials.yaml                  Five obstacle material definitions
+    materials.yaml                  Six obstacle material definitions (incl. rubble)
     pickups.yaml                    Three pickup type definitions
     tanks.yaml                      Four tank type definitions
-    weapons.yaml                    Four weapon type definitions
+    weapons.yaml                    Five weapon type definitions
   maps/
     map_01.yaml                     "Headquarters" — default theme, 8 obstacles (incl. 2 reinforced_steel)
     map_02.yaml                     "Dunes" — desert theme, 7 obstacles
@@ -97,7 +98,8 @@ tests/
   test_music_layers.py              Music layer system + constants
   test_obstacles.py                 Obstacle damage states + hit flash
   test_pickup.py                    Pickup apply effects + pulse animation
-  test_pickup_spawner.py            Spawn timing + caps + lifetime
+  test_explosion.py                 AoE damage, grenade bullet, stone destruction, cooldown
+  test_pickup_spawner.py            Spawn timing + caps + lifetime + obstacle blocking
   test_profile_select.py            Profile slot management
   test_progression.py               XP table progression
   test_progression_manager.py       Level-up + unlock logic
@@ -126,6 +128,7 @@ assets/
     sfx_pickup_spawn.wav            Rising arpeggio, 0.3s
     sfx_tank_collision.wav          Heavy clunk, 0.3s
     sfx_tank_explosion.wav          Big explosion, 1.2s
+    sfx_explosion.wav                AoE explosion, 0.6s (v0.22)
     sfx_tank_fire.wav               Sharp crack, 0.35s
     sfx_ui_confirm.wav              Two-tone chime, 0.22s
     sfx_ui_navigate.wav             Short blip, 0.08s
@@ -214,6 +217,7 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 | active_weapon | dict | Config dict of currently active weapon slot |
 | active_slot | int | Index into weapon_slots |
 | weapon_slots | list[dict] | Shallow copy of weapon slot configs |
+| slot_cooldowns | list[float] | Per-slot cooldown timers in seconds remaining (v0.22) |
 | status_effects | dict | Read-only access to _status_effects |
 
 #### Status Effect System
@@ -245,7 +249,7 @@ Properties: `shield_hp -> float` (current shield HP or 0.0), `active_status_name
 Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 ```
 
-`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type), `damage_type`, `tracking_strength`.
+`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type), `damage_type`, `tracking_strength`, `aoe_radius`, `aoe_falloff`.
 
 #### Public Fields
 
@@ -263,6 +267,9 @@ Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 | max_range | float | Max travel distance before despawn |
 | weapon_type | str | Weapon identifier from config |
 | damage_type | DamageType | Enum from config via parse_damage_type() (v0.21) |
+| aoe_radius | float | AoE blast radius in px (0 = non-explosive) (v0.22) |
+| aoe_falloff | float | Damage multiplier at edge of radius (v0.22) |
+| is_explosive | bool | True if aoe_radius > 0 (v0.22) |
 
 #### Public Methods
 
@@ -309,6 +316,51 @@ Rendering: `DAMAGE_TYPE_BULLET_COLORS` dict maps enum name → RGB. HUD weapon s
 
 ---
 
+### Explosion (game/entities/explosion.py)
+
+Short-lived AoE damage event created when an explosive bullet detonates (v0.22).
+
+#### Construction
+
+```python
+Explosion(x: float, y: float, radius: float, damage: int,
+          damage_type: DamageType, owner: Tank,
+          damage_falloff: float = 0.3, visual_duration: float = 0.4)
+```
+
+#### Public Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| x, y | float | World-space center |
+| radius | float | Damage radius in px |
+| damage | int | Max damage at epicenter |
+| damage_type | DamageType | Inherited from bullet |
+| owner | object | Firing tank (immune to own explosion) |
+| damage_falloff | float | Multiplier at edge (0.0–1.0) |
+| is_alive | bool | True until damage resolved |
+| visual_timer | float | Seconds remaining for animation |
+
+#### Public Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `resolve_damage(tanks, obstacles)` | `list` | Apply AoE damage; returns collision-compatible events. Called once — idempotent. Sets `is_alive = False`. |
+| `update(dt)` | `None` | Tick visual timer |
+
+Damage scales linearly: `scale = 1.0 - (1.0 - falloff) * (dist / radius)`.
+Owner immune. Dead entities skipped. Obstacle uses center for distance.
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| visual_alive | bool | True while animation should render |
+| visual_progress | float | 0.0 (just created) → 1.0 (fully faded) |
+| position | tuple | (x, y) |
+
+---
+
 ### Obstacle (game/entities/obstacle.py)
 
 #### Construction
@@ -319,7 +371,7 @@ Obstacle(x: float, y: float, width: float, height: float,
          reflective: bool = False)
 ```
 
-`material_config` keys: `hp`, `destructible`, `damage_filters`, `color`.
+`material_config` keys: `hp`, `destructible`, `damage_filters`, `color`, `partial_destruction`, `rubble_material`.
 
 #### Public Fields
 
@@ -338,6 +390,8 @@ Obstacle(x: float, y: float, width: float, height: float,
 | damage_filters | list[str] | Damage types that apply (empty = all) |
 | color | tuple[int, int, int] | Current RGB (tinted by theme) |
 | base_color | tuple[int, int, int] | RGB before theme tinting |
+| partial_destruction | bool | Crumbles into rubble on destroy (v0.22) |
+| rubble_material | str | Material key for rubble pieces (v0.22) |
 
 #### Public Methods
 
@@ -346,6 +400,7 @@ Obstacle(x: float, y: float, width: float, height: float,
 | `update(dt: float)` | `None` | Decrement hit-flash timer |
 | `take_damage(amount: int, damage_type: DamageType \| str = "standard")` | `None` | Apply damage (guarded by destructible + damage_filters); accepts enum or string, normalizes to lowercase for filter comparison (v0.21) |
 | `destroy()` | `None` | Force-destroy if destructible |
+| `get_rubble_pieces(materials: dict)` | `list[Obstacle]` | Generate 2-3 smaller rubble obstacles (v0.22); splits wide walls horizontally, tall walls vertically |
 
 #### Properties
 
@@ -506,10 +561,13 @@ PICKUP_RADIUS: float = 14.0
 #### Main Entry Point
 
 ```python
-update(tanks: list, bullets: list, obstacles: list, pickups: list) -> list
+update(tanks: list, bullets: list, obstacles: list, pickups: list,
+       explosions: list = None) -> tuple[list, list]
 ```
 
-Returns a list of audio event strings and stat-tracking tuples.
+Returns `(events, new_explosions)` — events is a list of audio event strings and
+stat-tracking tuples; new_explosions is a list of Explosion entities created by
+explosive bullet detonations (v0.22).
 
 #### Dispatch Methods
 
@@ -530,9 +588,14 @@ Returns a list of audio event strings and stat-tracking tuples.
 | `"bullet_hit_obstacle"` | str | Bullet hits obstacle (not destroyed) |
 | `"obstacle_destroy"` | str | Bullet destroys obstacle |
 | `"tank_collision"` | str | Two tanks overlap |
+| `"explosion"` | str | Explosive bullet detonates (v0.22) |
 | `("bullet_hit_tank_stat", owner, damage, damage_type)` | tuple | Every bullet-tank hit (for stat tracking); damage_type is DamageType enum (v0.21) |
 
 Note: `_tanks_vs_obstacles` and `_tanks_vs_pickups` emit no audio events.
+
+Explosive bullets (`is_explosive=True`) create Explosion entities instead of dealing
+direct damage. Three detonation triggers: tank contact, obstacle contact, max_range reached.
+Explosions are resolved via `explosion.resolve_damage()` which returns additional events.
 
 #### Bullet Reflection (`_reflect_bullet`)
 
@@ -702,8 +765,9 @@ Each frame:
 _try_spawn() -> None
 ```
 
-Selects a random unoccupied spawn point, picks type via `_weighted_random_type()`,
-creates Pickup instance, plays SFX_PICKUP_SPAWN.
+Selects a random unoccupied spawn point, filters out positions blocked by obstacles
+(if `set_obstacles_getter()` was called), picks type via `_weighted_random_type()`,
+creates Pickup instance, plays SFX_PICKUP_SPAWN. Skips spawn if no clear points remain (v0.22).
 
 ```python
 _weighted_random_type() -> str
@@ -712,6 +776,12 @@ _weighted_random_type() -> str
 Uses `random.choices()` with `spawn_weight` from each pickup config.
 
 Property: `active_pickups -> list[Pickup]`
+
+#### Injection Points (v0.22)
+
+| Method | Called By | Purpose |
+|--------|-----------|---------|
+| `set_obstacles_getter(getter)` | GameplayScene | Inject `() -> list[Obstacle]` for spawn validation |
 
 ---
 
@@ -730,6 +800,7 @@ ProgressionManager(xp_table_path: str = XP_TABLE_CONFIG)
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `apply_match_result(profile: dict, result: MatchResult)` | `tuple[dict, list[str]]` | Returns (new_profile, new_unlocks); never mutates input |
+| `backfill_unlocks(profile: dict)` | `tuple[dict, list[str]]` | Scan xp_table for all unlocks ≤ player level, add missing ones; returns (new_profile, backfilled). Called by LoadoutScene on profile load (v0.22) |
 | `compute_level(xp: int)` | `int` | Level for given cumulative XP |
 | `xp_for_level(level: int)` | `int` | Cumulative XP required to reach level |
 | `next_level_xp(xp: int)` | `int \| None` | XP for next level, None if max |
@@ -931,6 +1002,7 @@ Builds synthwave pattern: kick + snare + bass line + arpeggio + pad chords. Norm
 | `gen_obstacle_destroy(sr)` | 0.45s | Crunch/rubble |
 | `gen_tank_explosion(sr)` | 1.2s | Big explosion |
 | `gen_tank_collision(sr)` | 0.3s | Heavy clunk |
+| `gen_explosion(sr)` | 0.6s | AoE explosion: bass thump + pressure wave + crackle (v0.22) |
 | `gen_ui_navigate(sr)` | 0.08s | Short blip up |
 | `gen_ui_confirm(sr)` | 0.22s | Two-tone chime |
 | `gen_pickup_spawn(sr)` | 0.3s | Rising C5-E5-G5 arpeggio |
@@ -1011,7 +1083,8 @@ standard_shell:
 ```
 
 All defined: standard_shell (25/420/1.0), spread_shot (15/380/0.8, 3 at 18deg),
-bouncing_round (20/400/0.9, 3 bounces), homing_missile (50/240/0.4, tracking 2.5).
+bouncing_round (20/400/0.9, 3 bounces), homing_missile (50/240/0.4, tracking 2.5),
+grenade_launcher (70/280/0.25, 120px AoE, 0.25 falloff) (v0.22).
 
 ---
 
@@ -1038,8 +1111,8 @@ brick:
   color: [160, 75, 45]
 ```
 
-All defined: stone (9999, indestructible), brick (150), wood (60),
-reinforced_steel (500, explosive-only), crate (40).
+All defined: stone (400, destructible, partial_destruction→rubble), brick (150), wood (60),
+reinforced_steel (250, explosive-only), crate (40), rubble (80) (v0.22).
 
 ---
 
@@ -1118,7 +1191,7 @@ Example:
 
 All levels: 1(0), 2(150), 3(350, medium_tank), 4(700, spread_shot),
 5(1200, heavy_tank), 6(2000, bouncing_round), 7(3000, scout_tank),
-8(4500, homing_missile), 9(6500), 10(9000).
+8(4500, homing_missile), 9(6500, grenade_launcher), 10(9000).
 
 ---
 
@@ -1142,7 +1215,7 @@ pickup_spawns:
 
 | Map | Name | Theme | Obstacles | Pickups |
 |-----|------|-------|-----------|---------|
-| map_01 | Headquarters | default | 6 | 5 |
+| map_01 | Headquarters | default | 8 (incl. 2 reinforced_steel) | 5 |
 | map_02 | Dunes | desert | 7 | 5 |
 | map_03 | Tundra | snow | 12 | 5 |
 
@@ -1191,7 +1264,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SCREEN_HEIGHT | 720 | |
 | FPS | 60 | |
 | TITLE | "Tank Battle" | |
-| GAME_VERSION | "v0.19.0" | |
+| GAME_VERSION | "v0.22.0" | |
 | CAMERA_LERP_SPEED | 6.0 | Smooth follow rate |
 | SUPPORTED_RESOLUTIONS | [(1280,720), (1600,900), (1920,1080)] | |
 
@@ -1305,6 +1378,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SFX_PICKUP_SPEED | assets/sounds/sfx_pickup_speed.wav | |
 | SFX_PICKUP_RELOAD | assets/sounds/sfx_pickup_reload.wav | |
 | SFX_PICKUP_SHIELD | assets/sounds/sfx_pickup_shield.wav | |
+| SFX_EXPLOSION | assets/sounds/sfx_explosion.wav | AoE explosion SFX (v0.22) |
 | SFX_SHIELD_POP | assets/sounds/sfx_shield_pop.wav | Shield break SFX |
 | PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
 

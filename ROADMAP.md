@@ -26,11 +26,12 @@ are completed or plans change.
 | v0.19.0 | Pickup drops + polish — health HoT, rapid reload, speed boost, SFX, buff icons, AI retreat fire, front stripe |
 | v0.20.0 | Shield pickup, per-type VFX/SFX, music layers, AI pickup awareness, homing fix, arena bounce, themed walls |
 | v0.21.0 | Damage type enum (STANDARD/EXPLOSIVE/FIRE/ICE/POISON/ELECTRIC), bullet colors, HUD dots, reinforced_steel on map_01, homing wall-hit fix |
+| v0.22.0 | AoE explosions, grenade launcher, partial stone destruction, cooldown HUD, pickup spawn validation, retroactive unlock backfill |
 ---
 ## 🔨 In Progress
 | Branch                    | Milestone                                            |
 |---------------------------|------------------------------------------------------|
-| feature/aoe-explosions    | v0.22 — Area of effect + explosions                  |
+| feature/status-effects    | v0.23 — Status effects (burn, freeze, poison, EMP)   |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -38,7 +39,7 @@ materials.yaml was designed for this — this phase fills it in.*
 | Version | Milestone                      | Notes                                                                                                                                                                                   |
 |---------|-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | ~~v0.21~~ | ~~Damage type system~~      | ✅ Completed v0.21.0                                                                                                                                                                    |
-| v0.22   | Area of effect + explosions   | (was v0.21) Explosive damage deals splash in a radius. New AoE resolver in CollisionSystem. Obstacles take AoE damage based on material filter.                                         |
+| ~~v0.22~~ | ~~Area of effect + explosions~~ | ✅ Completed v0.22.0                                                                                                                                                                |
 | v0.23   | Status effects                | (was v0.22) Damage-over-time system: FIRE (burn ticks), POISON (slower ticks), ICE (movement slow), ELECTRIC (fire rate slow). StatusEffect class on Tank, resolved each frame.         |
 | v0.24   | Elemental interactions        | (was v0.23) Fire + Ice = steam burst. Poison + Fire = accelerated burn. Ice + Electric = freeze. Defined in data/configs/elemental_interactions.yaml.                                   |
 | v0.25   | Elemental weapons content     | (was v0.24) Flamethrower (fire, AoE cone), Cryo round (ice, slows), Poison shell (DoT), EMP blast (electric, AoE).                                                                     |
@@ -134,5 +135,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.21.0 — v0.21 damage type enum + reinforced_steel map placement completed;
-v0.22 AoE explosions next*
+*Last updated: v0.22.0 — AoE explosions, grenade launcher, stone destruction, cooldown HUD completed;
+v0.23 status effects next*
