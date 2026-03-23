@@ -261,10 +261,14 @@ class GameplayScene(BaseScene):
         self._debris = DebrisSystem()
         self._destroyed_set: set[int] = set()
 
+        # Shared getter — used by both PickupSpawner and AI controllers
+        live_obstacles = lambda: [o for o in self._obstacles if o.is_alive]  # noqa: E731
+
         # Pickup spawner
         self._pickup_configs = load_yaml(PICKUPS_CONFIG)
         pickup_spawns = map_data.get("pickup_spawns", [])
         self._pickup_spawner = PickupSpawner(pickup_spawns, self._pickup_configs)
+        self._pickup_spawner.set_obstacles_getter(live_obstacles)
 
         # AI tanks — all heavy_tank, shared difficulty, independent controllers
         ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
@@ -272,8 +276,6 @@ class GameplayScene(BaseScene):
         self._ai_tanks = []
         self._ai_controllers = []
         self._ai_surfs = []
-
-        live_obstacles = lambda: [o for o in self._obstacles if o.is_alive]  # noqa: E731
 
         for i in range(ai_count):
             sx, sy = AI_SPAWN_POSITIONS[i % len(AI_SPAWN_POSITIONS)]

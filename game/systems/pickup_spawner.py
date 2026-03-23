@@ -12,6 +12,7 @@ from game.entities.pickup import Pickup
 from game.utils.constants import (
     PICKUP_LIFETIME,
     PICKUP_MAX_ACTIVE,
+    PICKUP_RENDER_RADIUS,
     PICKUP_SPAWN_INTERVAL,
     SFX_PICKUP_EXPIRE,
     SFX_PICKUP_SPAWN,
@@ -19,6 +20,22 @@ from game.utils.constants import (
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+def _is_position_clear(x: float, y: float, obstacles: list) -> bool:
+    """Return True if (x, y) doesn't overlap any live obstacle rect."""
+    margin = PICKUP_RENDER_RADIUS + 4  # 4px clearance
+    margin_sq = margin * margin
+    for obs in obstacles:
+        if not obs.is_alive:
+            continue
+        ox, oy, ow, oh = obs.rect
+        closest_x = max(ox, min(x, ox + ow))
+        closest_y = max(oy, min(y, oy + oh))
+        dist_sq = (x - closest_x) ** 2 + (y - closest_y) ** 2
+        if dist_sq < margin_sq:
+            return False
+    return True
 
 
 def _play_sfx(path: str) -> None:
@@ -44,6 +61,11 @@ class PickupSpawner:
         self._spawn_timer: float = 0.0
         self._spawn_interval: float = PICKUP_SPAWN_INTERVAL
         self._max_active: int = PICKUP_MAX_ACTIVE
+        self._obstacles_getter = None
+
+    def set_obstacles_getter(self, getter) -> None:
+        """Inject a callable that returns the current live obstacles list."""
+        self._obstacles_getter = getter
 
     @property
     def active_pickups(self) -> list[Pickup]:
@@ -80,6 +102,11 @@ class PickupSpawner:
 
         occupied = {(p.x, p.y) for p in self._active_pickups}
         available = [pt for pt in self._spawn_points if pt not in occupied]
+        # Filter out positions blocked by obstacles
+        if self._obstacles_getter is not None:
+            obstacles = self._obstacles_getter()
+            available = [pt for pt in available
+                         if _is_position_clear(pt[0], pt[1], obstacles)]
         if not available:
             return
 
