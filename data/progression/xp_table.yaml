@@ -48,7 +48,8 @@ levels:
 
   - level: 9
     xp_required: 6500
-    unlocks: []
+    unlocks:
+      - grenade_launcher
 
   - level: 10
     xp_required: 9000

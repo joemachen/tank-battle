@@ -103,6 +103,61 @@ class TestPickupSpawnerEdgeCases:
         assert len(spawner.active_pickups) == 0
 
 
+class _StubObstacle:
+    """Minimal obstacle stub for spawn-blocking tests."""
+    def __init__(self, x, y, w, h, alive=True):
+        self.x, self.y, self.width, self.height = x, y, w, h
+        self.is_alive = alive
+
+    @property
+    def rect(self):
+        return (self.x, self.y, self.width, self.height)
+
+
+class TestObstacleBlocking:
+    def test_spawn_skipped_when_blocked(self):
+        """Pickup won't spawn at a point overlapping an obstacle."""
+        # Single spawn point sits inside the obstacle
+        spawner = PickupSpawner([(150, 150)], _CONFIGS)
+        obs = _StubObstacle(100, 100, 200, 200)
+        spawner.set_obstacles_getter(lambda: [obs])
+        spawner.update(PICKUP_SPAWN_INTERVAL + 0.1)
+        assert len(spawner.active_pickups) == 0
+
+    def test_spawn_succeeds_at_clear_point(self):
+        """Pickup spawns normally when no obstacles block the point."""
+        spawner = PickupSpawner([(500, 500)], _CONFIGS)
+        obs = _StubObstacle(100, 100, 50, 50)
+        spawner.set_obstacles_getter(lambda: [obs])
+        spawner.update(PICKUP_SPAWN_INTERVAL + 0.1)
+        assert len(spawner.active_pickups) == 1
+
+    def test_all_points_blocked_skips_spawn(self):
+        """No pickup spawned when every candidate is blocked."""
+        points = [(150, 150), (250, 250)]
+        spawner = PickupSpawner(points, _CONFIGS)
+        obs1 = _StubObstacle(100, 100, 200, 200)
+        obs2 = _StubObstacle(200, 200, 200, 200)
+        spawner.set_obstacles_getter(lambda: [obs1, obs2])
+        spawner.update(PICKUP_SPAWN_INTERVAL + 0.1)
+        assert len(spawner.active_pickups) == 0
+
+    def test_no_obstacles_getter_spawns_normally(self):
+        """Without obstacles getter set, spawning works as before."""
+        spawner = PickupSpawner([(100, 100)], _CONFIGS)
+        # No set_obstacles_getter call
+        spawner.update(PICKUP_SPAWN_INTERVAL + 0.1)
+        assert len(spawner.active_pickups) == 1
+
+    def test_dead_obstacle_does_not_block(self):
+        """Destroyed obstacles should not block spawn points."""
+        spawner = PickupSpawner([(150, 150)], _CONFIGS)
+        obs = _StubObstacle(100, 100, 200, 200, alive=False)
+        spawner.set_obstacles_getter(lambda: [obs])
+        spawner.update(PICKUP_SPAWN_INTERVAL + 0.1)
+        assert len(spawner.active_pickups) == 1
+
+
 class TestWeightedRandomType:
     def test_weighted_distribution(self):
         """Over 1000 samples, health (~50%) should be most common."""

@@ -9,10 +9,12 @@ Collision pairs handled:
   - Tank    ↔ Obstacle (push back)
   - Tank    ↔ Tank     (push back only — no damage)
   - Tank    ↔ Pickup   (apply effect)
+  - Explosion → Tanks/Obstacles (AoE damage, v0.22)
 """
 
 import math
 
+from game.entities.explosion import Explosion
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -30,28 +32,39 @@ class CollisionSystem:
     """
 
     def __init__(self) -> None:
+        self._pending_explosions: list = []
         log.debug("CollisionSystem initialized.")
 
-    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list) -> list:
+    def update(self, tanks: list, bullets: list, obstacles: list, pickups: list,
+               explosions: list | None = None) -> tuple:
         """
         Run all collision checks for the current frame.
         Called once per frame from GameplayScene.update().
 
         Returns:
-            A mixed list of audio event strings and stat-tracking tuples.
+            (events, new_explosions) tuple.
+            events: mixed list of audio event strings and stat-tracking tuples.
+            new_explosions: list of Explosion instances created by bullet detonations.
+
             String events: "bullet_hit_tank", "bullet_hit_obstacle",
-                           "obstacle_destroy", "tank_collision", "tank_explosion"
-            Tuple events:  ("bullet_hit_tank_stat", owner, damage)
-                           — emitted alongside every bullet-hits-tank string event
-                           so callers can attribute hits to a specific owner.
+                           "obstacle_destroy", "tank_collision", "tank_explosion",
+                           "explosion"
+            Tuple events:  ("bullet_hit_tank_stat", owner, damage, damage_type)
         """
-        events: list[str] = []
+        self._pending_explosions = []
+        events: list = []
         events.extend(self._bullets_vs_tanks(bullets, tanks))
         events.extend(self._bullets_vs_obstacles(bullets, obstacles))
         self._tanks_vs_obstacles(tanks, obstacles)
         events.extend(self._tanks_vs_tanks(tanks))
         self._tanks_vs_pickups(tanks, pickups)
-        return events
+
+        # Resolve passed-in explosions (from previous frame's detonations)
+        for exp in (explosions or []):
+            if exp.is_alive:
+                events.extend(exp.resolve_damage(tanks, obstacles))
+
+        return events, self._pending_explosions
 
     # ------------------------------------------------------------------
     # Collision pair handlers
@@ -69,6 +82,14 @@ class CollisionSystem:
         if not bullet.is_alive or not tank.is_alive or tank is bullet.owner:
             return False
         if self._circles_overlap(bullet.position, BULLET_RADIUS, tank.position, TANK_RADIUS):
+            if getattr(bullet, 'is_explosive', False):
+                # Explosive bullet → create Explosion instead of direct damage
+                bullet.destroy()
+                self._pending_explosions.append(
+                    Explosion(bullet.x, bullet.y, bullet.aoe_radius, bullet.damage,
+                              bullet.damage_type, bullet.owner, bullet.aoe_falloff)
+                )
+                return True
             tank.take_damage(bullet.damage, damage_type=bullet.damage_type)
             bullet.destroy()
             log.debug("Bullet hit tank. Damage=%d type=%s, Tank HP=%d",
@@ -83,14 +104,19 @@ class CollisionSystem:
                 continue
             for tank in tanks:
                 if self.check_bullet_vs_tank(bullet, tank):
-                    if tank.is_alive:
-                        events.append("bullet_hit_tank")
+                    if getattr(bullet, 'is_explosive', False):
+                        # Explosive bullet → explosion event; damage/stats
+                        # handled by Explosion.resolve_damage()
+                        events.append("explosion")
                     else:
-                        events.append("tank_explosion")
-                    # Stat tuple: caller uses bullet.owner to attribute
-                    # hits and damage without the CollisionSystem needing
-                    # to know which tank is the player.
-                    events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage, bullet.damage_type))
+                        if tank.is_alive:
+                            events.append("bullet_hit_tank")
+                        else:
+                            events.append("tank_explosion")
+                        # Stat tuple: caller uses bullet.owner to attribute
+                        # hits and damage without the CollisionSystem needing
+                        # to know which tank is the player.
+                        events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage, bullet.damage_type))
                     break
         return events
 
@@ -103,6 +129,15 @@ class CollisionSystem:
                 if not obs.is_alive:
                     continue
                 if self._circle_vs_rect(bullet.position, BULLET_RADIUS, obs.rect):
+                    # Explosive bullet → detonate as Explosion, no direct damage
+                    if getattr(bullet, 'is_explosive', False):
+                        bullet.destroy()
+                        self._pending_explosions.append(
+                            Explosion(bullet.x, bullet.y, bullet.aoe_radius, bullet.damage,
+                                      bullet.damage_type, bullet.owner, bullet.aoe_falloff)
+                        )
+                        events.append("explosion")
+                        break
                     was_alive = obs.is_alive
                     if bullet.bounces_remaining > 0:
                         # obs.reflective reserved for future non-reflective surface variant.

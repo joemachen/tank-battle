@@ -101,6 +101,7 @@ _WEAPON_ORDER: list = [
     "spread_shot",
     "bouncing_round",
     "homing_missile",
+    "grenade_launcher",
 ]
 
 

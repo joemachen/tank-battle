@@ -204,6 +204,11 @@ class Tank:
         """Shallow copy of the weapon slot config list."""
         return list(self._weapon_slots)
 
+    @property
+    def slot_cooldowns(self) -> list[float]:
+        """Current cooldown timers for all weapon slots (seconds remaining)."""
+        return list(self._slot_cooldowns)
+
     # ------------------------------------------------------------------
     # Update
     # ------------------------------------------------------------------

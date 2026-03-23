@@ -81,16 +81,18 @@ class HUD:
         ai_tanks=None,
         weapon_slots: list | None = None,
         active_slot: int = 0,
+        slot_cooldowns: list | None = None,
     ) -> None:
         """
         Render HUD health bars and weapon slot display.
 
         Args:
-            surface:      target display surface
-            player_tank:  player Tank entity (always drawn)
-            ai_tanks:     a single Tank, a list of Tanks, or None
-            weapon_slots: list of weapon config dicts from tank.weapon_slots
-            active_slot:  index of the currently active weapon slot
+            surface:        target display surface
+            player_tank:    player Tank entity (always drawn)
+            ai_tanks:       a single Tank, a list of Tanks, or None
+            weapon_slots:   list of weapon config dicts from tank.weapon_slots
+            active_slot:    index of the currently active weapon slot
+            slot_cooldowns: list of per-slot cooldown timers (seconds remaining)
         """
         self._ensure_fonts()
 
@@ -111,6 +113,7 @@ class HUD:
             self._draw_weapon_slots(
                 surface, weapon_slots, active_slot,
                 x=HUD_MARGIN, y=weapon_y,
+                slot_cooldowns=slot_cooldowns,
             )
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
@@ -142,11 +145,13 @@ class HUD:
         active_slot: int,
         x: int,
         y: int,
+        slot_cooldowns: list | None = None,
     ) -> None:
         """
         Render up to MAX_WEAPON_SLOTS weapon labels in a horizontal row.
         Active slot is neon-pink; inactive slots are gray; empty slots show '---'.
         Format:  [1: Standard Shell]  [2: Spread Shot]  [3: ---]
+        Cooldown overlay darkens the label while weapon is recharging (v0.22).
         """
         font = self._small_font
         if font is None:
@@ -154,24 +159,41 @@ class HUD:
 
         # Pad to MAX_WEAPON_SLOTS with None entries
         padded: list = list(weapon_slots) + [None] * (MAX_WEAPON_SLOTS - len(weapon_slots))
+        cooldowns = slot_cooldowns or [0.0] * MAX_WEAPON_SLOTS
 
         cx = x
         for i, slot in enumerate(padded):
             if slot is not None:
                 wname = slot.get("type", "---").replace("_", " ").title()
+                fire_rate = float(slot.get("fire_rate", 1.0))
             else:
                 wname = "---"
+                fire_rate = 1.0
 
             color = COLOR_NEON_PINK if i == active_slot else COLOR_GRAY
             label = f"[{i + 1}: {wname}]"
             rendered = font.render(label, True, color)
+            label_w = rendered.get_width()
+            label_h = rendered.get_height()
             surface.blit(rendered, (cx, y))
+
+            # Cooldown overlay — dark sweep that reveals weapon name as cooldown expires (v0.22)
+            cd = cooldowns[i] if i < len(cooldowns) else 0.0
+            if cd > 0 and slot is not None:
+                max_cd = 1.0 / fire_rate if fire_rate > 0 else 1.0
+                cd_ratio = min(1.0, cd / max_cd)
+                overlay_w = int(label_w * cd_ratio)
+                if overlay_w > 0:
+                    overlay = pygame.Surface((overlay_w, label_h), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, 140))
+                    surface.blit(overlay, (cx + label_w - overlay_w, y))
+
             # Colored dot indicating damage type (v0.21)
             if slot is not None:
                 dtype = slot.get("damage_type", "standard").upper()
                 dot_color = DAMAGE_TYPE_BULLET_COLORS.get(dtype, DAMAGE_TYPE_BULLET_COLORS["STANDARD"])
-                dot_x = cx + rendered.get_width() + 2
-                dot_y = y + rendered.get_height() // 2
+                dot_x = cx + label_w + 2
+                dot_y = y + label_h // 2
                 pygame.draw.circle(surface, dot_color, (dot_x, dot_y), 4)
                 cx = dot_x + 6
             else:

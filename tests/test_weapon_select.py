@@ -185,9 +185,9 @@ class TestStatNormalisation:
         ratio = _normalise_weapon(420.0, "speed")
         assert ratio == pytest.approx(1.0)
 
-    def test_homing_missile_damage_is_one(self):
-        """homing_missile damage (50) / WEAPON_STAT_MAX damage (50) == 1.0."""
-        ratio = _normalise_weapon(50.0, "damage")
+    def test_grenade_launcher_damage_is_one(self):
+        """grenade_launcher damage (70) / WEAPON_STAT_MAX damage (70) == 1.0."""
+        ratio = _normalise_weapon(70.0, "damage")
         assert ratio == pytest.approx(1.0)
 
     def test_bouncing_round_range_is_one(self):

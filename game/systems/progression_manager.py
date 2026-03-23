@@ -93,6 +93,45 @@ class ProgressionManager:
         )
         return new_profile, new_unlocks
 
+    def backfill_unlocks(self, profile: dict) -> tuple[dict, list[str]]:
+        """
+        Scan xp_table for all unlocks at or below the player's current level
+        and add any missing items to the profile's unlocked lists.
+
+        Returns (new_profile, backfilled) where backfilled is the list of
+        item IDs that were added (empty if profile was already up to date).
+        Called on profile load to handle content added after the player
+        already reached the required level.
+        """
+        self._ensure_xp_table()
+        level = int(profile.get("level", 1))
+
+        new_profile = dict(profile)
+        unlocked_tanks = list(new_profile.get("unlocked_tanks", []))
+        unlocked_weapons = list(new_profile.get("unlocked_weapons", []))
+        backfilled: list[str] = []
+
+        for entry in self._xp_table:
+            if int(entry["level"]) > level:
+                continue
+            for item in entry.get("unlocks", []):
+                if item.endswith("_tank"):
+                    if item not in unlocked_tanks:
+                        unlocked_tanks.append(item)
+                        backfilled.append(item)
+                else:
+                    if item not in unlocked_weapons:
+                        unlocked_weapons.append(item)
+                        backfilled.append(item)
+
+        new_profile["unlocked_tanks"] = unlocked_tanks
+        new_profile["unlocked_weapons"] = unlocked_weapons
+
+        if backfilled:
+            log.info("Backfilled %d missing unlocks: %s", len(backfilled), backfilled)
+
+        return new_profile, backfilled
+
     # ------------------------------------------------------------------
     # Level helpers (also used by UI for displaying progress bars)
     # ------------------------------------------------------------------
