@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.22.0*
+*Last updated: v0.23.0*
 
 ---
 
@@ -41,12 +41,13 @@ game/
     match_calculator.py             MatchResult factory + XP formula
     physics.py                      Bullet movement + arena boundary clamping
     pickup_spawner.py               Timed pickup spawn + lifetime management
+    status_effect.py                StatusEffect class — tick damage, multipliers, expiry
     progression_manager.py          XP/level/unlock progression logic
   ui/
     __init__.py
     audio_manager.py                Singleton audio: SFX, music, volume control
     components.py                   ScrollingGrid, FadeTransition UI widgets
-    hud.py                          In-game health bars + weapon slot display + cooldown overlay
+    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels
   utils/
     __init__.py
     camera.py                       World-to-screen transform with lerp tracking
@@ -65,6 +66,7 @@ data/
     ai_difficulty.yaml              Three AI difficulty tiers
     materials.yaml                  Six obstacle material definitions (incl. rubble)
     pickups.yaml                    Three pickup type definitions
+    status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
     tanks.yaml                      Four tank type definitions
     weapons.yaml                    Five weapon type definitions
   maps/
@@ -99,6 +101,7 @@ tests/
   test_obstacles.py                 Obstacle damage states + hit flash
   test_pickup.py                    Pickup apply effects + pulse animation
   test_explosion.py                 AoE damage, grenade bullet, stone destruction, cooldown
+  test_status_effects.py            StatusEffect class, Tank combat effects, collision integration, HUD
   test_pickup_spawner.py            Spawn timing + caps + lifetime + obstacle blocking
   test_profile_select.py            Profile slot management
   test_progression.py               XP table progression
@@ -237,7 +240,53 @@ Supported effects:
 
 `apply_status(name, value, duration, **kwargs)` overwrites existing effect of same name (refresh, no stack). Shield uses `shield_hp=float` kwarg.
 
-Properties: `shield_hp -> float` (current shield HP or 0.0), `active_status_names -> list[str]` (names of active effects).
+Properties: `shield_hp -> float` (current shield HP or 0.0), `active_status_names -> list[str]` (names of active effects — includes both pickup and combat effect keys).
+
+#### Combat Status Effects (v0.23)
+
+Separate from pickup buffs. Storage: `_combat_effects: dict[str, StatusEffect]` where `StatusEffect` is from `game/systems/status_effect.py`.
+
+| Method / Property | Returns | Description |
+|-------------------|---------|-------------|
+| `apply_combat_effect(effect_type, config)` | `None` | Apply or refresh a combat StatusEffect |
+| `_combat_speed_mult()` | `float` | Product of all active `effect.speed_mult` values |
+| `_combat_turn_mult()` | `float` | Product of all active `effect.turn_mult` values |
+| `_combat_fire_rate_mult()` | `float` | Product of all active `effect.fire_rate_mult` values |
+| `combat_effects` | `dict` | Shallow copy of `_combat_effects` |
+| `has_any_combat_effect` | `bool` | True if any combat effect is active |
+
+Combat effects are ticked in `update()` after `tick_status_effects(dt)`. DoT damage is applied directly to health (bypasses shield). Effects expire when `duration <= 0`.
+
+Multiplier stacking: combat speed/turn/fire_rate multipliers are products of all active effects. Pickup speed_boost stacks multiplicatively on top of combat speed mult.
+
+### StatusEffect (game/systems/status_effect.py)
+
+```python
+StatusEffect(effect_type: str, config: dict)
+```
+
+Fields: `effect_type`, `duration`, `tick_interval`, `tick_damage`, `speed_mult`, `turn_mult`, `fire_rate_mult`, `color: tuple`, `_tick_timer`.
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `update(dt)` | `int` | Decrement duration, fire DoT ticks, return total damage dealt |
+| `refresh(config)` | `None` | Reset duration only (ongoing ticks uninterrupted) |
+| `is_expired` | `bool` | True when `duration <= 0` |
+
+Config schema (`data/configs/status_effects.yaml`):
+```yaml
+fire:
+  duration: 3.0        # seconds
+  tick_interval: 0.5   # seconds between damage ticks (0 = no ticking)
+  tick_damage: 8       # HP per tick
+  speed_mult: 1.0      # 1.0 = no change
+  turn_mult: 1.0
+  fire_rate_mult: 1.0
+  color: [255, 80, 20] # VFX/HUD tint
+  description: "..."
+```
+
+Four effects defined: `fire` (burn DoT), `poison` (slow DoT), `ice` (movement slow), `electric` (fire rate reduction).
 
 ---
 
@@ -597,6 +646,15 @@ Explosive bullets (`is_explosive=True`) create Explosion entities instead of dea
 direct damage. Three detonation triggers: tank contact, obstacle contact, max_range reached.
 Explosions are resolved via `explosion.resolve_damage()` which returns additional events.
 
+#### Combat Effect Application (v0.23)
+
+Module-level mapping `_DAMAGE_TYPE_TO_EFFECT` maps `DamageType.FIRE → "fire"`, `ICE → "ice"`,
+`POISON → "poison"`, `ELECTRIC → "electric"`. STANDARD and EXPLOSIVE have no mapping.
+
+`_apply_combat_effect(tank, damage_type)` — called after `tank.take_damage()` in both
+`check_bullet_vs_tank()` and `Explosion.resolve_damage()`. Only applied if tank is still alive.
+Loads status effect configs lazily from `data/configs/status_effects.yaml` via `_get_status_configs()`.
+
 #### Bullet Reflection (`_reflect_bullet`)
 
 When a bullet with `bounces_remaining > 0` hits an obstacle:
@@ -941,17 +999,30 @@ alongside the base music stream (`pygame.mixer.music`). Multiple layers can play
 Layer volume: `master * music_vol * _LAYER_VOLUME_SCALE` (1.0 — mixing via generator amplitude).
 
 Layers are cached in `_layer_cache` (path → Sound), tracked in `_active_layers` (name → Sound)
-and `_layer_channels` (name → Channel). `PICKUP_MUSIC_LAYERS` dict maps pickup type → WAV path.
+and `_layer_channels` (name → Channel). `STATUS_MUSIC_LAYERS` dict (renamed from `PICKUP_MUSIC_LAYERS` in v0.23) maps status type → WAV path.
 
-| Layer | Pickup Type | Audio Character |
+| Layer | Status Type | Audio Character |
 |-------|-------------|-----------------|
 | `layer_speed.wav` | speed_boost | Buzzy double-time arpeggio |
 | `layer_heartbeat.wav` | regen | Heavy lub-DUB heartbeat with click transients |
 | `layer_underwater.wav` | shield | Dreamy underwater warble |
 | `layer_rapid_reload.wav` | rapid_reload | Mechanical tick loop with drone |
+| `layer_burning.wav` | fire | Crackling fire loop with low rumble (v0.23) |
+| `layer_frozen.wav` | ice | Crystalline wind shimmer with breathy noise (v0.23) |
 
-GameplayScene tracks `_active_buff_layers: set[str]` — each frame computes active buffs
-via set difference, starts new layers, stops expired ones. `on_exit()` calls `stop_all_layers()`.
+GameplayScene tracks `_active_buff_layers: set[str]` — each frame computes active statuses
+(both pickup and combat) via set difference, starts new layers, stops expired ones. `on_exit()` calls `stop_all_layers()`.
+
+#### Combat Effect SFX (v0.23)
+
+`COMBAT_EFFECT_SFX` dict maps effect type → WAV path. Onset SFX plays once when a new combat effect first appears. Tracked via `_active_combat_sfx: set[str]` in GameplayScene.
+
+| SFX | Effect | Audio Character |
+|-----|--------|-----------------|
+| `sfx_effect_fire.wav` | fire | Whoosh ignition |
+| `sfx_effect_poison.wav` | poison | Bubbling hiss |
+| `sfx_effect_ice.wav` | ice | Crystal crack + ring |
+| `sfx_effect_electric.wav` | electric | Buzzy zap |
 
 Mute toggle: M key (handled in InputHandler key mapping, routed by GameplayScene).
 
@@ -1373,13 +1444,22 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | MUSIC_LAYER_HEARTBEAT | assets/music/layer_heartbeat.wav | Regen layer |
 | MUSIC_LAYER_UNDERWATER | assets/music/layer_underwater.wav | Shield layer |
 | MUSIC_LAYER_RAPID_RELOAD | assets/music/layer_rapid_reload.wav | Reload layer |
-| PICKUP_MUSIC_LAYERS | dict | Maps pickup type → layer WAV path |
+| STATUS_MUSIC_LAYERS | dict | Maps status type → layer WAV path (renamed from PICKUP_MUSIC_LAYERS in v0.23) |
+| PICKUP_MUSIC_LAYERS | dict | Backwards compat alias for STATUS_MUSIC_LAYERS |
 | SFX_PICKUP_HEALTH | assets/sounds/sfx_pickup_health.wav | |
 | SFX_PICKUP_SPEED | assets/sounds/sfx_pickup_speed.wav | |
 | SFX_PICKUP_RELOAD | assets/sounds/sfx_pickup_reload.wav | |
 | SFX_PICKUP_SHIELD | assets/sounds/sfx_pickup_shield.wav | |
 | SFX_EXPLOSION | assets/sounds/sfx_explosion.wav | AoE explosion SFX (v0.22) |
 | SFX_SHIELD_POP | assets/sounds/sfx_shield_pop.wav | Shield break SFX |
+| MUSIC_LAYER_BURNING | assets/music/layer_burning.wav | Fire combat effect layer (v0.23) |
+| MUSIC_LAYER_FROZEN | assets/music/layer_frozen.wav | Ice combat effect layer (v0.23) |
+| SFX_EFFECT_FIRE | assets/sounds/sfx_effect_fire.wav | Fire effect onset SFX (v0.23) |
+| SFX_EFFECT_POISON | assets/sounds/sfx_effect_poison.wav | Poison effect onset SFX (v0.23) |
+| SFX_EFFECT_ICE | assets/sounds/sfx_effect_ice.wav | Ice effect onset SFX (v0.23) |
+| SFX_EFFECT_ELECTRIC | assets/sounds/sfx_effect_electric.wav | Electric effect onset SFX (v0.23) |
+| COMBAT_EFFECT_SFX | dict | Maps effect type → onset SFX path (v0.23) |
+| STATUS_EFFECTS_CONFIG | data/configs/status_effects.yaml | Combat effect config path (v0.23) |
 | PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
 
 ### UI / HUD
