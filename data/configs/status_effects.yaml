@@ -1,0 +1,54 @@
+# data/configs/status_effects.yaml
+#
+# Combat status effects applied when a bullet's damage_type hits a tank.
+# DamageType.STANDARD and DamageType.EXPLOSIVE do NOT apply status effects.
+#
+# Fields:
+#   duration       - seconds the effect lasts
+#   tick_interval  - seconds between damage/effect ticks (0 = no ticking)
+#   tick_damage    - HP removed per tick (0 for non-damaging effects)
+#   speed_mult     - multiplier on tank.speed while active (1.0 = no change)
+#   turn_mult      - multiplier on tank.turn_rate while active (1.0 = no change)
+#   fire_rate_mult - multiplier on weapon fire_rate while active (1.0 = no change)
+#   color          - [R, G, B] tint applied to the tank while affected
+#   description    - human-readable label
+
+fire:
+  duration: 3.0
+  tick_interval: 0.5
+  tick_damage: 8
+  speed_mult: 1.0
+  turn_mult: 1.0
+  fire_rate_mult: 1.0
+  color: [255, 80, 20]
+  description: "Burning. Takes fire damage over time."
+
+poison:
+  duration: 6.0
+  tick_interval: 1.0
+  tick_damage: 5
+  speed_mult: 1.0
+  turn_mult: 1.0
+  fire_rate_mult: 1.0
+  color: [80, 220, 80]
+  description: "Poisoned. Slow damage over time, long duration."
+
+ice:
+  duration: 4.0
+  tick_interval: 0
+  tick_damage: 0
+  speed_mult: 0.4
+  turn_mult: 0.5
+  fire_rate_mult: 1.0
+  color: [100, 200, 255]
+  description: "Frozen. Movement and turning severely slowed."
+
+electric:
+  duration: 3.5
+  tick_interval: 0
+  tick_damage: 0
+  speed_mult: 1.0
+  turn_mult: 1.0
+  fire_rate_mult: 0.4
+  color: [180, 130, 255]
+  description: "Shocked. Fire rate severely reduced."

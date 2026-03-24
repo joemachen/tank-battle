@@ -683,6 +683,114 @@ def gen_layer_rapid_reload(sr: int) -> list[float]:
     return [s / peak * 0.3 for s in out]
 
 
+def gen_layer_burning(sr: int) -> list[float]:
+    """Crackling fire loop — warm noise bursts + low rumble for burn effect."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    # Crackling: random short noise bursts
+    crackle_rate = 12.0  # bursts per second
+    crackle_interval = 1.0 / crackle_rate
+    t_crackle = 0.0
+    rng = random.Random(42)
+    while t_crackle < duration:
+        start = int(t_crackle * sr)
+        burst_dur = 0.02 + rng.random() * 0.02
+        burst_len = int(burst_dur * sr)
+        amp = 0.2 + rng.random() * 0.3
+        for k in range(min(burst_len, n - start)):
+            t = k / sr
+            out[start + k] += noise() * amp * math.exp(-t * 60)
+        t_crackle += crackle_interval + rng.random() * 0.04
+
+    # Low warm rumble
+    for i in range(n):
+        t = i / sr
+        out[i] += sine(t, 60) * 0.15
+        out[i] += sine(t, 120) * 0.08
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.3 for s in out]
+
+
+def gen_layer_frozen(sr: int) -> list[float]:
+    """Crystalline wind loop — high shimmering tones + breathy noise for ice effect."""
+    duration = 4.0
+    n = int(sr * duration)
+    out = [0.0] * n
+
+    for i in range(n):
+        t = i / sr
+        # High shimmering tone with slow wobble
+        wobble = 1.0 + 0.02 * math.sin(2 * math.pi * 0.6 * t)
+        shimmer = sine(t, 1200 * wobble) * 0.15
+        shimmer += sine(t, 1800 * wobble) * 0.08
+        # Breathy wind noise
+        wind = noise() * 0.08 * (0.5 + 0.5 * math.sin(2 * math.pi * 0.4 * t))
+        out[i] = shimmer + wind
+
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.25 for s in out]
+
+
+def gen_sfx_effect_fire(sr: int) -> list[float]:
+    """Whoosh ignition — rising noise sweep for fire application."""
+    dur = 0.3
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.01, decay=0.08, sustain_level=0.3, release=0.2)
+        freq = 200 + 800 * (t / dur)
+        tone = sawtooth(t, freq) * 0.3 + noise() * 0.4 * math.exp(-t * 8)
+        out.append(env * tone * 0.6)
+    return out
+
+
+def gen_sfx_effect_poison(sr: int) -> list[float]:
+    """Bubbling hiss — gurgling noise for poison application."""
+    dur = 0.35
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.02, decay=0.1, sustain_level=0.25, release=0.2)
+        bubble = sine(t, 300 + 200 * math.sin(t * 30)) * 0.3
+        hiss = noise() * 0.3 * math.exp(-t * 6)
+        out.append(env * (bubble + hiss) * 0.5)
+    return out
+
+
+def gen_sfx_effect_ice(sr: int) -> list[float]:
+    """Crystal crack — sharp high transient + ringing for ice application."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.002, decay=0.04, sustain_level=0.15, release=0.2)
+        crack = noise() * 0.5 * math.exp(-t * 40)
+        ring = sine(t, 2000) * 0.3 * math.exp(-t * 12)
+        ring2 = sine(t, 3000) * 0.15 * math.exp(-t * 15)
+        out.append(env * (crack + ring + ring2) * 0.7)
+    return out
+
+
+def gen_sfx_effect_electric(sr: int) -> list[float]:
+    """Electric zap — buzzy square wave burst for electric application."""
+    dur = 0.2
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.003, decay=0.05, sustain_level=0.2, release=0.14)
+        zap = square(t, 800 + 400 * math.sin(t * 50), duty=0.3) * 0.4
+        buzz = noise() * 0.3 * math.exp(-t * 20)
+        out.append(env * (zap + buzz) * 0.6)
+    return out
+
+
 def gen_music_game_over(sr: int) -> list[float]:
     """
     Short melancholic sting — 70 BPM, 4 bars, descending minor motif.
@@ -726,6 +834,10 @@ def main() -> None:
         ("sfx_pickup_shield.wav",       gen_pickup_shield),
         ("sfx_shield_pop.wav",          gen_shield_pop),
         ("sfx_explosion.wav",           gen_explosion),
+        ("sfx_effect_fire.wav",         gen_sfx_effect_fire),
+        ("sfx_effect_poison.wav",       gen_sfx_effect_poison),
+        ("sfx_effect_ice.wav",          gen_sfx_effect_ice),
+        ("sfx_effect_electric.wav",     gen_sfx_effect_electric),
     ]
 
     print("--- SFX ---")
@@ -742,6 +854,8 @@ def main() -> None:
         ("layer_heartbeat.wav",         gen_layer_heartbeat),
         ("layer_underwater.wav",        gen_layer_underwater),
         ("layer_rapid_reload.wav",      gen_layer_rapid_reload),
+        ("layer_burning.wav",           gen_layer_burning),
+        ("layer_frozen.wav",            gen_layer_frozen),
     ]
 
     print("\n--- Music ---")

@@ -81,7 +81,8 @@ from game.utils.constants import (
     MAPS_DIR,
     MUSIC_GAMEPLAY,
     PICKUP_COLLECT_SFX,
-    PICKUP_MUSIC_LAYERS,
+    COMBAT_EFFECT_SFX,
+    STATUS_MUSIC_LAYERS,
     SFX_SHIELD_POP,
     VFX_REGEN_COLOR,
     VFX_SHIELD_COLOR,
@@ -320,6 +321,8 @@ class GameplayScene(BaseScene):
         self._had_shield: dict[int, bool] = {}
         # Per-pickup music layers — tracks which layers are currently playing
         self._active_buff_layers: set[str] = set()
+        # Combat effect SFX — tracks which effects have already played their onset SFX
+        self._active_combat_sfx: set[str] = set()
         # Speed boost trail history — position samples for physics-based speed lines
         self._speed_trail_history: dict[int, list[tuple[float, float]]] = {}
         self._trail_timer: float = 0.0
@@ -559,6 +562,18 @@ class GameplayScene(BaseScene):
                 audio.play_sfx(SFX_SHIELD_POP)
             self._had_shield[tid] = has_shield
 
+        # Combat effect SFX — play onset sound when a new combat effect appears
+        current_combat: set[str] = set()
+        for tank in all_tanks:
+            if tank.is_alive:
+                for name in tank.combat_effects:
+                    current_combat.add(name)
+        for eff in current_combat - self._active_combat_sfx:
+            sfx_path = COMBAT_EFFECT_SFX.get(eff)
+            if sfx_path:
+                audio.play_sfx(sfx_path)
+        self._active_combat_sfx = current_combat
+
         # Music layers: start/stop per-pickup audio layers based on active buffs
         current_buffs: set[str] = set()
         for tank in all_tanks:
@@ -566,11 +581,11 @@ class GameplayScene(BaseScene):
                 for name in tank.active_status_names:
                     current_buffs.add(name)
         for buff in current_buffs - self._active_buff_layers:
-            path = PICKUP_MUSIC_LAYERS.get(buff)
+            path = STATUS_MUSIC_LAYERS.get(buff)
             if path:
                 audio.start_music_layer(buff, path)
         for buff in self._active_buff_layers - current_buffs:
-            path = PICKUP_MUSIC_LAYERS.get(buff)
+            path = STATUS_MUSIC_LAYERS.get(buff)
             if path:
                 audio.stop_music_layer(buff)
         self._active_buff_layers = current_buffs
@@ -641,6 +656,7 @@ class GameplayScene(BaseScene):
                 weapon_slots=self._tank.weapon_slots,
                 active_slot=self._tank.active_slot,
                 slot_cooldowns=self._tank.slot_cooldowns,
+                combat_effects=self._tank.combat_effects,
             )
 
         # Reticle — drawn after entities, before debug; hidden when paused or player dead
@@ -856,7 +872,9 @@ def _draw_tank_effects(
     speed_trail: list[tuple[float, float]] | None = None,
 ) -> None:
     """Draw per-type visual effects around a tank with active status effects."""
-    if not tank.is_alive or not tank.status_effects:
+    if not tank.is_alive:
+        return
+    if not tank.status_effects and not tank.has_any_combat_effect:
         return
     sx, sy = camera.world_to_screen(tank.x, tank.y)
     cx, cy = int(sx), int(sy)
@@ -912,6 +930,45 @@ def _draw_tank_effects(
         hy2 = int(bubble_r + 2 + bubble_r * 0.5 * math.sin(highlight_angle))
         pygame.draw.circle(bubble_surf, (255, 255, 255, 60), (hx2, hy2), 4)
         surface.blit(bubble_surf, (cx - bubble_r - 2, cy - bubble_r - 2))
+
+    # Combat effects VFX (v0.23)
+    combat = tank.combat_effects
+    if combat:
+        for name, effect in combat.items():
+            if name == "fire":
+                # Flickering orange-red particles above tank
+                for j in range(3):
+                    offset_x = int(8 * math.sin(t * 10 + j * 2.1))
+                    offset_y = -int(10 + 6 * math.sin(t * 8 + j * 1.7))
+                    alpha = int(120 + 60 * math.sin(t * 12 + j))
+                    fire_surf = pygame.Surface((8, 8), pygame.SRCALPHA)
+                    pygame.draw.circle(fire_surf, (*effect.color, alpha), (4, 4), 4)
+                    surface.blit(fire_surf, (cx + offset_x - 4, cy + offset_y - 4))
+            elif name == "poison":
+                # Green bubbles rising
+                for j in range(2):
+                    bub_x = cx + int(10 * math.sin(t * 3 + j * 3.14))
+                    bub_y = cy - int((t * 20 + j * 12) % 30)
+                    alpha = int(100 + 40 * math.sin(t * 5 + j))
+                    bub_surf = pygame.Surface((6, 6), pygame.SRCALPHA)
+                    pygame.draw.circle(bub_surf, (*effect.color, alpha), (3, 3), 3)
+                    surface.blit(bub_surf, (bub_x - 3, bub_y - 3))
+            elif name == "ice":
+                # Blue frost ring
+                frost_r = int(TANK_BODY_WIDTH * 0.8 + 2 * math.sin(t * 2.0))
+                frost_surf = pygame.Surface((frost_r * 2 + 4, frost_r * 2 + 4), pygame.SRCALPHA)
+                pygame.draw.circle(frost_surf, (*effect.color, 80),
+                                   (frost_r + 2, frost_r + 2), frost_r, 2)
+                surface.blit(frost_surf, (cx - frost_r - 2, cy - frost_r - 2))
+            elif name == "electric":
+                # Purple spark lines
+                for j in range(2):
+                    angle = t * 8 + j * math.pi
+                    sx1 = cx + int(12 * math.cos(angle))
+                    sy1 = cy + int(12 * math.sin(angle))
+                    sx2 = cx + int(18 * math.cos(angle + 0.5))
+                    sy2 = cy + int(18 * math.sin(angle + 0.5))
+                    pygame.draw.line(surface, effect.color, (sx1, sy1), (sx2, sy2), 2)
 
 
 def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> None:

@@ -13,6 +13,9 @@ import math
 from game.utils.damage_types import DamageType
 from game.utils.logger import get_logger
 
+# Deferred import to avoid circular dependency — resolved at first use
+_apply_combat_effect = None
+
 log = get_logger(__name__)
 
 
@@ -79,6 +82,11 @@ class Explosion:
                 scale = 1.0 - (1.0 - self.damage_falloff) * (dist / self.radius)
                 actual_damage = max(1, int(self.damage * scale))
                 tank.take_damage(actual_damage, damage_type=self.damage_type)
+                if tank.is_alive:
+                    global _apply_combat_effect
+                    if _apply_combat_effect is None:
+                        from game.systems.collision import _apply_combat_effect
+                    _apply_combat_effect(tank, self.damage_type)
                 if tank.is_alive:
                     events.append("bullet_hit_tank")
                 else:
