@@ -25,6 +25,7 @@ from game.utils.constants import (
     DEFAULT_WEAPON_TYPE,
     MAX_WEAPON_SLOTS,
 )
+from game.systems.status_effect import StatusEffect
 from game.utils.damage_types import DamageType
 from game.utils.logger import get_logger
 from game.utils.math_utils import clamp, heading_to_vec
@@ -108,6 +109,8 @@ class Tank:
 
         # Status effects (v0.19) — {name: {value, timer}}
         self._status_effects: dict = {}
+        # Combat status effects (v0.23) — {name: StatusEffect}
+        self._combat_effects: dict[str, StatusEffect] = {}
 
         log.debug(
             "Tank created at (%.0f, %.0f) type=%s hp=%d spd=%.0f",
@@ -225,6 +228,25 @@ class Tank:
 
         self.tick_status_effects(dt)
 
+        # Tick combat status effects (v0.23) — DoT, expiry
+        dot_damage = 0
+        expired_combat = []
+        for name, effect in self._combat_effects.items():
+            dot_damage += effect.update(dt)
+            if effect.is_expired:
+                expired_combat.append(name)
+        for name in expired_combat:
+            del self._combat_effects[name]
+            log.debug("Combat effect expired: %s", name)
+        if dot_damage > 0 and self.is_alive:
+            self.health = max(0, self.health - dot_damage)
+            if self.health <= 0:
+                self.is_alive = False
+            log.debug("DoT damage: %d — hp=%d/%d", dot_damage, self.health, self.max_health)
+
+        if not self.is_alive:
+            return []
+
         events = []
         intent = self.controller.get_input()
 
@@ -235,13 +257,14 @@ class Tank:
         if intent.cycle_weapon != 0:
             self.cycle_weapon(intent.cycle_weapon)
 
-        # Hull rotation
-        self.angle += intent.rotate * self.turn_rate * dt
+        # Hull rotation — apply combat turn multiplier (v0.23)
+        effective_turn = self.turn_rate * self._combat_turn_mult()
+        self.angle += intent.rotate * effective_turn * dt
 
-        # Movement along facing direction
+        # Movement along facing direction — apply combat speed multiplier (v0.23)
         prev_x, prev_y = self.x, self.y
         dx, dy = heading_to_vec(self.angle)
-        effective_speed = self.speed
+        effective_speed = self.speed * self._combat_speed_mult()
         if self.has_status("speed_boost"):
             effective_speed *= self._status_effects["speed_boost"]["value"]
         self.x += dx * intent.throttle * effective_speed * dt
@@ -259,7 +282,7 @@ class Tank:
 
         # Fire — uses active slot's cooldown and config
         active_wep = self.active_weapon
-        active_fire_rate = float(active_wep.get("fire_rate", self.fire_rate))
+        active_fire_rate = float(active_wep.get("fire_rate", self.fire_rate)) * self._combat_fire_rate_mult()
 
         if intent.fire and self._slot_cooldowns[self._active_slot] <= 0:
             self._slot_cooldowns[self._active_slot] = 1.0 / active_fire_rate
@@ -319,8 +342,46 @@ class Tank:
 
     @property
     def active_status_names(self) -> list[str]:
-        """Return list of active status effect names."""
-        return list(self._status_effects.keys())
+        """Return list of active status effect names (pickup + combat)."""
+        return list(self._status_effects.keys()) + list(self._combat_effects.keys())
+
+    # ------------------------------------------------------------------
+    # Combat effects (burn, poison, ice, electric)
+    # ------------------------------------------------------------------
+
+    def apply_combat_effect(self, effect_type: str, config: dict) -> None:
+        """Apply or refresh a combat status effect."""
+        if effect_type in self._combat_effects:
+            self._combat_effects[effect_type].refresh(config)
+        else:
+            self._combat_effects[effect_type] = StatusEffect(effect_type, config)
+
+    @property
+    def combat_effects(self) -> dict[str, "StatusEffect"]:
+        """Shallow copy of active combat effects for external reads."""
+        return dict(self._combat_effects)
+
+    @property
+    def has_any_combat_effect(self) -> bool:
+        return len(self._combat_effects) > 0
+
+    def _combat_speed_mult(self) -> float:
+        m = 1.0
+        for eff in self._combat_effects.values():
+            m *= eff.speed_mult
+        return m
+
+    def _combat_turn_mult(self) -> float:
+        m = 1.0
+        for eff in self._combat_effects.values():
+            m *= eff.turn_mult
+        return m
+
+    def _combat_fire_rate_mult(self) -> float:
+        m = 1.0
+        for eff in self._combat_effects.values():
+            m *= eff.fire_rate_mult
+        return m
 
     @property
     def shield_hp(self) -> float:

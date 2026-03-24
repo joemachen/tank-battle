@@ -15,9 +15,41 @@ Collision pairs handled:
 import math
 
 from game.entities.explosion import Explosion
+from game.utils.config_loader import load_yaml
+from game.utils.constants import STATUS_EFFECTS_CONFIG
+from game.utils.damage_types import DamageType
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+# DamageType → status effect key (STANDARD and EXPLOSIVE don't apply effects)
+_DAMAGE_TYPE_TO_EFFECT: dict[DamageType, str] = {
+    DamageType.FIRE: "fire",
+    DamageType.ICE: "ice",
+    DamageType.POISON: "poison",
+    DamageType.ELECTRIC: "electric",
+}
+
+_status_configs: dict | None = None
+
+
+def _get_status_configs() -> dict:
+    """Lazy-load status effect configs from YAML (cached after first call)."""
+    global _status_configs
+    if _status_configs is None:
+        _status_configs = load_yaml(STATUS_EFFECTS_CONFIG)
+    return _status_configs
+
+
+def _apply_combat_effect(tank, damage_type) -> None:
+    """Apply a combat status effect to a tank based on bullet damage type."""
+    effect_key = _DAMAGE_TYPE_TO_EFFECT.get(damage_type)
+    if effect_key is None:
+        return
+    configs = _get_status_configs()
+    cfg = configs.get(effect_key)
+    if cfg:
+        tank.apply_combat_effect(effect_key, cfg)
 
 # Radii used for circle-based collision approximations
 TANK_RADIUS: float = 22.0
@@ -91,6 +123,8 @@ class CollisionSystem:
                 )
                 return True
             tank.take_damage(bullet.damage, damage_type=bullet.damage_type)
+            if tank.is_alive:
+                _apply_combat_effect(tank, bullet.damage_type)
             bullet.destroy()
             log.debug("Bullet hit tank. Damage=%d type=%s, Tank HP=%d",
                       bullet.damage, bullet.damage_type.name, tank.health)

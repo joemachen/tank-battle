@@ -82,6 +82,7 @@ class HUD:
         weapon_slots: list | None = None,
         active_slot: int = 0,
         slot_cooldowns: list | None = None,
+        combat_effects: dict | None = None,
     ) -> None:
         """
         Render HUD health bars and weapon slot display.
@@ -93,6 +94,7 @@ class HUD:
             weapon_slots:   list of weapon config dicts from tank.weapon_slots
             active_slot:    index of the currently active weapon slot
             slot_cooldowns: list of per-slot cooldown timers (seconds remaining)
+            combat_effects: dict of active combat StatusEffects (from tank.combat_effects)
         """
         self._ensure_fonts()
 
@@ -115,6 +117,10 @@ class HUD:
                 x=HUD_MARGIN, y=weapon_y,
                 slot_cooldowns=slot_cooldowns,
             )
+
+        # Combat effect indicators — between health bar and weapon slots
+        if combat_effects:
+            self._draw_combat_effects(surface, combat_effects, HUD_MARGIN, label_y - 16)
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
         if ai_tanks is None:
@@ -198,6 +204,26 @@ class HUD:
                 cx = dot_x + 6
             else:
                 cx += rendered.get_width() + 8
+
+    def _draw_combat_effects(
+        self,
+        surface: pygame.Surface,
+        combat_effects: dict,
+        x: int,
+        y: int,
+    ) -> None:
+        """Draw small colored labels for active combat status effects."""
+        font = self._small_font
+        if font is None:
+            return
+        cx = x
+        for name, effect in combat_effects.items():
+            remaining = max(0, effect.duration)
+            color = effect.color
+            label = f"{name.upper()} {remaining:.1f}s"
+            rendered = font.render(label, True, color)
+            surface.blit(rendered, (cx, y))
+            cx += rendered.get_width() + 8
 
     def _draw_health_bar(
         self,

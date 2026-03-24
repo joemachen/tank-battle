@@ -177,6 +177,7 @@ DEFAULT_THEME: str = "default"
 THEME_TINT_BLEND: float = 0.5        # 50/50 blend of material color + theme obstacle tint
 MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
+STATUS_EFFECTS_CONFIG: str = "data/configs/status_effects.yaml"
 
 # Pickup spawner
 PICKUP_SPAWN_INTERVAL: float = 8.0
@@ -260,6 +261,19 @@ SFX_PICKUP_RELOAD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_
 SFX_PICKUP_SHIELD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav")
 SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_pop.wav")
 
+# Combat status effect SFX (v0.23)
+SFX_EFFECT_FIRE:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav")
+SFX_EFFECT_POISON:   str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_poison.wav")
+SFX_EFFECT_ICE:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_ice.wav")
+SFX_EFFECT_ELECTRIC: str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_electric.wav")
+
+COMBAT_EFFECT_SFX: dict = {
+    "fire":     _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav"),
+    "poison":   _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_poison.wav"),
+    "ice":      _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_ice.wav"),
+    "electric": _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_electric.wav"),
+}
+
 # Per-type pickup collect SFX lookup
 PICKUP_COLLECT_SFX: dict = {
     "health": _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_health.wav"),
@@ -279,12 +293,22 @@ MUSIC_LAYER_HEARTBEAT:    str = _os.path.join(_ASSET_ROOT, "music", "layer_heart
 MUSIC_LAYER_UNDERWATER:   str = _os.path.join(_ASSET_ROOT, "music", "layer_underwater.wav")
 MUSIC_LAYER_RAPID_RELOAD: str = _os.path.join(_ASSET_ROOT, "music", "layer_rapid_reload.wav")
 
-PICKUP_MUSIC_LAYERS: dict = {
+# Combat status effect music layers (v0.23)
+MUSIC_LAYER_BURNING:  str = _os.path.join(_ASSET_ROOT, "music", "layer_burning.wav")
+MUSIC_LAYER_FROZEN:   str = _os.path.join(_ASSET_ROOT, "music", "layer_frozen.wav")
+
+# Unified status music layers — pickup buffs + combat debuffs
+STATUS_MUSIC_LAYERS: dict = {
     "speed_boost":  MUSIC_LAYER_SPEED,
     "regen":        MUSIC_LAYER_HEARTBEAT,
     "shield":       MUSIC_LAYER_UNDERWATER,
     "rapid_reload": MUSIC_LAYER_RAPID_RELOAD,
+    "fire":         MUSIC_LAYER_BURNING,
+    "ice":          MUSIC_LAYER_FROZEN,
 }
+
+# Backwards compat alias
+PICKUP_MUSIC_LAYERS = STATUS_MUSIC_LAYERS
 
 # ---------------------------------------------------------------------------
 # UI
