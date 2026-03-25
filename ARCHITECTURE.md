@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.23.0*
+*Last updated: v0.24.0*
 
 ---
 
@@ -42,6 +42,7 @@ game/
     physics.py                      Bullet movement + arena boundary clamping
     pickup_spawner.py               Timed pickup spawn + lifetime management
     status_effect.py                StatusEffect class — tick damage, multipliers, expiry
+    elemental_resolver.py           Elemental combo detector — scans tanks for effect pairs, triggers combos
     progression_manager.py          XP/level/unlock progression logic
   ui/
     __init__.py
@@ -67,6 +68,7 @@ data/
     materials.yaml                  Six obstacle material definitions (incl. rubble)
     pickups.yaml                    Three pickup type definitions
     status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
+    elemental_interactions.yaml     Three elemental combo definitions (steam_burst, accelerated_burn, deep_freeze)
     tanks.yaml                      Four tank type definitions
     weapons.yaml                    Five weapon type definitions
   maps/
@@ -102,6 +104,7 @@ tests/
   test_pickup.py                    Pickup apply effects + pulse animation
   test_explosion.py                 AoE damage, grenade bullet, stone destruction, cooldown
   test_status_effects.py            StatusEffect class, Tank combat effects, collision integration, HUD
+  test_elemental_interactions.py    ElementalResolver, tank stun, remove_combat_effect, combo effects
   test_pickup_spawner.py            Spawn timing + caps + lifetime + obstacle blocking
   test_profile_select.py            Profile slot management
   test_progression.py               XP table progression
@@ -254,8 +257,15 @@ Separate from pickup buffs. Storage: `_combat_effects: dict[str, StatusEffect]` 
 | `_combat_fire_rate_mult()` | `float` | Product of all active `effect.fire_rate_mult` values |
 | `combat_effects` | `dict` | Shallow copy of `_combat_effects` |
 | `has_any_combat_effect` | `bool` | True if any combat effect is active |
+| `remove_combat_effect(effect_type)` | `None` | Delete a combat effect by key (used by ElementalResolver to consume sources) |
+| `apply_stun(duration)` | `None` | Set stun timer to `max(_stun_timer, duration)` — shorter stun never overrides longer |
+| `is_stunned` | `bool` | True when `_stun_timer > 0` |
 
 Combat effects are ticked in `update()` after `tick_status_effects(dt)`. DoT damage is applied directly to health (bypasses shield). Effects expire when `duration <= 0`.
+
+#### Tank Stun System (v0.24)
+
+`_stun_timer: float` — when >0, `update()` early-returns with `[]` (no fire events, zero velocity), but still ticks cooldowns, combat effects (DoT still hurts), and pickup effects. Stun block is placed at top of `update()` after `is_alive` check, before any input processing.
 
 Multiplier stacking: combat speed/turn/fire_rate multipliers are products of all active effects. Pickup speed_boost stacks multiplicatively on top of combat speed mult.
 
@@ -287,6 +297,53 @@ fire:
 ```
 
 Four effects defined: `fire` (burn DoT), `poison` (slow DoT), `ice` (movement slow), `electric` (fire rate reduction).
+
+### ElementalResolver (game/systems/elemental_resolver.py) (v0.24)
+
+Scans all alive tanks each frame for matching pairs of active combat effects. When a pair matches a defined elemental interaction, both source effects are consumed and a combo event dict is returned.
+
+```python
+ElementalResolver()  # loads elemental_interactions.yaml on init
+resolver.resolve(tanks: list) -> list[dict]  # returns combo event dicts
+```
+
+Interactions stored with `frozenset(elements)` for order-independent matching via `issubset()`. One combo per tank per frame (first match wins via `break`).
+
+Config schema (`data/configs/elemental_interactions.yaml`):
+```yaml
+steam_burst:
+  elements: ["fire", "ice"]
+  result_type: aoe_burst       # aoe_burst | instant_damage | stun
+  damage: 25                   # direct damage to target
+  aoe_radius: 100              # explosion radius (aoe_burst only)
+  aoe_damage: 35               # max AoE damage
+  stun_duration: 0             # stun seconds (stun type only)
+  color: [200, 200, 220]       # VFX tint
+  sfx_key: steam_burst         # maps to COMBO_SFX dict
+  description: "..."
+```
+
+Three combos defined:
+- **Steam Burst** (fire+ice): `aoe_burst` — 25 direct + AoE explosion (owner=None, all tanks take damage)
+- **Accelerated Burn** (poison+fire): `instant_damage` — 60 direct damage
+- **Deep Freeze** (ice+electric): `stun` — 10 damage + 3.0s full input suppression
+
+Resolver timing: called AFTER collision resolution (so new effects from this frame's bullets are applied) but BEFORE camera update.
+
+#### Combo Visuals (GameScene)
+
+Tracked as `_combo_visuals: list[dict]` with timer, rendered as separate draw pass after explosions:
+- **steam_burst**: expanding white-gray cloud with multiple rings + center flash
+- **accelerated_burn**: orange flash + radial spark lines
+- **deep_freeze**: hexagonal ice crystal pattern with rotating lines + diamond tips
+
+#### Combo HUD Notification
+
+Player combo text: fading notification in upper third of screen, 2s duration. Tracked via `_player_combo_text`, `_player_combo_timer`, `_player_combo_color`. Timer ticked in `update()`, rendered in `draw()`.
+
+#### Combo SFX
+
+`COMBO_SFX` dict in constants.py maps combo names to WAV paths. Three generated sounds: `sfx_steam_burst.wav`, `sfx_accelerated_burn.wav`, `sfx_deep_freeze.wav`.
 
 ---
 
@@ -1460,6 +1517,11 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SFX_EFFECT_ELECTRIC | assets/sounds/sfx_effect_electric.wav | Electric effect onset SFX (v0.23) |
 | COMBAT_EFFECT_SFX | dict | Maps effect type → onset SFX path (v0.23) |
 | STATUS_EFFECTS_CONFIG | data/configs/status_effects.yaml | Combat effect config path (v0.23) |
+| ELEMENTAL_INTERACTIONS_CONFIG | data/configs/elemental_interactions.yaml | Elemental combo config path (v0.24) |
+| SFX_STEAM_BURST | assets/sounds/sfx_steam_burst.wav | Steam burst combo SFX (v0.24) |
+| SFX_ACCELERATED_BURN | assets/sounds/sfx_accelerated_burn.wav | Accelerated burn combo SFX (v0.24) |
+| SFX_DEEP_FREEZE | assets/sounds/sfx_deep_freeze.wav | Deep freeze combo SFX (v0.24) |
+| COMBO_SFX | dict | Maps combo name → SFX WAV path (v0.24) |
 | PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
 
 ### UI / HUD
