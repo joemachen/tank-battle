@@ -178,6 +178,7 @@ THEME_TINT_BLEND: float = 0.5        # 50/50 blend of material color + theme obs
 MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
 STATUS_EFFECTS_CONFIG: str = "data/configs/status_effects.yaml"
+ELEMENTAL_INTERACTIONS_CONFIG: str = "data/configs/elemental_interactions.yaml"
 
 # Pickup spawner
 PICKUP_SPAWN_INTERVAL: float = 8.0
@@ -272,6 +273,17 @@ COMBAT_EFFECT_SFX: dict = {
     "poison":   _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_poison.wav"),
     "ice":      _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_ice.wav"),
     "electric": _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_electric.wav"),
+}
+
+# Elemental combo SFX (v0.24)
+SFX_STEAM_BURST:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_steam_burst.wav")
+SFX_ACCELERATED_BURN:  str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_accelerated_burn.wav")
+SFX_DEEP_FREEZE:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_deep_freeze.wav")
+
+COMBO_SFX: dict = {
+    "steam_burst":      _os.path.join(_ASSET_ROOT, "sounds", "sfx_steam_burst.wav"),
+    "accelerated_burn": _os.path.join(_ASSET_ROOT, "sounds", "sfx_accelerated_burn.wav"),
+    "deep_freeze":      _os.path.join(_ASSET_ROOT, "sounds", "sfx_deep_freeze.wav"),
 }
 
 # Per-type pickup collect SFX lookup

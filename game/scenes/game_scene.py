@@ -32,6 +32,7 @@ from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController
 from game.systems.collision import CollisionSystem
 from game.systems.debris_system import DebrisSystem
+from game.systems.elemental_resolver import ElementalResolver
 from game.systems.input_handler import InputHandler
 from game.systems.pickup_spawner import PickupSpawner
 from game.systems.match_calculator import MatchCalculator
@@ -39,6 +40,7 @@ from game.systems.physics import PhysicsSystem
 from game.ui.audio_manager import get_audio_manager
 from game.ui.hud import HUD
 from game.utils.camera import Camera
+from game.utils.damage_types import DamageType
 from game.utils.config_loader import get_ai_config, get_tank_config, load_yaml
 from game.utils.constants import (
     AI_ATTACK_RANGE,
@@ -82,6 +84,7 @@ from game.utils.constants import (
     MUSIC_GAMEPLAY,
     PICKUP_COLLECT_SFX,
     COMBAT_EFFECT_SFX,
+    COMBO_SFX,
     STATUS_MUSIC_LAYERS,
     SFX_SHIELD_POP,
     VFX_REGEN_COLOR,
@@ -323,6 +326,12 @@ class GameplayScene(BaseScene):
         self._active_buff_layers: set[str] = set()
         # Combat effect SFX — tracks which effects have already played their onset SFX
         self._active_combat_sfx: set[str] = set()
+        # Elemental interaction resolver (v0.24)
+        self._elemental_resolver = ElementalResolver()
+        self._combo_visuals: list[dict] = []
+        self._player_combo_text: str = ""
+        self._player_combo_timer: float = 0.0
+        self._player_combo_color: tuple = (255, 255, 255)
         # Speed boost trail history — position samples for physics-based speed lines
         self._speed_trail_history: dict[int, list[tuple[float, float]]] = {}
         self._trail_timer: float = 0.0
@@ -356,6 +365,7 @@ class GameplayScene(BaseScene):
         self._theme = {}
         self._bullets = []
         self._explosions = []
+        self._combo_visuals = []
 
     # ------------------------------------------------------------------
     # Update
@@ -451,6 +461,18 @@ class GameplayScene(BaseScene):
         )
         self._explosions.extend(new_explosions)
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Elemental interaction check (v0.24)
+        combo_events = self._elemental_resolver.resolve(all_tanks)
+        for combo in combo_events:
+            self._process_elemental_combo(combo)
+
+        # Tick combo visual timers
+        for cv in self._combo_visuals:
+            cv["timer"] -= dt
+        self._combo_visuals = [cv for cv in self._combo_visuals if cv["timer"] > 0]
+        if self._player_combo_timer > 0:
+            self._player_combo_timer -= dt
 
         # Accumulate damage taken by player
         self._damage_taken += max(0, player_hp_before - self._tank.health)
@@ -590,6 +612,60 @@ class GameplayScene(BaseScene):
                 audio.stop_music_layer(buff)
         self._active_buff_layers = current_buffs
 
+    def _process_elemental_combo(self, combo: dict) -> None:
+        """Handle an elemental combo event (v0.24)."""
+        tank = combo["tank"]
+        cfg = combo["config"]
+        name = combo["name"]
+        result_type = cfg.get("result_type", "")
+        audio = get_audio_manager()
+
+        # Direct damage to the affected tank
+        direct_damage = int(cfg.get("damage", 0))
+        if direct_damage > 0 and tank.is_alive:
+            tank.take_damage(direct_damage, damage_type=DamageType.STANDARD)
+
+        # AoE burst — spawn an explosion at the tank's position
+        if result_type == "aoe_burst":
+            aoe_radius = float(cfg.get("aoe_radius", 0))
+            aoe_damage = int(cfg.get("aoe_damage", 0))
+            if aoe_radius > 0 and aoe_damage > 0:
+                exp = Explosion(
+                    tank.x, tank.y, aoe_radius, aoe_damage,
+                    DamageType.STANDARD, owner=None,
+                    damage_falloff=0.3, visual_duration=0.5,
+                )
+                self._explosions.append(exp)
+
+        # Stun
+        if result_type == "stun":
+            stun_dur = float(cfg.get("stun_duration", 0))
+            if stun_dur > 0:
+                tank.apply_stun(stun_dur)
+
+        # SFX
+        sfx_key = cfg.get("sfx_key", "")
+        sfx_path = COMBO_SFX.get(sfx_key)
+        if sfx_path:
+            audio.play_sfx(sfx_path)
+
+        # Visual event — stored for rendering
+        color = tuple(cfg.get("color", [255, 255, 255]))
+        self._combo_visuals.append({
+            "x": tank.x,
+            "y": tank.y,
+            "color": color,
+            "timer": 0.6,
+            "radius": float(cfg.get("aoe_radius", 60)) if result_type == "aoe_burst" else 40.0,
+            "name": name,
+        })
+
+        # Player combo notification
+        if tank is self._tank:
+            self._player_combo_text = cfg.get("description", name)
+            self._player_combo_timer = 2.0
+            self._player_combo_color = color
+
     def _spawn_bullet(self, event: tuple, owner: Tank) -> None:
         # event = ("fire", tank_x, tank_y, turret_angle, weapon_type)  [5-tuple, v0.16]
         _, ex, ey, eangle, weapon_type = event
@@ -649,6 +725,17 @@ class GameplayScene(BaseScene):
 
         _draw_bullets(surface, self._bullets, self._camera)
         _draw_explosions(surface, self._explosions, self._camera)
+        _draw_combo_visuals(surface, self._combo_visuals, self._camera)
+
+        # Player combo notification text (v0.24)
+        if self._player_combo_timer > 0:
+            alpha = min(255, int(255 * (self._player_combo_timer / 2.0)))
+            combo_font = pygame.font.SysFont(None, 32)
+            combo_text = combo_font.render(self._player_combo_text, True, self._player_combo_color)
+            combo_text.set_alpha(alpha)
+            cx = surface.get_width() // 2 - combo_text.get_width() // 2
+            cy = surface.get_height() // 3
+            surface.blit(combo_text, (cx, cy))
 
         if self._hud:
             self._hud.draw(
@@ -931,6 +1018,25 @@ def _draw_tank_effects(
         pygame.draw.circle(bubble_surf, (255, 255, 255, 60), (hx2, hy2), 4)
         surface.blit(bubble_surf, (cx - bubble_r - 2, cy - bubble_r - 2))
 
+    # Stun indicator — spinning stars above tank (v0.24)
+    if tank.is_stunned:
+        num_stars = 3
+        orbit_r = 14
+        star_y_offset = -BUFF_ICON_OFFSET_Y - 8
+        for i in range(num_stars):
+            star_angle = t * 4.0 + (2 * math.pi / num_stars) * i
+            star_x = cx + int(orbit_r * math.cos(star_angle))
+            star_y = cy + star_y_offset + int(4 * math.sin(star_angle * 2))
+            # 4-point star shape
+            pts = []
+            for p in range(4):
+                a = (math.pi / 2) * p + t * 3
+                r_outer = 4
+                pts.append((star_x + int(r_outer * math.cos(a)),
+                            star_y + int(r_outer * math.sin(a))))
+            pygame.draw.polygon(surface, (255, 255, 100), pts)
+            pygame.draw.polygon(surface, (255, 200, 0), pts, 1)
+
     # Combat effects VFX (v0.23)
     combat = tank.combat_effects
     if combat:
@@ -1017,6 +1123,88 @@ def _draw_explosions(surface: pygame.Surface, explosions: list, camera: Camera) 
             pygame.draw.circle(flash_surf, (*EXPLOSION_COLOR, flash_alpha),
                                (flash_radius + 2, flash_radius + 2), flash_radius)
             surface.blit(flash_surf, (cx - flash_radius - 2, cy - flash_radius - 2))
+
+
+def _draw_combo_visuals(
+    surface: pygame.Surface,
+    combo_visuals: list[dict],
+    camera: Camera,
+) -> None:
+    """Draw elemental combo VFX (v0.24)."""
+    t = time.monotonic()
+    for cv in combo_visuals:
+        sx, sy = camera.world_to_screen(cv["x"], cv["y"])
+        cx, cy = int(sx), int(sy)
+        progress = 1.0 - (cv["timer"] / 0.6)  # 0→1 over lifetime
+        color = cv["color"]
+        name = cv["name"]
+
+        if name == "steam_burst":
+            # Expanding white-gray cloud with multiple rings + center flash
+            for i in range(3):
+                ring_r = max(1, int(cv["radius"] * (0.3 + 0.7 * progress) * (0.6 + 0.2 * i)))
+                alpha = max(0, int(160 * (1.0 - progress) / (1 + i * 0.5)))
+                ring_w = max(1, int(3 * (1.0 - progress)))
+                ring_surf = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+                pygame.draw.circle(ring_surf, (*color, alpha),
+                                   (ring_r + 2, ring_r + 2), ring_r, ring_w)
+                surface.blit(ring_surf, (cx - ring_r - 2, cy - ring_r - 2))
+            # Center flash — bright white, fades quickly
+            if progress < 0.4:
+                flash_alpha = max(0, int(200 * (1.0 - progress / 0.4)))
+                flash_r = max(1, int(20 * (1.0 - progress / 0.4)))
+                flash_surf = pygame.Surface((flash_r * 2 + 4, flash_r * 2 + 4), pygame.SRCALPHA)
+                pygame.draw.circle(flash_surf, (255, 255, 255, flash_alpha),
+                                   (flash_r + 2, flash_r + 2), flash_r)
+                surface.blit(flash_surf, (cx - flash_r - 2, cy - flash_r - 2))
+
+        elif name == "accelerated_burn":
+            # Orange flash + radial spark lines
+            flash_r = max(1, int(40 * (1.0 - progress * 0.5)))
+            alpha = max(0, int(180 * (1.0 - progress)))
+            flash_surf = pygame.Surface((flash_r * 2 + 4, flash_r * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(flash_surf, (*color, alpha),
+                               (flash_r + 2, flash_r + 2), flash_r)
+            surface.blit(flash_surf, (cx - flash_r - 2, cy - flash_r - 2))
+            # Radial spark lines
+            num_sparks = 8
+            for i in range(num_sparks):
+                angle = (2 * math.pi / num_sparks) * i + t * 3
+                inner_r = int(15 + 25 * progress)
+                outer_r = int(30 + 40 * progress)
+                spark_alpha = max(0, int(200 * (1.0 - progress)))
+                sx1 = cx + int(inner_r * math.cos(angle))
+                sy1 = cy + int(inner_r * math.sin(angle))
+                sx2 = cx + int(outer_r * math.cos(angle))
+                sy2 = cy + int(outer_r * math.sin(angle))
+                spark_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                pygame.draw.line(spark_surf, (*color, spark_alpha), (sx1, sy1), (sx2, sy2), 2)
+                surface.blit(spark_surf, (0, 0))
+
+        elif name == "deep_freeze":
+            # Hexagonal ice crystal pattern with rotating lines + diamond tips
+            hex_r = int(30 + 15 * progress)
+            alpha = max(0, int(200 * (1.0 - progress)))
+            rotation = t * 2.0
+            for i in range(6):
+                angle = rotation + (math.pi / 3) * i
+                lx = cx + int(hex_r * math.cos(angle))
+                ly = cy + int(hex_r * math.sin(angle))
+                # Crystal lines from center
+                line_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                pygame.draw.line(line_surf, (*color, alpha), (cx, cy), (lx, ly), 2)
+                surface.blit(line_surf, (0, 0))
+                # Diamond tip at each endpoint
+                tip_size = max(1, int(4 * (1.0 - progress)))
+                diamond = [
+                    (lx, ly - tip_size),
+                    (lx + tip_size, ly),
+                    (lx, ly + tip_size),
+                    (lx - tip_size, ly),
+                ]
+                tip_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                pygame.draw.polygon(tip_surf, (*color, alpha), diamond)
+                surface.blit(tip_surf, (0, 0))
 
 
 def _draw_reticle(surface: pygame.Surface) -> None:
