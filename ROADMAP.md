@@ -44,58 +44,60 @@ materials.yaml was designed for this — this phase fills it in.*
 | ~~v0.22~~ | ~~Area of effect + explosions~~ | ✅ Completed v0.22.0                                                                                                                                                                |
 | ~~v0.23~~ | ~~Status effects~~          | ✅ Completed v0.23.0                                                                                                                                                                    |
 | ~~v0.24~~ | ~~Elemental interactions~~ | ✅ Completed v0.24.0                                                                                                                                                                     |
-| v0.25   | Elemental weapons content     | (was v0.24) Flamethrower (fire, AoE cone), Cryo round (ice, slows), Poison shell (DoT), EMP blast (electric, AoE).                                                                     |
+| v0.25   | Elemental + combat weapons content | Flamethrower (fire, short-range AoE cone), Cryo round (ice, slows), Poison shell (DoT), EMP blast (electric, AoE), Railgun (fast piercing projectile, high damage, slow reload), Laser beam (hitscan, hold-to-fire with energy bar, instant line damage). 6 new weapons exercising the full Phase 3 elemental pipeline. Laser requires new raycast system in CollisionSystem. |
+| v0.25.5 | Random weapon rolls              | Roguelike weapon selection: slot 1 always standard_shell, slots 2–3 randomly assigned from unlocked pool with weighted probability. WeaponRoller utility class. LoadoutScene shows random assignments with optional re-roll. AI tanks also get random loadouts. Weapon probability table driven by data/configs/weapon_weights.yaml. |
+| v0.26   | Area denial + utility weapons    | Glue gun (shoots ground pool that slows enemies, persists 30s, new GluePool entity), Lava gun (fire damage ground pool, area denial + DoT), Knockback gun (concussion blast, moderate damage + strong pushback force scaling with proximity). These need new entity types (ground pools) and knockback physics in CollisionSystem. |
 ---
 ### Phase 4 — Ultimates System
 *Overwatch-style ultimates that charge over time and interact with
 the pickup/powerup system.*
 | Version | Milestone                       | Notes                                                                                                                                                                       |
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.26   | Ultimate charge system          | (was v0.25) UltimateCharge class on Tank. Charges by: dealing damage, taking damage, time elapsed. Charge rate and ultimate type defined per tank in tanks.yaml. HUD shows charge bar. |
-| v0.27   | Ultimate abilities (first pass) | (was v0.26) Light = speed burst, Medium = shield dome, Heavy = artillery strike (AoE), Scout = cloak + speed.                                                               |
-| v0.28   | Ultimate + pickup interactions  | (was v0.27) charge_boost, ultimate_amp, charge_rate_up pickups.                                                                                                             |
-| v0.29   | Ultimate visual feedback        | (was v0.28) Charge bar animation, activation VFX, screen flash.                                                                                                             |
+| v0.28   | Ultimate charge system          | (was v0.26) UltimateCharge class on Tank. Charges by: dealing damage, taking damage, time elapsed. Charge rate and ultimate type defined per tank in tanks.yaml. HUD shows charge bar. |
+| v0.29   | Ultimate abilities (first pass) | (was v0.27) Light = speed burst, Medium = shield dome, Heavy = artillery strike (AoE), Scout = cloak + speed.                                                               |
+| v0.30   | Ultimate + pickup interactions  | (was v0.28) charge_boost, ultimate_amp, charge_rate_up pickups.                                                                                                             |
+| v0.31   | Ultimate visual feedback        | (was v0.29) Charge bar animation, activation VFX, screen flash.                                                                                                             |
 ---
 ### Phase 5 — AI Upgrade
 *Smarter, more varied opponents that use the full game system.*
 | Version | Milestone                  | Notes                                                                              |
 |---------|---------------------------|------------------------------------------------------------------------------------|
-| v0.30   | AI-vs-AI targeting        | (was v0.29) Replace player-only target_getter with nearest_enemy_getter. Free-for-all mode enabled. |
-| v0.31   | AI weapon awareness       | (was v0.30) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
-| v0.32   | AI elemental awareness    | (was v0.31) AI prioritizes targets with active status effects it can combo.        |
-| v0.33   | AI ultimate usage         | (was v0.32) AI activates ultimate when charge is full and combat conditions are met. |
-| v0.34   | AI difficulty tuning pass | (was v0.33) Full review across all modes, maps, and opponent counts.               |
+| v0.32   | AI-vs-AI targeting        | (was v0.30) Replace player-only target_getter with nearest_enemy_getter. Free-for-all mode enabled. |
+| v0.33   | AI weapon awareness       | (was v0.31) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
+| v0.34   | AI elemental awareness    | (was v0.32) AI prioritizes targets with active status effects it can combo.        |
+| v0.35   | AI ultimate usage         | (was v0.33) AI activates ultimate when charge is full and combat conditions are met. |
+| v0.36   | AI difficulty tuning pass | (was v0.34) Full review across all modes, maps, and opponent counts.               |
 ---
 ### Phase 6 — Progression & Campaign
 *Reason to keep playing. Bosses unlock into sandbox.*
 | Version | Milestone                       | Notes                                                                                                                             |
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| v0.35   | Full progression screen         | (was v0.34) Level, XP bar, visual unlock tree showing what's coming next.                                                         |
-| v0.36   | Match history + stats           | (was v0.35) Win/loss record, accuracy, damage dealt/taken per match.                                                              |
-| v0.37   | Achievement system              | (was v0.36) Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                          |
-| v0.38   | Boss tank encounters            | (was v0.37) Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
-| v0.39   | Campaign mode                   | (was v0.38) Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/. |
-| v0.40   | Sandbox unlocks from campaign   | (was v0.39) Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                       |
+| v0.37   | Full progression screen         | (was v0.35) Level, XP bar, visual unlock tree showing what's coming next.                                                         |
+| v0.38   | Match history + stats           | (was v0.36) Win/loss record, accuracy, damage dealt/taken per match.                                                              |
+| v0.39   | Achievement system              | (was v0.37) Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                          |
+| v0.40   | Boss tank encounters            | (was v0.38) Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
+| v0.41   | Campaign mode                   | (was v0.39) Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/. |
+| v0.42   | Sandbox unlocks from campaign   | (was v0.40) Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                       |
 ---
 ### Phase 7 — Online Multiplayer
 *The biggest lift on the roadmap. Significant infrastructure work.*
 *See architecture notes below before starting this phase.*
 | Version | Milestone                    | Notes                                                                                                                                                                                    |
 |---------|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.41   | Network architecture design  | (was v0.40) Choose model: peer-to-peer vs authoritative server. Recommendation: authoritative server (server owns state, clients send inputs only). Library candidates: python-socketio or Twisted. Write a design doc before any code. |
-| v0.42   | Input serialization          | (was v0.41) TankInput is already a clean dataclass — serializes trivially. This is the lucky part of the existing architecture.                                                          |
-| v0.43   | Game state sync              | (was v0.42) Server broadcasts world state each tick. Clients render received state. Lag compensation and client-side prediction are the hard parts.                                       |
-| v0.44   | Lobby + matchmaking          | (was v0.43) Room creation, join by code, player ready system.                                                                                                                            |
-| v0.45   | Online sandbox mode          | (was v0.44) 1v1 and free-for-all online. Campaign and progression stay local.                                                                                                            |
-| v0.46   | Online progression sync      | (was v0.45) Cloud save, cross-device profile.                                                                                                                                            |
+| v0.43   | Network architecture design  | (was v0.41) Choose model: peer-to-peer vs authoritative server. Recommendation: authoritative server (server owns state, clients send inputs only). Library candidates: python-socketio or Twisted. Write a design doc before any code. |
+| v0.44   | Input serialization          | (was v0.42) TankInput is already a clean dataclass — serializes trivially. This is the lucky part of the existing architecture.                                                          |
+| v0.45   | Game state sync              | (was v0.43) Server broadcasts world state each tick. Clients render received state. Lag compensation and client-side prediction are the hard parts.                                       |
+| v0.46   | Lobby + matchmaking          | (was v0.44) Room creation, join by code, player ready system.                                                                                                                            |
+| v0.47   | Online sandbox mode          | (was v0.45) 1v1 and free-for-all online. Campaign and progression stay local.                                                                                                            |
+| v0.48   | Online progression sync      | (was v0.46) Cloud save, cross-device profile.                                                                                                                                            |
 ---
 ### Phase 8 — Polish & Stretch
 | Version | Milestone                        | Notes                                                                                                                                                                                                                                                                      |
 |---------|----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.47   | Particle effects + tank tracks   | (was v0.46) Muzzle flash, bullet impact, explosion, status effect visuals. Tank tracks: emit track mark sprites at fixed intervals behind moving tanks, fade over ~3 seconds using alpha decay, stored in bounded deque. Gives Wii Play Tanks style trail effect.           |
-| v0.48   | Sprite art — toy/wooden aesthetic | (was v0.47) Replace placeholder rects with toy tank sprites. Reference: Wii Play Tanks. Chunky plastic tank bodies, wooden/material-appropriate obstacle textures, soft drop shadows under tanks and obstacles to sell "sitting on a table" feel. Material types (wood, brick, stone, steel) visually distinct. Asset-only change — no logic impact. |
-| v0.49   | Local multiplayer                | (was v0.48) Second human player on same keyboard or controller.                                                                                                                                                                                                            |
-| v0.50   | Controller support               | (was v0.49) Gamepad input via pygame joystick API. InputHandler abstraction makes this clean.                                                                                                                                                                              |
+| v0.49   | Particle effects + tank tracks   | (was v0.47) Muzzle flash, bullet impact, explosion, status effect visuals. Tank tracks: emit track mark sprites at fixed intervals behind moving tanks, fade over ~3 seconds using alpha decay, stored in bounded deque. Gives Wii Play Tanks style trail effect.           |
+| v0.50   | Sprite art — toy/wooden aesthetic | (was v0.48) Replace placeholder rects with toy tank sprites. Reference: Wii Play Tanks. Chunky plastic tank bodies, wooden/material-appropriate obstacle textures, soft drop shadows under tanks and obstacles to sell "sitting on a table" feel. Material types (wood, brick, stone, steel) visually distinct. Asset-only change — no logic impact. |
+| v0.51   | Local multiplayer                | (was v0.49) Second human player on same keyboard or controller.                                                                                                                                                                                                            |
+| v0.52   | Controller support               | (was v0.50) Gamepad input via pygame joystick API. InputHandler abstraction makes this clean.                                                                                                                                                                              |
 ---
 ## 💡 Backlog
 *Unscheduled. Revisit after Phase 4.*
@@ -106,6 +108,11 @@ the pickup/powerup system.*
 - Boss rush mode
 - Custom tank builder (mix stats within a point budget)
 - Destructible terrain that changes map layout mid-match
+- Ghost tank decoy pickup (spawns AI-controlled duplicate, attracts homing missiles, has own HP pool)
+- Invisibility pickup (tank becomes transparent, removed from AI targeting, homing loses lock, stealth music layer)
+- Shotgun blast weapon (6-8 pellets in tight cone, massive close-range damage, useless at distance)
+- Gravity well weapon (slow-moving orb that pulls nearby bullets and tanks, detonates after 3s)
+- Mine layer weapon (drops invisible mine at tank position, detonates on enemy contact)
 ---
 ## ⚠️ Architecture Notes
 ### Turret system (v0.15) decouples aim from movement
@@ -137,5 +144,5 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.24.0 — Elemental interactions completed;
-v0.25 elemental weapons content next on feature/elemental-weapons*
+*Last updated: v0.24.0 — Roadmap expanded with v0.25 weapon content drop,
+v0.25.5 random rolls, v0.26 utility weapons; phases 4–8 renumbered*
