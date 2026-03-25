@@ -111,6 +111,8 @@ class Tank:
         self._status_effects: dict = {}
         # Combat status effects (v0.23) — {name: StatusEffect}
         self._combat_effects: dict[str, StatusEffect] = {}
+        # Stun timer (v0.24) — when > 0, all input is suppressed
+        self._stun_timer: float = 0.0
 
         log.debug(
             "Tank created at (%.0f, %.0f) type=%s hp=%d spd=%.0f",
@@ -224,6 +226,33 @@ class Tank:
         Caller is responsible for collision response after this call.
         """
         if not self.is_alive:
+            return []
+
+        # Stun — suppress all input but still tick effects (v0.24)
+        if self._stun_timer > 0:
+            self._stun_timer -= dt
+            # Tick cooldowns so weapons are ready when stun ends
+            for i in range(len(self._slot_cooldowns)):
+                if self._slot_cooldowns[i] > 0:
+                    self._slot_cooldowns[i] -= dt
+            # Tick pickup status effects
+            self.tick_status_effects(dt)
+            # Tick combat effects (DoT still hurts during stun)
+            dot_damage = 0
+            expired_combat = []
+            for name, effect in self._combat_effects.items():
+                dot_damage += effect.update(dt)
+                if effect.is_expired:
+                    expired_combat.append(name)
+            for name in expired_combat:
+                del self._combat_effects[name]
+            if dot_damage > 0 and self.is_alive:
+                self.health = max(0, self.health - dot_damage)
+                if self.health <= 0:
+                    self.is_alive = False
+            # Zero velocity — tank is frozen in place
+            self.vx = 0.0
+            self.vy = 0.0
             return []
 
         self.tick_status_effects(dt)
@@ -382,6 +411,25 @@ class Tank:
         for eff in self._combat_effects.values():
             m *= eff.fire_rate_mult
         return m
+
+    def remove_combat_effect(self, effect_type: str) -> None:
+        """Remove a combat effect by name. No-op if not present."""
+        if effect_type in self._combat_effects:
+            del self._combat_effects[effect_type]
+            log.debug("Combat effect removed: %s", effect_type)
+
+    # ------------------------------------------------------------------
+    # Stun (v0.24 — elemental combos)
+    # ------------------------------------------------------------------
+
+    def apply_stun(self, duration: float) -> None:
+        """Stun the tank — no movement, turning, or firing for duration seconds."""
+        self._stun_timer = max(self._stun_timer, duration)
+        log.debug("Tank stunned for %.1fs at (%.0f, %.0f)", duration, self.x, self.y)
+
+    @property
+    def is_stunned(self) -> bool:
+        return self._stun_timer > 0
 
     @property
     def shield_hp(self) -> float:

@@ -808,6 +808,70 @@ def gen_music_game_over(sr: int) -> list[float]:
     return _arpeggio(sr, bpm, bars, bass, arp, pads, beat_dur=60 / bpm)
 
 
+def gen_sfx_steam_burst(sr: int) -> list[float]:
+    """White noise whoosh + sine sweep 100→800Hz, 0.4s."""
+    dur = 0.4
+    n = int(sr * dur)
+    out = [0.0] * n
+    for i in range(n):
+        t = i / sr
+        progress = t / dur
+        # White noise whoosh with envelope
+        env = math.sin(math.pi * progress)  # rise-fall envelope
+        noise = (random.random() * 2 - 1) * 0.5 * env
+        # Sine sweep 100→800Hz
+        freq = 100 + 700 * progress
+        sweep = math.sin(2 * math.pi * freq * t) * 0.4 * env
+        out[i] = max(-1.0, min(1.0, noise + sweep))
+    return out
+
+
+def gen_sfx_accelerated_burn(sr: int) -> list[float]:
+    """Crack + deep boom + sizzle, 0.35s."""
+    dur = 0.35
+    n = int(sr * dur)
+    out = [0.0] * n
+    for i in range(n):
+        t = i / sr
+        progress = t / dur
+        val = 0.0
+        # Initial crack — short burst of noise
+        if t < 0.03:
+            val += (random.random() * 2 - 1) * 0.8 * (1.0 - t / 0.03)
+        # Deep boom — low sine with decay
+        boom_env = math.exp(-t * 12)
+        val += math.sin(2 * math.pi * 60 * t) * 0.6 * boom_env
+        # Sizzle — filtered noise in tail
+        if t > 0.05:
+            sizzle_env = math.exp(-(t - 0.05) * 8)
+            val += (random.random() * 2 - 1) * 0.3 * sizzle_env
+        out[i] = max(-1.0, min(1.0, val))
+    return out
+
+
+def gen_sfx_deep_freeze(sr: int) -> list[float]:
+    """Click transient + crystalline ring + ice crack, 0.5s."""
+    dur = 0.5
+    n = int(sr * dur)
+    out = [0.0] * n
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        # Click transient
+        if t < 0.01:
+            val += (random.random() * 2 - 1) * 0.7 * (1.0 - t / 0.01)
+        # Crystalline ring — high sine with slow decay
+        ring_env = math.exp(-t * 4)
+        val += math.sin(2 * math.pi * 2400 * t) * 0.35 * ring_env
+        val += math.sin(2 * math.pi * 3600 * t) * 0.2 * ring_env
+        # Ice crack — mid-frequency burst at ~0.15s
+        if 0.12 < t < 0.2:
+            crack_env = math.sin(math.pi * (t - 0.12) / 0.08)
+            val += (random.random() * 2 - 1) * 0.5 * crack_env
+        out[i] = max(-1.0, min(1.0, val))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -838,6 +902,9 @@ def main() -> None:
         ("sfx_effect_poison.wav",       gen_sfx_effect_poison),
         ("sfx_effect_ice.wav",          gen_sfx_effect_ice),
         ("sfx_effect_electric.wav",     gen_sfx_effect_electric),
+        ("sfx_steam_burst.wav",         gen_sfx_steam_burst),
+        ("sfx_accelerated_burn.wav",    gen_sfx_accelerated_burn),
+        ("sfx_deep_freeze.wav",         gen_sfx_deep_freeze),
     ]
 
     print("--- SFX ---")

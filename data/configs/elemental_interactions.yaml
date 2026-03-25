@@ -1,0 +1,49 @@
+# data/configs/elemental_interactions.yaml
+#
+# Elemental combo reactions. When both "elements" are active on a tank
+# simultaneously, the combo triggers: both source effects are consumed,
+# and the "result" effect is applied.
+#
+# Fields:
+#   elements       - list of exactly 2 effect type strings (order doesn't matter)
+#   result_type    - what kind of reaction occurs: "aoe_burst", "instant_damage", "stun"
+#   damage         - direct damage dealt to the affected tank (0 for non-damaging combos)
+#   aoe_radius     - radius of AoE burst (0 if not an AoE reaction)
+#   aoe_damage     - damage dealt to OTHER entities in the AoE radius
+#   stun_duration  - seconds the target is completely stunned (0 if not a stun)
+#   color          - [R, G, B] for the combo's visual effect
+#   sfx_key        - key used for SFX lookup
+#   description    - human-readable label
+
+steam_burst:
+  elements: ["fire", "ice"]
+  result_type: aoe_burst
+  damage: 25
+  aoe_radius: 100
+  aoe_damage: 35
+  stun_duration: 0
+  color: [200, 200, 220]
+  sfx_key: steam_burst
+  description: "Fire + Ice = Steam Burst. Scalding cloud damages nearby tanks."
+
+accelerated_burn:
+  elements: ["poison", "fire"]
+  result_type: instant_damage
+  damage: 60
+  aoe_radius: 0
+  aoe_damage: 0
+  stun_duration: 0
+  color: [255, 140, 40]
+  sfx_key: accelerated_burn
+  description: "Poison + Fire = Accelerated Burn. Chemical ignition deals massive instant damage."
+
+deep_freeze:
+  elements: ["ice", "electric"]
+  result_type: stun
+  damage: 10
+  aoe_radius: 0
+  aoe_damage: 0
+  stun_duration: 3.0
+  color: [160, 220, 255]
+  sfx_key: deep_freeze
+  description: "Ice + Electric = Deep Freeze. Target completely immobilized."
