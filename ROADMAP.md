@@ -29,11 +29,12 @@ are completed or plans change.
 | v0.22.0 | AoE explosions, grenade launcher, partial stone destruction, cooldown HUD, pickup spawn validation, retroactive unlock backfill |
 | v0.23.0 | Combat status effects — FIRE burn DoT, POISON slow DoT, ICE movement slow, ELECTRIC fire rate reduction, StatusEffect class, VFX/SFX/music layers, HUD labels |
 | v0.24.0 | Elemental interactions — Steam Burst (fire+ice AoE), Accelerated Burn (poison+fire instant), Deep Freeze (ice+electric stun), ElementalResolver, combo VFX/SFX/HUD |
+| v0.25.0 | Six elemental + combat weapons — cryo round, poison shell, flamethrower, EMP blast, railgun (pierce), laser beam (hitscan + energy bar); raycast system; 18-level progression; WEAPON_STAT_MAX updated |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/elemental-weapons       | v0.25 — Elemental weapons content (flamethrower, cryo, poison shell, EMP) |
+| feature/random-weapons          | v0.25.5 — Random weapon rolls |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -44,7 +45,7 @@ materials.yaml was designed for this — this phase fills it in.*
 | ~~v0.22~~ | ~~Area of effect + explosions~~ | ✅ Completed v0.22.0                                                                                                                                                                |
 | ~~v0.23~~ | ~~Status effects~~          | ✅ Completed v0.23.0                                                                                                                                                                    |
 | ~~v0.24~~ | ~~Elemental interactions~~ | ✅ Completed v0.24.0                                                                                                                                                                     |
-| v0.25   | Elemental + combat weapons content | Flamethrower (fire, short-range AoE cone), Cryo round (ice, slows), Poison shell (DoT), EMP blast (electric, AoE), Railgun (fast piercing projectile, high damage, slow reload), Laser beam (hitscan, hold-to-fire with energy bar, instant line damage). 6 new weapons exercising the full Phase 3 elemental pipeline. Laser requires new raycast system in CollisionSystem. |
+| ~~v0.25~~ | ~~Elemental + combat weapons content~~ | ✅ Completed v0.25.0 |
 | v0.25.5 | Random weapon rolls              | Roguelike weapon selection: slot 1 always standard_shell, slots 2–3 randomly assigned from unlocked pool with weighted probability. WeaponRoller utility class. LoadoutScene shows random assignments with optional re-roll. AI tanks also get random loadouts. Weapon probability table driven by data/configs/weapon_weights.yaml. |
 | v0.26   | Area denial + utility weapons    | Glue gun (shoots ground pool that slows enemies, persists 30s, new GluePool entity), Lava gun (fire damage ground pool, area denial + DoT), Knockback gun (concussion blast, moderate damage + strong pushback force scaling with proximity). These need new entity types (ground pools) and knockback physics in CollisionSystem. |
 ---
@@ -144,5 +145,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.24.0 — Roadmap expanded with v0.25 weapon content drop,
-v0.25.5 random rolls, v0.26 utility weapons; phases 4–8 renumbered*
+*Last updated: v0.25.0 — Six elemental + combat weapons shipped; v0.25.5 random rolls next*

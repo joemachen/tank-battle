@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.24.0"
+GAME_VERSION: str = "v0.25.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -261,6 +261,8 @@ SFX_PICKUP_SPEED:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_
 SFX_PICKUP_RELOAD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_reload.wav")
 SFX_PICKUP_SHIELD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_shield.wav")
 SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_pop.wav")
+SFX_RAILGUN_FIRE:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_railgun_fire.wav")
+SFX_LASER_HUM:           str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_laser_hum.wav")
 
 # Combat status effect SFX (v0.23)
 SFX_EFFECT_FIRE:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav")
@@ -356,18 +358,24 @@ TANK_SELECT_COLORS: dict = {
 
 # Weapon type → card color lookup used by WeaponSelectScene
 WEAPON_CARD_COLORS: dict = {
-    "standard_shell": COLOR_GREEN,
-    "spread_shot":    COLOR_BLUE,
-    "bouncing_round": COLOR_YELLOW,
-    "homing_missile": COLOR_RED,
-    "grenade_launcher": (255, 120, 30),  # orange
+    "standard_shell":  COLOR_GREEN,
+    "spread_shot":     COLOR_BLUE,
+    "bouncing_round":  COLOR_YELLOW,
+    "homing_missile":  COLOR_RED,
+    "grenade_launcher": (255, 120, 30),   # orange
+    "cryo_round":      (100, 200, 255),   # ice blue  (v0.25)
+    "poison_shell":    (80, 220, 80),     # toxic green
+    "flamethrower":    (255, 80, 20),     # fire orange
+    "emp_blast":       (180, 130, 255),   # electric purple
+    "railgun":         (200, 200, 210),   # steel gray
+    "laser_beam":      (255, 60, 60),     # bright red
 }
 
 # Reference maxima for weapon stat bar normalisation (derived from weapons.yaml peak values)
 WEAPON_STAT_MAX: dict = {
     "damage":    70.0,    # grenade_launcher
-    "speed":    420.0,    # standard_shell
-    "fire_rate":  1.0,    # standard_shell
+    "speed":    800.0,    # railgun (v0.25)
+    "fire_rate":  6.0,    # flamethrower (v0.25)
     "max_range": 2400.0,  # bouncing_round
 }
 

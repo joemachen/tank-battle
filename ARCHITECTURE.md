@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.24.0*
+*Last updated: v0.25.0*
 
 ---
 
@@ -15,23 +15,23 @@ game/
   engine.py                         Main loop, scene registration, pygame init
   entities/
     __init__.py
-    bullet.py                       Projectile entity with bounce + range + AoE detonation
+    bullet.py                       Projectile entity with bounce + range + AoE detonation + pierce (v0.25)
     explosion.py                    AoE damage event with linear falloff + visual timer
     obstacle.py                     Destructible/indestructible arena wall + partial destruction
     pickup.py                       Collectible pickup with pulse animation
-    tank.py                         Tank entity, TankInput dataclass, status effects
+    tank.py                         Tank entity, TankInput dataclass, status effects, energy system (v0.25)
   scenes/
     __init__.py                     SceneManager — scene registry + transitions
     base_scene.py                   Abstract base scene interface
     game_over_scene.py              Match result + XP progression display
     game_scene.py                   Main gameplay arena orchestrator
-    loadout_scene.py                Unified hull/weapon/map selection screen
+    loadout_scene.py                Unified hull/weapon/map selection screen; _WEAPON_ORDER 11 entries (v0.25)
     map_select_scene.py             Deprecated v0.17.5 — merged into loadout
     menu_scene.py                   Main menu with synthwave grid background
     profile_select_scene.py         Four-slot profile picker
     settings_scene.py               Audio/display/controls/gameplay settings
     tank_select_scene.py            Deprecated v0.17.5 — merged into loadout
-    weapon_select_scene.py          Deprecated v0.17.5 — merged into loadout
+    weapon_select_scene.py          Deprecated v0.17.5 — merged into loadout; _WEAPON_ORDER 11 entries (v0.25)
   systems/
     __init__.py
     ai_controller.py                State machine AI with stuck recovery
@@ -43,12 +43,13 @@ game/
     pickup_spawner.py               Timed pickup spawn + lifetime management
     status_effect.py                StatusEffect class — tick damage, multipliers, expiry
     elemental_resolver.py           Elemental combo detector — scans tanks for effect pairs, triggers combos
+    raycast.py                      Hitscan raycast — line-vs-AABB + line-vs-circle; used by laser beam (v0.25)
     progression_manager.py          XP/level/unlock progression logic
   ui/
     __init__.py
     audio_manager.py                Singleton audio: SFX, music, volume control
     components.py                   ScrollingGrid, FadeTransition UI widgets
-    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels
+    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels + energy bar (v0.25)
   utils/
     __init__.py
     camera.py                       World-to-screen transform with lerp tracking
@@ -70,13 +71,13 @@ data/
     status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
     elemental_interactions.yaml     Three elemental combo definitions (steam_burst, accelerated_burn, deep_freeze)
     tanks.yaml                      Four tank type definitions
-    weapons.yaml                    Five weapon type definitions
+    weapons.yaml                    Eleven weapon type definitions (v0.25)
   maps/
     map_01.yaml                     "Headquarters" — default theme, 8 obstacles (incl. 2 reinforced_steel)
     map_02.yaml                     "Dunes" — desert theme, 7 obstacles
     map_03.yaml                     "Tundra" — snow theme, 12 obstacles
   progression/
-    xp_table.yaml                   10-level XP thresholds + unlock schedule
+    xp_table.yaml                   18-level XP thresholds + unlock schedule (v0.25)
   themes/
     default.yaml                    Classic green arena
     desert.yaml                     Sandy tan arena
@@ -105,6 +106,7 @@ tests/
   test_explosion.py                 AoE damage, grenade bullet, stone destruction, cooldown
   test_status_effects.py            StatusEffect class, Tank combat effects, collision integration, HUD
   test_elemental_interactions.py    ElementalResolver, tank stun, remove_combat_effect, combo effects
+  test_elemental_weapons.py         Cryo, poison, flamethrower, EMP, railgun pierce, raycast, laser beam energy (v0.25)
   test_pickup_spawner.py            Spawn timing + caps + lifetime + obstacle blocking
   test_profile_select.py            Profile slot management
   test_progression.py               XP table progression
@@ -135,6 +137,8 @@ assets/
     sfx_tank_collision.wav          Heavy clunk, 0.3s
     sfx_tank_explosion.wav          Big explosion, 1.2s
     sfx_explosion.wav                AoE explosion, 0.6s (v0.22)
+    sfx_railgun_fire.wav            Deep electromagnetic thump + crack, 0.4s (v0.25)
+    sfx_laser_hum.wav               Sustained 220+330 Hz hum, 2s loopable layer (v0.25)
     sfx_tank_fire.wav               Sharp crack, 0.35s
     sfx_ui_confirm.wav              Two-tone chime, 0.22s
     sfx_ui_navigate.wav             Short blip, 0.08s
@@ -205,7 +209,7 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `update(dt: float)` | `list` | Advance state; returns fire event list `[("fire", x, y, angle, weapon_config)]` |
+| `update(dt: float)` | `list` | Advance state; returns event list: `[("fire", x, y, angle, weapon_type)]` for projectiles or `[("beam", x, y, angle, weapon_type)]` for hitscan (v0.25) |
 | `take_damage(amount: int, damage_type: DamageType = DamageType.STANDARD)` | `None` | Apply damage (shield absorbs first); sets is_alive=False at 0 HP |
 | `load_weapons(configs: list[dict])` | `None` | Equip up to MAX_WEAPON_SLOTS weapons; rejects empty/duplicates |
 | `cycle_weapon(direction: int)` | `None` | Cycle active slot (+1 next, -1 prev) with wrapping |
@@ -224,6 +228,9 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 | active_slot | int | Index into weapon_slots |
 | weapon_slots | list[dict] | Shallow copy of weapon slot configs |
 | slot_cooldowns | list[float] | Per-slot cooldown timers in seconds remaining (v0.22) |
+| energy | float | Current energy level (v0.25) |
+| energy_ratio | float | energy / energy_max; 0 when no hitscan weapon equipped (v0.25) |
+| is_firing_beam | bool | True when actively firing a hitscan beam this frame (v0.25) |
 | status_effects | dict | Read-only access to _status_effects |
 
 #### Status Effect System
@@ -268,6 +275,19 @@ Combat effects are ticked in `update()` after `tick_status_effects(dt)`. DoT dam
 `_stun_timer: float` — when >0, `update()` early-returns with `[]` (no fire events, zero velocity), but still ticks cooldowns, combat effects (DoT still hurts), and pickup effects. Stun block is placed at top of `update()` after `is_alive` check, before any input processing.
 
 Multiplier stacking: combat speed/turn/fire_rate multipliers are products of all active effects. Pickup speed_boost stacks multiplicatively on top of combat speed mult.
+
+#### Tank Energy System (v0.25)
+
+Powers hitscan weapons (laser beam). Initialized by `load_weapons()` when any slot has
+`hitscan: true`. Fields: `_energy`, `_energy_max`, `_energy_drain_rate`,
+`_energy_recharge_rate`, `_energy_min_to_fire`, `_beam_dps`, `_is_firing_beam`.
+
+`update()` fire block splits on `active_weapon.get("hitscan", False)`:
+- **Hitscan branch**: drains `_energy_drain_rate * dt` per frame while `intent.fire` and
+  energy ≥ `_energy_min_to_fire`; emits `("beam", x, y, angle, type)` event; recharges
+  at `_energy_recharge_rate * dt` when not firing.
+- **Projectile branch**: existing cooldown-timer fire logic; passively recharges energy
+  if max > 0.
 
 ### StatusEffect (game/systems/status_effect.py)
 
@@ -355,7 +375,7 @@ Player combo text: fading notification in upper third of screen, 2s duration. Tr
 Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 ```
 
-`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type), `damage_type`, `tracking_strength`, `aoe_radius`, `aoe_falloff`.
+`config` keys: `speed`, `damage`, `max_bounces`, `max_range`, `type` (weapon_type), `damage_type`, `tracking_strength`, `aoe_radius`, `aoe_falloff`, `pierce_count`, `hitscan`.
 
 #### Public Fields
 
@@ -376,6 +396,8 @@ Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 | aoe_radius | float | AoE blast radius in px (0 = non-explosive) (v0.22) |
 | aoe_falloff | float | Damage multiplier at edge of radius (v0.22) |
 | is_explosive | bool | True if aoe_radius > 0 (v0.22) |
+| pierce_count | int | Remaining pierce-throughs (0 = destroyed on first hit) (v0.25) |
+| _pierced_tanks | set | ids of tanks already hit — prevents double-hit on same pierce (v0.25) |
 
 #### Public Methods
 
@@ -679,7 +701,7 @@ explosive bullet detonations (v0.22).
 
 | Method | What It Checks | Side Effects |
 |--------|---------------|--------------|
-| `_bullets_vs_tanks(bullets, tanks)` | Circle-circle: bullet vs each tank (skips owner) | Calls `tank.take_damage()`, `bullet.destroy()` |
+| `_bullets_vs_tanks(bullets, tanks)` | Circle-circle: bullet vs each tank (skips owner) | Calls `tank.take_damage()`, `bullet.destroy()` (or pierce: decrement pierce_count, skip destroy) (v0.25) |
 | `_bullets_vs_obstacles(bullets, obstacles)` | Circle-rect: bullet vs each obstacle | Calls `obs.take_damage()`, `bullet.destroy()` or `_reflect_bullet()` |
 | `_tanks_vs_obstacles(tanks, obstacles)` | Circle-rect: tank vs each obstacle | Calls `_push_tank_out()` — repositioning only, no damage |
 | `_tanks_vs_tanks(tanks)` | Circle-circle: all unique tank pairs | Calls `_push_tanks_apart()` — repositioning only, no damage |
@@ -728,6 +750,27 @@ If `bounces_remaining == 0`, bullet is destroyed instead.
 circles_overlap(pos_a, r_a, pos_b, r_b) -> bool
 circle_vs_rect(circle_pos, radius, rect) -> bool
 ```
+
+---
+
+### RaycastSystem (game/systems/raycast.py) (v0.25)
+
+Standalone module — no class, three functions.
+
+```python
+cast_ray(origin_x, origin_y, angle_deg, max_range, tanks, obstacles,
+         ignore_tank=None) -> dict
+```
+
+Returns `{"hit": bool, "hit_type": "tank"|"obstacle"|"none", "entity": ...,
+"hit_x": ..., "hit_y": ..., "distance": ..., "end_x": ..., "end_y": ...}`.
+
+Tests obstacles first (line-vs-AABB slab method via `_line_vs_aabb`), then tanks
+(line-vs-circle quadratic via `_line_vs_circle`). Returns nearest hit within
+`max_range`. Dead entities and `ignore_tank` are skipped.
+
+Used by `GameplayScene._resolve_beam()` every frame the laser beam is active.
+`TANK_RADIUS` imported locally from `game.systems.collision` to avoid circular import.
 
 ---
 
@@ -1196,6 +1239,16 @@ WeaponConfig:
   spread_count: int      # (spread_shot only) Number of projectiles
   spread_angle: int      # (spread_shot only) Degrees between bullets
   tracking_strength: float  # (homing_missile only) Turn rate multiplier
+  damage_type: str       # DamageType name: standard/fire/ice/poison/electric/explosive
+  aoe_radius: int        # (emp_blast, grenade_launcher) Blast radius in px
+  aoe_falloff: float     # (aoe weapons) Damage multiplier at edge
+  pierce_count: int      # (railgun) Remaining tank pierces (bullet survives first N hits)
+  hitscan: bool          # (laser_beam) Uses raycast instead of projectile
+  energy_max: float      # (hitscan) Energy pool capacity
+  energy_drain_rate: float    # (hitscan) Energy drained per second while firing
+  energy_recharge_rate: float # (hitscan) Energy recharged per second while idle
+  energy_min_to_fire: float   # (hitscan) Minimum energy required to start firing
+  dps: float             # (hitscan) Damage per second applied on hit
 ```
 
 Example:
@@ -1210,9 +1263,14 @@ standard_shell:
   description: "Reliable all-purpose round."
 ```
 
-All defined: standard_shell (25/420/1.0), spread_shot (15/380/0.8, 3 at 18deg),
+All defined: standard_shell (25/420/1.0), spread_shot (15/380/0.8, 3 at 12deg),
 bouncing_round (20/400/0.9, 3 bounces), homing_missile (50/240/0.4, tracking 2.5),
-grenade_launcher (70/280/0.25, 120px AoE, 0.25 falloff) (v0.22).
+grenade_launcher (70/280/0.25, 120px AoE) (v0.22),
+cryo_round (20/360/0.7, ice), poison_shell (12/350/0.8, poison),
+flamethrower (6/300/6.0, fire, 3-spread 12deg, 250px range),
+emp_blast (30/300/0.3, electric, 140px AoE),
+railgun (65/800/0.2, pierce_count=1),
+laser_beam (hitscan=true, dps=45, energy_max=100, drain=30/s, recharge=15/s) (v0.25).
 
 ---
 
@@ -1319,7 +1377,9 @@ Example:
 
 All levels: 1(0), 2(150), 3(350, medium_tank), 4(700, spread_shot),
 5(1200, heavy_tank), 6(2000, bouncing_round), 7(3000, scout_tank),
-8(4500, homing_missile), 9(6500, grenade_launcher), 10(9000).
+8(4500, homing_missile), 9(6500, grenade_launcher), 10(9000, cryo_round),
+11(12000, poison_shell), 12(15500, flamethrower), 13(19500), 14(23000, emp_blast),
+15(28000), 16(33000, railgun), 17(39500), 18(46000, laser_beam) (v0.25).
 
 ---
 
@@ -1392,7 +1452,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SCREEN_HEIGHT | 720 | |
 | FPS | 60 | |
 | TITLE | "Tank Battle" | |
-| GAME_VERSION | "v0.22.0" | |
+| GAME_VERSION | "v0.25.0" | |
 | CAMERA_LERP_SPEED | 6.0 | Smooth follow rate |
 | SUPPORTED_RESOLUTIONS | [(1280,720), (1600,900), (1920,1080)] | |
 
@@ -1441,8 +1501,8 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | BULLET_COLOR | (255, 220, 50) | Fallback; prefer DAMAGE_TYPE_BULLET_COLORS |
 | BULLET_DEFAULT_MAX_RANGE | 1400.0 | |
 | DAMAGE_TYPE_BULLET_COLORS | dict | Per-DamageType RGB: STANDARD yellow, EXPLOSIVE orange, FIRE red, ICE blue, POISON green, ELECTRIC purple (v0.21) |
-| WEAPON_CARD_COLORS | dict | Per-weapon RGB for UI |
-| WEAPON_STAT_MAX | dict | Stat bar max values |
+| WEAPON_CARD_COLORS | dict | Per-weapon RGB — 11 weapons (v0.25) |
+| WEAPON_STAT_MAX | dict | damage:70, speed:800, fire_rate:6.0, max_range:2400 (v0.25) |
 | MAX_BAR_WIDTH | 120 | UI stat bar width |
 | TANK_STAT_MAX | dict | Tank stat bar max values |
 
@@ -1523,6 +1583,8 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SFX_DEEP_FREEZE | assets/sounds/sfx_deep_freeze.wav | Deep freeze combo SFX (v0.24) |
 | COMBO_SFX | dict | Maps combo name → SFX WAV path (v0.24) |
 | PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
+| SFX_RAILGUN_FIRE | str | assets/sounds/sfx_railgun_fire.wav (v0.25) |
+| SFX_LASER_HUM | str | assets/sounds/sfx_laser_hum.wav — looping layer (v0.25) |
 
 ### UI / HUD
 
