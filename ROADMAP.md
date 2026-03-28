@@ -31,11 +31,12 @@ are completed or plans change.
 | v0.24.0 | Elemental interactions — Steam Burst (fire+ice AoE), Accelerated Burn (poison+fire instant), Deep Freeze (ice+electric stun), ElementalResolver, combo VFX/SFX/HUD |
 | v0.25.0 | Six elemental + combat weapons — cryo round, poison shell, flamethrower, EMP blast, railgun (pierce), laser beam (hitscan + energy bar); raycast system; 18-level progression; WEAPON_STAT_MAX updated |
 | v0.25.5 | Random weapon rolls + player-chosen slot 1 — WeaponRoller, weighted random slots 2-3, slot 1 player cycles from unlocked pool, hull-lock flow, re-roll, AI random loadouts + weapon cycling, rarity labels, weapon tips |
+| v0.26.0 | Utility weapons — glue gun (area slow pool), lava gun (fire DPS pool), concussion blast (knockback); GroundPool entity, GroundPoolSystem, tank knockback physics, 21-level progression, 14 total weapons |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/utility-weapons         | v0.26 — Area denial + utility weapons |
+| feature/ultimate-charge         | v0.28 — Ultimate charge system |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -48,7 +49,7 @@ materials.yaml was designed for this — this phase fills it in.*
 | ~~v0.24~~ | ~~Elemental interactions~~ | ✅ Completed v0.24.0                                                                                                                                                                     |
 | ~~v0.25~~ | ~~Elemental + combat weapons content~~ | ✅ Completed v0.25.0 |
 | ~~v0.25.5~~ | ~~Random weapon rolls~~ | ✅ Completed v0.25.5 |
-| v0.26   | Area denial + utility weapons    | Glue gun (shoots ground pool that slows enemies, persists 30s, new GluePool entity), Lava gun (fire damage ground pool, area denial + DoT), Knockback gun (concussion blast, moderate damage + strong pushback force scaling with proximity). These need new entity types (ground pools) and knockback physics in CollisionSystem. |
+| ~~v0.26~~ | ~~Area denial + utility weapons~~ | ✅ Completed v0.26.0 |
 ---
 ### Phase 4 — Ultimates System
 *Overwatch-style ultimates that charge over time and interact with
@@ -146,4 +147,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.25.5 — Random weapon rolls + player-chosen slot 1 shipped; v0.26 utility weapons next*
+*Last updated: v0.26.0 — Utility weapons shipped (glue gun, lava gun, concussion blast); v0.28 ultimate charge next*

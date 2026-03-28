@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.25.5*
+*Last updated: v0.26.0*
 
 ---
 
@@ -15,11 +15,12 @@ game/
   engine.py                         Main loop, scene registration, pygame init
   entities/
     __init__.py
-    bullet.py                       Projectile entity with bounce + range + AoE detonation + pierce (v0.25)
+    bullet.py                       Projectile entity with bounce + range + AoE detonation + pierce + pool spawn + knockback (v0.26)
     explosion.py                    AoE damage event with linear falloff + visual timer
+    ground_pool.py                  Persistent floor hazard — slow and/or DPS area effect (v0.26)
     obstacle.py                     Destructible/indestructible arena wall + partial destruction
     pickup.py                       Collectible pickup with pulse animation
-    tank.py                         Tank entity, TankInput dataclass, status effects, energy system (v0.25)
+    tank.py                         Tank entity, TankInput dataclass, status effects, energy system, knockback physics (v0.26)
   scenes/
     __init__.py                     SceneManager — scene registry + transitions
     base_scene.py                   Abstract base scene interface
@@ -35,7 +36,7 @@ game/
   systems/
     __init__.py
     ai_controller.py                State machine AI with stuck recovery + weapon cycling timer (v0.25.5)
-    collision.py                    All entity collision detection + resolution
+    collision.py                    All entity collision detection + resolution; 3-tuple return (v0.26)
     debris_system.py                Particle burst on obstacle destruction
     input_handler.py                Keyboard/mouse input → TankInput
     match_calculator.py             MatchResult factory + XP formula
@@ -44,6 +45,7 @@ game/
     status_effect.py                StatusEffect class — tick damage, multipliers, expiry
     elemental_resolver.py           Elemental combo detector — scans tanks for effect pairs, triggers combos
     raycast.py                      Hitscan raycast — line-vs-AABB + line-vs-circle; used by laser beam (v0.25)
+    ground_pool_system.py           Applies ground pool effects (slow, fire DPS) to tanks each frame (v0.26)
     weapon_roller.py                Weighted random weapon selection for loadout slots (v0.25.5)
     progression_manager.py          XP/level/unlock progression logic
   ui/
@@ -72,14 +74,14 @@ data/
     status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
     elemental_interactions.yaml     Three elemental combo definitions (steam_burst, accelerated_burn, deep_freeze)
     tanks.yaml                      Four tank type definitions
-    weapons.yaml                    Eleven weapon type definitions + tips field (v0.25.5)
-    weapon_weights.yaml             Probability weights for random weapon rolls (v0.25.5)
+    weapons.yaml                    Fourteen weapon type definitions + tips field (v0.26)
+    weapon_weights.yaml             Probability weights for random weapon rolls; 13 entries (v0.26)
   maps/
     map_01.yaml                     "Headquarters" — default theme, 8 obstacles (incl. 2 reinforced_steel)
     map_02.yaml                     "Dunes" — desert theme, 7 obstacles
     map_03.yaml                     "Tundra" — snow theme, 12 obstacles
   progression/
-    xp_table.yaml                   18-level XP thresholds + unlock schedule (v0.25)
+    xp_table.yaml                   21-level XP thresholds + unlock schedule (v0.26)
   themes/
     default.yaml                    Classic green arena
     desert.yaml                     Sandy tan arena
@@ -109,6 +111,7 @@ tests/
   test_status_effects.py            StatusEffect class, Tank combat effects, collision integration, HUD
   test_elemental_interactions.py    ElementalResolver, tank stun, remove_combat_effect, combo effects
   test_elemental_weapons.py         Cryo, poison, flamethrower, EMP, railgun pierce, raycast, laser beam energy (v0.25)
+  test_ground_pool.py               GroundPool entity, GroundPoolSystem, knockback, pool fields, weapon configs (v0.26)
   test_pickup_spawner.py            Spawn timing + caps + lifetime + obstacle blocking
   test_profile_select.py            Profile slot management
   test_progression.py               XP table progression
@@ -142,6 +145,9 @@ assets/
     sfx_explosion.wav                AoE explosion, 0.6s (v0.22)
     sfx_railgun_fire.wav            Deep electromagnetic thump + crack, 0.4s (v0.25)
     sfx_reroll.wav                  Ascending arpeggio C5→E5→G5→C6 + ding, 0.4s (v0.25.5)
+    sfx_glue_splat.wav              Wet sticky impact + descending sine + squelch, 0.25s (v0.26)
+    sfx_lava_sizzle.wav             Crackling noise + low hiss + bubble pop, 0.4s (v0.26)
+    sfx_concussion_hit.wav          Sharp crack + deep bass thump + whooshy air, 0.35s (v0.26)
     sfx_laser_hum.wav               Sustained 220+330 Hz hum, 2s loopable layer (v0.25)
     sfx_tank_fire.wav               Sharp crack, 0.35s
     sfx_ui_confirm.wav              Two-tone chime, 0.22s
@@ -270,6 +276,7 @@ Separate from pickup buffs. Storage: `_combat_effects: dict[str, StatusEffect]` 
 | `has_any_combat_effect` | `bool` | True if any combat effect is active |
 | `remove_combat_effect(effect_type)` | `None` | Delete a combat effect by key (used by ElementalResolver to consume sources) |
 | `apply_stun(duration)` | `None` | Set stun timer to `max(_stun_timer, duration)` — shorter stun never overrides longer |
+| `apply_knockback(force, angle_deg)` | `None` | Apply impulse: adds to `_knockback_vx/_vy` via cos/sin; decays exponentially in `update()` (v0.26) |
 | `is_stunned` | `bool` | True when `_stun_timer > 0` |
 
 Combat effects are ticked in `update()` after `tick_status_effects(dt)`. DoT damage is applied directly to health (bypasses shield). Effects expire when `duration <= 0`.
@@ -279,6 +286,21 @@ Combat effects are ticked in `update()` after `tick_status_effects(dt)`. DoT dam
 `_stun_timer: float` — when >0, `update()` early-returns with `[]` (no fire events, zero velocity), but still ticks cooldowns, combat effects (DoT still hurts), and pickup effects. Stun block is placed at top of `update()` after `is_alive` check, before any input processing.
 
 Multiplier stacking: combat speed/turn/fire_rate multipliers are products of all active effects. Pickup speed_boost stacks multiplicatively on top of combat speed mult.
+
+#### Tank Knockback System (v0.26)
+
+Impulse-based displacement via `_knockback_vx`, `_knockback_vy` (pixels/sec). Applied by
+`apply_knockback(force, angle_deg)` — converts polar impulse to cartesian and adds to
+velocity (stacks with existing knockback).
+
+In `update()`, knockback displacement runs **after** normal movement, **before** velocity
+computation. Exponential decay: `v *= math.exp(-8.0 * dt)` each frame. Snaps to zero when
+`abs(vx) < 0.5 and abs(vy) < 0.5`. Tanks under knockback can still drive and fire — it is
+additive, not a stun.
+
+`pool_slow` status: applied by `GroundPoolSystem` with 0.15 s duration (self-clears shortly
+after leaving pool). Checked in `update()` alongside `speed_boost`: multiplies
+`effective_speed` by the status value (< 1.0 = slow).
 
 #### Tank Energy System (v0.25)
 
@@ -590,6 +612,57 @@ Per-type SFX: `PICKUP_COLLECT_SFX` dict maps pickup type → SFX path (health, s
 
 ---
 
+### GroundPool (game/entities/ground_pool.py) (v0.26)
+
+Persistent floor hazard created when a glue or lava projectile impacts.
+
+#### Construction
+
+```python
+GroundPool(x: float, y: float, pool_type: str, radius: float,
+           duration: float, slow_mult: float, dps: float,
+           color: tuple, owner=None)
+```
+
+#### Public Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| x, y | float | World-space center |
+| radius | float | Effect radius in px |
+| pool_type | str | "glue" or "lava" |
+| duration | float | Seconds remaining |
+| max_duration | float | Initial duration (for fade calc) |
+| slow_mult | float | Speed multiplier for tanks in pool (< 1.0 = slow) |
+| dps | float | Damage per second (0 for glue) |
+| color | tuple | (R, G, B) for rendering |
+| owner | object | Firing tank (immune to own pool) |
+| is_alive | bool | False when duration expires |
+
+#### Public Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `update(dt)` | `None` | Decrement duration; set `is_alive = False` when expired |
+| `contains(px, py)` | `bool` | True if point within radius (strict `<`) |
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| age_ratio | float | 0.0 = new, 1.0 = expired (for fade-out rendering) |
+| position | tuple | (x, y) |
+
+Pool types:
+- **glue**: `slow_mult=0.35`, `dps=0`, `duration=25s`, `radius=60px` — pure area denial
+- **lava**: `slow_mult=0.6`, `dps=20`, `duration=15s`, `radius=50px` — fire damage + slow; applies fire combat effect
+
+Rendering: drawn after arena floor, before pickups/obstacles. Glue = yellow-green circle with darker center + bubble dots. Lava = orange circle with pulsing glow + bright core. Both fade as `age_ratio` → 1.0.
+
+Cap: `MAX_GROUND_POOLS = 15`. Oldest pools pruned when cap exceeded.
+
+---
+
 ## 3. Systems
 
 ### AIController (game/systems/ai_controller.py)
@@ -702,12 +775,13 @@ PICKUP_RADIUS: float = 14.0
 
 ```python
 update(tanks: list, bullets: list, obstacles: list, pickups: list,
-       explosions: list = None) -> tuple[list, list]
+       explosions: list = None) -> tuple[list, list, list]
 ```
 
-Returns `(events, new_explosions)` — events is a list of audio event strings and
+Returns `(events, new_explosions, new_pools)` — events is a list of audio event strings and
 stat-tracking tuples; new_explosions is a list of Explosion entities created by
-explosive bullet detonations (v0.22).
+explosive bullet detonations (v0.22); new_pools is a list of GroundPool entities
+created by pool-spawning bullet impacts (v0.26).
 
 #### Dispatch Methods
 
@@ -729,6 +803,7 @@ explosive bullet detonations (v0.22).
 | `"obstacle_destroy"` | str | Bullet destroys obstacle |
 | `"tank_collision"` | str | Two tanks overlap |
 | `"explosion"` | str | Explosive bullet detonates (v0.22) |
+| `"concussion_hit"` | str | Concussion blast knockback applied to tank (v0.26) |
 | `("bullet_hit_tank_stat", owner, damage, damage_type)` | tuple | Every bullet-tank hit (for stat tracking); damage_type is DamageType enum (v0.21) |
 
 Note: `_tanks_vs_obstacles` and `_tanks_vs_pickups` emit no audio events.
@@ -736,6 +811,18 @@ Note: `_tanks_vs_obstacles` and `_tanks_vs_pickups` emit no audio events.
 Explosive bullets (`is_explosive=True`) create Explosion entities instead of dealing
 direct damage. Three detonation triggers: tank contact, obstacle contact, max_range reached.
 Explosions are resolved via `explosion.resolve_damage()` which returns additional events.
+
+#### Pool Spawning (v0.26)
+
+Pool-spawning bullets (`spawns_pool=True`) create GroundPool entities on impact (tank or obstacle hit)
+or at max range (`_pool_detonated` flag). Pools are added to `_pending_pools` and returned
+in the 3-tuple. Pool fields on Bullet: `pool_type`, `pool_radius`, `pool_duration`, `pool_slow`,
+`pool_dps`, `pool_color`.
+
+#### Knockback Application (v0.26)
+
+After damage and combat effects, bullets with `knockback_force > 0` apply impulse to surviving
+tanks via `tank.apply_knockback(force, angle)`. Direction: atan2 from bullet→tank (pushes away).
 
 #### Combat Effect Application (v0.23)
 
@@ -783,6 +870,27 @@ Tests obstacles first (line-vs-AABB slab method via `_line_vs_aabb`), then tanks
 
 Used by `GameplayScene._resolve_beam()` every frame the laser beam is active.
 `TANK_RADIUS` imported locally from `game.systems.collision` to avoid circular import.
+
+---
+
+### GroundPoolSystem (game/systems/ground_pool_system.py) (v0.26)
+
+Applies ground pool effects to tanks each frame. Separate from CollisionSystem because pools are floor effects, not solid objects.
+
+```python
+GroundPoolSystem()
+system.update(pools: list, tanks: list, dt: float) -> list[str]  # returns audio events
+```
+
+Per-frame logic for each alive pool × alive tank (owner immune):
+- If `pool.slow_mult < 1.0`: `tank.apply_status("pool_slow", slow_mult, 0.15)` — expires 0.15s after leaving pool
+- If `pool.dps > 0`: `tank.take_damage(max(1, int(dps * dt)), DamageType.FIRE)` + `tank.apply_combat_effect("fire", config)` — fire status loads lazily from `status_effects.yaml`
+
+Tank integration: `pool_slow` checked in `Tank.update()` alongside `speed_boost`:
+```python
+if self.has_status("pool_slow"):
+    effective_speed *= self._status_effects["pool_slow"]["value"]
+```
 
 ---
 
