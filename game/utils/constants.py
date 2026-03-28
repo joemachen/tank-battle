@@ -127,6 +127,8 @@ EXPLOSION_VISUAL_DURATION: float = 0.4           # seconds
 
 # Rubble cap (v0.22)
 MAX_RUBBLE_PIECES: int = 20
+# Ground pool cap (v0.26)
+MAX_GROUND_POOLS: int = 15
 # half-diagonal of tank body (25px) + border thickness (4px)
 # TECH DEBT: when tanks have different hull sizes, this must become per-tank (read from config)
 TANK_MOVEMENT_MARGIN: int = 29
@@ -265,6 +267,10 @@ SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_
 SFX_RAILGUN_FIRE:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_railgun_fire.wav")
 SFX_LASER_HUM:           str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_laser_hum.wav")
 SFX_REROLL:              str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_reroll.wav")
+# Ground pool + knockback SFX (v0.26)
+SFX_GLUE_SPLAT:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_glue_splat.wav")
+SFX_LAVA_SIZZLE:         str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_lava_sizzle.wav")
+SFX_CONCUSSION_HIT:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_concussion_hit.wav")
 
 # Combat status effect SFX (v0.23)
 SFX_EFFECT_FIRE:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav")
@@ -371,6 +377,9 @@ WEAPON_CARD_COLORS: dict = {
     "emp_blast":       (180, 130, 255),   # electric purple
     "railgun":         (200, 200, 210),   # steel gray
     "laser_beam":      (255, 60, 60),     # bright red
+    "glue_gun":        (180, 200, 80),    # yellow-green   (v0.26)
+    "lava_gun":        (255, 100, 30),    # molten orange  (v0.26)
+    "concussion_blast": (160, 180, 200),  # steel blue-gray (v0.26)
 }
 
 # Reference maxima for weapon stat bar normalisation (derived from weapons.yaml peak values)

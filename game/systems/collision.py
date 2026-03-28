@@ -65,6 +65,7 @@ class CollisionSystem:
 
     def __init__(self) -> None:
         self._pending_explosions: list = []
+        self._pending_pools: list = []
         log.debug("CollisionSystem initialized.")
 
     def update(self, tanks: list, bullets: list, obstacles: list, pickups: list,
@@ -84,6 +85,7 @@ class CollisionSystem:
             Tuple events:  ("bullet_hit_tank_stat", owner, damage, damage_type)
         """
         self._pending_explosions = []
+        self._pending_pools = []
         events: list = []
         events.extend(self._bullets_vs_tanks(bullets, tanks))
         events.extend(self._bullets_vs_obstacles(bullets, obstacles))
@@ -96,7 +98,7 @@ class CollisionSystem:
             if exp.is_alive:
                 events.extend(exp.resolve_damage(tanks, obstacles))
 
-        return events, self._pending_explosions
+        return events, self._pending_explosions, self._pending_pools
 
     # ------------------------------------------------------------------
     # Collision pair handlers
@@ -128,6 +130,13 @@ class CollisionSystem:
             tank.take_damage(bullet.damage, damage_type=bullet.damage_type)
             if tank.is_alive:
                 _apply_combat_effect(tank, bullet.damage_type)
+                # Knockback (v0.26)
+                kb_force = getattr(bullet, 'knockback_force', 0)
+                if isinstance(kb_force, (int, float)) and kb_force > 0:
+                    kb_angle = math.degrees(math.atan2(
+                        tank.y - bullet.y, tank.x - bullet.x
+                    ))
+                    tank.apply_knockback(kb_force, kb_angle)
             # Pierce or destroy (v0.25)
             pierce_count = getattr(bullet, 'pierce_count', 0)
             if isinstance(pierce_count, int) and pierce_count > 0:
@@ -136,6 +145,19 @@ class CollisionSystem:
                 log.debug("Bullet pierced tank — %d pierce(s) remaining", bullet.pierce_count)
             else:
                 bullet.destroy()
+                # Spawn ground pool at impact point (v0.26)
+                if getattr(bullet, 'spawns_pool', False):
+                    from game.entities.ground_pool import GroundPool
+                    self._pending_pools.append(GroundPool(
+                        x=bullet.x, y=bullet.y,
+                        pool_type=bullet.pool_type,
+                        radius=bullet.pool_radius,
+                        duration=bullet.pool_duration,
+                        slow_mult=bullet.pool_slow,
+                        dps=bullet.pool_dps,
+                        color=bullet.pool_color,
+                        owner=bullet.owner,
+                    ))
             log.debug("Bullet hit tank. Damage=%d type=%s, Tank HP=%d",
                       bullet.damage, bullet.damage_type.name, tank.health)
             return True
@@ -155,6 +177,9 @@ class CollisionSystem:
                     else:
                         if tank.is_alive:
                             events.append("bullet_hit_tank")
+                            # Concussion blast SFX (v0.26)
+                            if getattr(bullet, 'knockback_force', 0) > 0:
+                                events.append("concussion_hit")
                         else:
                             events.append("tank_explosion")
                         # Stat tuple: caller uses bullet.owner to attribute
@@ -192,6 +217,19 @@ class CollisionSystem:
                     else:
                         bullet.destroy()
                         obs.take_damage(bullet.damage, damage_type=bullet.damage_type.name.lower())
+                        # Spawn ground pool at impact point (v0.26)
+                        if getattr(bullet, 'spawns_pool', False):
+                            from game.entities.ground_pool import GroundPool
+                            self._pending_pools.append(GroundPool(
+                                x=bullet.x, y=bullet.y,
+                                pool_type=bullet.pool_type,
+                                radius=bullet.pool_radius,
+                                duration=bullet.pool_duration,
+                                slow_mult=bullet.pool_slow,
+                                dps=bullet.pool_dps,
+                                color=bullet.pool_color,
+                                owner=bullet.owner,
+                            ))
                     if was_alive and not obs.is_alive:
                         events.append("obstacle_destroy")
                     else:

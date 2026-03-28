@@ -92,3 +92,18 @@ levels:
     xp_required: 46000
     unlocks:
       - laser_beam
+
+  - level: 19
+    xp_required: 54000
+    unlocks:
+      - glue_gun
+
+  - level: 20
+    xp_required: 63000
+    unlocks:
+      - lava_gun
+
+  - level: 21
+    xp_required: 73000
+    unlocks:
+      - concussion_blast
