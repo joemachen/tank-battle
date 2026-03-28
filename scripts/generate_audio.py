@@ -872,6 +872,83 @@ def gen_sfx_deep_freeze(sr: int) -> list[float]:
     return out
 
 
+def gen_sfx_railgun_fire(sr: int) -> list[float]:
+    """Heavy electromagnetic thump + metallic ring + supersonic crack. 0.4s."""
+    dur = 0.4
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        # Deep bass hit — 30 Hz, very short
+        if t < 0.02:
+            bass_env = 1.0 - t / 0.02
+            val += math.sin(2 * math.pi * 30 * t) * 0.9 * bass_env
+        # Metallic ring — 600 Hz + 900 Hz harmonics, slow decay
+        ring_env = math.exp(-t * 10)
+        val += math.sin(2 * math.pi * 600 * t) * 0.5 * ring_env
+        val += math.sin(2 * math.pi * 900 * t) * 0.3 * ring_env
+        # Supersonic crack — short noise burst delayed by 0.05s
+        if 0.05 < t < 0.08:
+            crack_env = math.sin(math.pi * (t - 0.05) / 0.03)
+            val += noise() * 0.8 * crack_env
+        out.append(val)
+    # Normalize to 0.9
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.9 for s in out]
+
+
+def gen_sfx_laser_hum(sr: int) -> list[float]:
+    """Sustained energy hum — 220 Hz + 330 Hz power chord with 3 Hz LFO. 2s loopable."""
+    dur = 2.0
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        # Amplitude LFO at 3 Hz for organic breathing effect
+        lfo = 0.8 + 0.2 * math.sin(2 * math.pi * 3 * t)
+        val = math.sin(2 * math.pi * 220 * t) * 0.5
+        val += math.sin(2 * math.pi * 330 * t) * 0.4
+        # Subtle upper harmonic for texture
+        val += math.sin(2 * math.pi * 660 * t) * 0.15
+        out.append(val * lfo)
+    # Normalize to 0.6 (layer sound — shouldn't overpower gameplay)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.6 for s in out]
+
+
+def gen_sfx_reroll(sr: int) -> list[float]:
+    """Slot-machine spin — rapid ascending arpeggio C5→E5→G5→C6 + final ding."""
+    dur = 0.4
+    n = _seconds(dur)
+    out = []
+    # C5=523, E5=659, G5=784, C6=1047
+    notes = [523.0, 659.0, 784.0, 1047.0]
+    note_dur = 0.06  # each note lasts 60ms
+    ding_start = len(notes) * note_dur  # ding starts after last note
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        if t < ding_start:
+            # Which note is active?
+            note_idx = min(int(t / note_dur), len(notes) - 1)
+            freq = notes[note_idx]
+            note_t = t - note_idx * note_dur
+            env = adsr(note_t, note_dur, attack=0.003, decay=0.02, sustain_level=0.6, release=0.02)
+            val = square(t, freq, duty=0.4) * 0.4 * env
+            val += sine(t, freq * 2) * 0.15 * env
+        else:
+            # Final ding — bright sine at 1200 Hz
+            ding_t = t - ding_start
+            ding_dur = dur - ding_start
+            env = adsr(ding_t, ding_dur, attack=0.005, decay=0.05, sustain_level=0.4, release=0.1)
+            val = sine(t, 1200.0) * 0.6 * env
+            val += sine(t, 2400.0) * 0.15 * env
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -905,6 +982,9 @@ def main() -> None:
         ("sfx_steam_burst.wav",         gen_sfx_steam_burst),
         ("sfx_accelerated_burn.wav",    gen_sfx_accelerated_burn),
         ("sfx_deep_freeze.wav",         gen_sfx_deep_freeze),
+        ("sfx_railgun_fire.wav",        gen_sfx_railgun_fire),
+        ("sfx_laser_hum.wav",           gen_sfx_laser_hum),
+        ("sfx_reroll.wav",              gen_sfx_reroll),
     ]
 
     print("--- SFX ---")

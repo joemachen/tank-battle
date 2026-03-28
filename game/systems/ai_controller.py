@@ -124,6 +124,10 @@ class AIController:
         # Pickup awareness (v0.20) — injected by the scene
         self._pickups_getter = None
 
+        # Weapon cycling timer (v0.25.5) — AI switches weapons periodically
+        self._weapon_cycle_timer: float = random.uniform(4.0, 8.0)
+        self._pending_weapon_cycle: int = 0
+
         log.debug(
             "AIController created. Difficulty: reaction=%.2f acc=%.2f agg=%.2f evade_thresh=%.2f",
             self.reaction_time, self.accuracy, self.aggression, self.evasion_threshold,
@@ -192,6 +196,12 @@ class AIController:
                     self._recovery_direction, _POST_RECOVERY_IMMUNITY,
                 )
 
+        # Weapon cycling timer (v0.25.5) — AI switches weapons periodically
+        self._weapon_cycle_timer -= dt
+        if self._weapon_cycle_timer <= 0:
+            self._weapon_cycle_timer = random.uniform(4.0, 8.0)
+            self._pending_weapon_cycle = random.choice([-1, 1])
+
     # ------------------------------------------------------------------
     # Controller interface (called by Tank.update each frame)
     # ------------------------------------------------------------------
@@ -224,14 +234,28 @@ class AIController:
             return self._recovery_input()
 
         if self._state == AIState.PATROL:
-            return self._patrol_input()
+            result = self._patrol_input()
         elif self._state == AIState.PURSUE:
-            return self._pursue_input(target)
+            result = self._pursue_input(target)
         elif self._state == AIState.ATTACK:
-            return self._attack_input(target)
+            result = self._attack_input(target)
         elif self._state == AIState.EVADE:
-            return self._evade_input(target)
-        return TankInput()
+            result = self._evade_input(target)
+        else:
+            result = TankInput()
+
+        # Inject pending weapon cycle (v0.25.5)
+        if self._pending_weapon_cycle != 0:
+            result = TankInput(
+                throttle=result.throttle,
+                rotate=result.rotate,
+                fire=result.fire,
+                turret_angle=result.turret_angle,
+                cycle_weapon=self._pending_weapon_cycle,
+            )
+            self._pending_weapon_cycle = 0
+
+        return result
 
     # ------------------------------------------------------------------
     # State transitions

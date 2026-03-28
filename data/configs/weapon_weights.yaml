@@ -1,0 +1,19 @@
+# data/configs/weapon_weights.yaml
+#
+# Probability weights for random weapon assignment.
+# Higher weight = more likely to appear in slots 2-3.
+# standard_shell is excluded — it's always locked to slot 1.
+#
+# Design principle: utility/fun weapons are common,
+# powerful/specialized weapons are rare.
+
+spread_shot:       30    # common — solid general purpose
+bouncing_round:    25    # common — fun ricochet play
+cryo_round:        20    # moderate — good crowd control
+poison_shell:      20    # moderate — sustained damage
+flamethrower:      18    # moderate — close range specialist
+emp_blast:         15    # uncommon — area denial specialist
+grenade_launcher:  12    # uncommon — high AoE damage
+homing_missile:    10    # rare — powerful tracking
+railgun:           8     # rare — high skill ceiling
+laser_beam:        6     # very rare — unique hitscan mechanic

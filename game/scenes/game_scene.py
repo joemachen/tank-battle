@@ -30,7 +30,13 @@ from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController
-from game.systems.collision import CollisionSystem
+from game.systems.collision import (
+    CollisionSystem,
+    _DAMAGE_TYPE_TO_EFFECT,
+    _get_status_configs,
+)
+from game.systems.raycast import cast_ray
+from game.systems.weapon_roller import WeaponRoller
 from game.systems.debris_system import DebrisSystem
 from game.systems.elemental_resolver import ElementalResolver
 from game.systems.input_handler import InputHandler
@@ -111,6 +117,8 @@ from game.utils.constants import (
     SFX_TANK_COLLISION,
     SFX_TANK_EXPLOSION,
     SFX_TANK_FIRE,
+    SFX_RAILGUN_FIRE,
+    SFX_LASER_HUM,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
     TANK_BARREL_WIDTH,
@@ -170,6 +178,9 @@ class GameplayScene(BaseScene):
         self._damage_dealt: int = 0
         self._damage_taken: int = 0
         self._match_start_time: float = 0.0
+        # Laser beam rendering (v0.25) — rebuilt each frame
+        self._active_beams: list[dict] = []
+        self._player_was_firing_beam: bool = False
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -219,18 +230,13 @@ class GameplayScene(BaseScene):
             tank_position_getter=lambda: self._tank.position,
         )
 
-        # Build weapon config lookup used by _spawn_bullet
+        # Build weapon config lookup — load ALL weapons (AI needs the full pool)
         all_weapon_data = load_yaml(WEAPONS_CONFIG)
         self._weapon_configs = {}
-        for wtype in weapon_types:
-            cfg = dict(all_weapon_data.get(wtype, {}))
+        for wtype, wcfg in all_weapon_data.items():
+            cfg = dict(wcfg)
             cfg.setdefault("type", wtype)
             self._weapon_configs[wtype] = cfg
-        # Ensure standard_shell is always available (AI uses it)
-        if "standard_shell" not in self._weapon_configs:
-            cfg = dict(all_weapon_data.get("standard_shell", {}))
-            cfg.setdefault("type", "standard_shell")
-            self._weapon_configs["standard_shell"] = cfg
 
         # Player tank
         tank_config = get_tank_config(tank_type, TANKS_CONFIG)
@@ -296,9 +302,20 @@ class GameplayScene(BaseScene):
             controller.set_owner(ai_tank)
             controller.set_obstacles_getter(live_obstacles)
             controller.set_pickups_getter(lambda: self._pickup_spawner.active_pickups)
-            # AI always uses standard_shell
-            std_cfg = self._weapon_configs["standard_shell"]
-            ai_tank.load_weapons([std_cfg])
+            # AI gets random loadout from all non-hitscan weapons (v0.25.5)
+            ai_weapon_types = [
+                w for w in self._weapon_configs
+                if not self._weapon_configs[w].get("hitscan", False)
+            ]
+            ai_roller = WeaponRoller(unlocked_weapons=ai_weapon_types)
+            ai_loadout = ai_roller.roll()
+            ai_weapon_cfgs = [
+                self._weapon_configs[w] for w in ai_loadout
+                if w and w in self._weapon_configs
+            ]
+            if not ai_weapon_cfgs:
+                ai_weapon_cfgs = [self._weapon_configs["standard_shell"]]
+            ai_tank.load_weapons(ai_weapon_cfgs)
             self._ai_tanks.append(ai_tank)
             self._ai_controllers.append(controller)
             self._ai_surfs.append(_build_tank_surface(COLOR_RED))
@@ -397,12 +414,31 @@ class GameplayScene(BaseScene):
 
         audio = get_audio_manager()
 
+        # Clear beam list — rebuilt each frame from tank events
+        self._active_beams = []
+
         # Player tank update
         for event in self._tank.update(dt):
             if event[0] == "fire":
                 self._spawn_bullet(event, self._tank)
                 self._shots_fired += 1
-                audio.play_sfx(SFX_TANK_FIRE)
+                weapon_type = event[4]
+                if weapon_type == "railgun":
+                    audio.play_sfx(SFX_RAILGUN_FIRE)
+                else:
+                    audio.play_sfx(SFX_TANK_FIRE)
+            elif event[0] == "beam":
+                _, bx, by, bangle, btype = event
+                weapon_cfg = self._weapon_configs.get(btype, {})
+                self._resolve_beam(self._tank, bx, by, bangle, weapon_cfg, dt)
+
+        # Laser beam SFX state machine (v0.25)
+        firing_now = self._tank.is_firing_beam
+        if firing_now and not self._player_was_firing_beam:
+            audio.start_music_layer("laser_hum", SFX_LASER_HUM)
+        elif not firing_now and self._player_was_firing_beam:
+            audio.stop_music_layer("laser_hum", fade_ms=200)
+        self._player_was_firing_beam = firing_now
 
         # AI tanks update (tick() for stuck detection before tank.update())
         for ai_tank, controller in zip(self._ai_tanks, self._ai_controllers):
@@ -413,6 +449,10 @@ class GameplayScene(BaseScene):
                 if event[0] == "fire":
                     self._spawn_bullet(event, ai_tank)
                     audio.play_sfx(SFX_TANK_FIRE)
+                elif event[0] == "beam":
+                    _, bx, by, bangle, btype = event
+                    weapon_cfg = self._weapon_configs.get(btype, {})
+                    self._resolve_beam(ai_tank, bx, by, bangle, weapon_cfg, dt)
 
         # Physics: advance bullets, clamp all tanks to arena bounds
         all_tanks = [self._tank] + self._ai_tanks
@@ -696,6 +736,52 @@ class GameplayScene(BaseScene):
                 bullet.set_targets_getter(lambda: [self._tank] + self._ai_tanks)
             self._bullets.append(bullet)
 
+    def _resolve_beam(self, owner, x: float, y: float, angle: float, weapon_cfg: dict, dt: float) -> None:
+        """Resolve a hitscan beam for one frame — apply damage and store for rendering."""
+        max_range = float(weapon_cfg.get("max_range", 2000))
+        dps = float(weapon_cfg.get("dps", 45))
+        damage_type_str = weapon_cfg.get("damage_type", "fire")
+
+        from game.utils.damage_types import parse_damage_type
+        damage_type = parse_damage_type(damage_type_str)
+
+        # Start beam from barrel tip
+        rad = math.radians(angle)
+        start_x = x + math.cos(rad) * TANK_BARREL_LENGTH
+        start_y = y + math.sin(rad) * TANK_BARREL_LENGTH
+
+        all_tanks = [self._tank] + self._ai_tanks
+        result = cast_ray(start_x, start_y, angle, max_range,
+                          all_tanks, self._obstacles, ignore_tank=owner)
+
+        # Store for rendering this frame
+        beam_color = DAMAGE_TYPE_BULLET_COLORS.get(damage_type.name, (255, 60, 20))
+        self._active_beams.append({
+            "start_x": start_x,
+            "start_y": start_y,
+            "end_x": result["end_x"],
+            "end_y": result["end_y"],
+            "color": beam_color,
+        })
+
+        frame_damage = max(1, int(dps * dt))
+
+        if result["hit_type"] == "tank":
+            entity = result["entity"]
+            entity.take_damage(frame_damage, damage_type=damage_type)
+            if entity.is_alive:
+                effect_key = _DAMAGE_TYPE_TO_EFFECT.get(damage_type)
+                if effect_key:
+                    cfg = _get_status_configs().get(effect_key)
+                    if cfg:
+                        entity.apply_combat_effect(effect_key, cfg)
+            if owner is self._tank:
+                self._damage_dealt += frame_damage
+
+        elif result["hit_type"] == "obstacle":
+            entity = result["entity"]
+            entity.take_damage(frame_damage, damage_type=damage_type_str)
+
     # ------------------------------------------------------------------
     # Draw
     # ------------------------------------------------------------------
@@ -724,6 +810,7 @@ class GameplayScene(BaseScene):
                                self._speed_trail_history.get(id(ai_tank)))
 
         _draw_bullets(surface, self._bullets, self._camera)
+        _draw_beams(surface, self._active_beams, self._camera)
         _draw_explosions(surface, self._explosions, self._camera)
         _draw_combo_visuals(surface, self._combo_visuals, self._camera)
 
@@ -1093,6 +1180,37 @@ def _draw_bullets(surface: pygame.Surface, bullets: list, camera: Camera) -> Non
             dtype_name = bullet.damage_type.name if hasattr(bullet.damage_type, 'name') else "STANDARD"
             color = DAMAGE_TYPE_BULLET_COLORS.get(dtype_name, BULLET_COLOR)
             pygame.draw.circle(surface, color, (int(sx), int(sy)), BULLET_RADIUS)
+            # Railgun trail — fast bullets get a short motion trail (v0.25)
+            if bullet.speed >= 700:
+                trail_len = 20
+                trail_end_x = sx - bullet._dx * trail_len
+                trail_end_y = sy - bullet._dy * trail_len
+                trail_overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+                pygame.draw.line(trail_overlay, (*color, 120),
+                                 (int(sx), int(sy)),
+                                 (int(trail_end_x), int(trail_end_y)), 2)
+                surface.blit(trail_overlay, (0, 0))
+
+
+def _draw_beams(surface: pygame.Surface, beams: list, camera: Camera) -> None:
+    """Draw laser beam lines from barrel tip to impact point (v0.25)."""
+    for beam in beams:
+        sx1, sy1 = camera.world_to_screen(beam["start_x"], beam["start_y"])
+        sx2, sy2 = camera.world_to_screen(beam["end_x"], beam["end_y"])
+        color = beam["color"]
+
+        # Core beam — 2px bright line
+        pygame.draw.line(surface, color,
+                         (int(sx1), int(sy1)), (int(sx2), int(sy2)), 2)
+
+        # Glow — wider line at lower alpha
+        glow_overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.line(glow_overlay, (*color, 60),
+                         (int(sx1), int(sy1)), (int(sx2), int(sy2)), 6)
+        surface.blit(glow_overlay, (0, 0))
+
+        # Impact point spark
+        pygame.draw.circle(surface, (255, 255, 200), (int(sx2), int(sy2)), 4)
 
 
 def _draw_explosions(surface: pygame.Surface, explosions: list, camera: Camera) -> None:

@@ -18,10 +18,10 @@ Flow:
 Panel navigation:
   TAB              — cycle focus to next panel (wrapping)
   Hull / Map panel: LEFT/RIGHT also switch panels
-  Weapons panel:    LEFT/RIGHT cycle weapon for the focused slot
+  Weapons panel:    UP/DOWN moves between slots, R re-rolls (once)
 
 Within Hull panel:   UP/DOWN selects tank (only unlocked tanks)
-Within Weapons panel: UP/DOWN moves between slots, LEFT/RIGHT cycles weapon
+Within Weapons panel: UP/DOWN moves between slots; slot 1 fixed, slots 2-3 random
 Within Map panel:    UP/DOWN selects map
 ENTER / SPACE — confirm and start match (always, regardless of focused panel)
 ESC — return to MainMenuScene
@@ -31,8 +31,11 @@ import os
 
 import pygame
 
+import random
+
 from game.scenes.base_scene import BaseScene
 from game.systems.progression_manager import ProgressionManager
+from game.systems.weapon_roller import WeaponRoller
 from game.ui.audio_manager import get_audio_manager
 from game.utils.config_loader import load_yaml
 from game.utils.constants import (
@@ -56,6 +59,7 @@ from game.utils.constants import (
     SCENE_MENU,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SFX_REROLL,
     SFX_UI_CONFIRM,
     SFX_UI_NAVIGATE,
     TANK_BARREL_COLOR,
@@ -68,6 +72,7 @@ from game.utils.constants import (
     TANK_STAT_MAX,
     WEAPON_CARD_COLORS,
     WEAPON_STAT_MAX,
+    WEAPON_WEIGHTS_CONFIG,
     WEAPONS_CONFIG,
     XP_TABLE_CONFIG,
 )
@@ -82,7 +87,19 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _TANK_ORDER: list[str] = ["light_tank", "medium_tank", "heavy_tank", "scout_tank"]
-_WEAPON_ORDER: list[str] = ["standard_shell", "spread_shot", "bouncing_round", "homing_missile", "grenade_launcher"]
+_WEAPON_ORDER: list[str] = [
+    "standard_shell",
+    "spread_shot",
+    "bouncing_round",
+    "homing_missile",
+    "grenade_launcher",
+    "cryo_round",
+    "poison_shell",
+    "flamethrower",
+    "emp_blast",
+    "railgun",
+    "laser_beam",
+]
 _MAP_NAMES: list[str] = ["map_01", "map_02", "map_03"]
 
 _TANK_STATS: list[tuple[str, str]] = [
@@ -133,6 +150,40 @@ _PREVIEW_H: int = 180
 
 _COLOR_DIM: tuple = (80, 80, 85)
 _COLOR_LOCKED_OVERLAY: tuple = (0, 0, 0, 150)
+
+_ROLL_ANIM_DURATION: float = 0.5
+_ROLL_ANIM_STEPS: int = 8
+
+
+def _get_rarity(weight: int) -> tuple[str, tuple]:
+    """Return (label, color) based on weapon weight from weapon_weights.yaml."""
+    if weight >= 25:
+        return ("COMMON", (160, 160, 160))
+    if weight >= 18:
+        return ("UNCOMMON", (80, 200, 80))
+    if weight >= 12:
+        return ("RARE", (80, 140, 255))
+    if weight >= 8:
+        return ("EPIC", (180, 80, 255))
+    return ("LEGENDARY", (255, 180, 40))
+
+
+def _wrap_text(text: str, font, max_width: int) -> list[str]:
+    """Simple word-wrap for a pygame font."""
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        if font.size(test)[0] <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +249,11 @@ class LoadoutScene(BaseScene):
         self._slot_selections: list[str | None] = [None] * MAX_WEAPON_SLOTS
         self._unlocked_weapons: set = set()
         self._weapon_configs: dict = {}
+        self._weapon_roller: WeaponRoller | None = None
+        self._has_rerolled: bool = False
+        self._roll_anim_timer: float = 0.0
+        self._hull_locked: bool = False
+        self._weapons_revealed: bool = False
 
         # Map panel state
         self._map_cursor: int = 0
@@ -272,7 +328,11 @@ class LoadoutScene(BaseScene):
                 self._tank_cursor = i
                 break
 
-        self._load_weapon_defaults()
+        self._weapon_roller = WeaponRoller(list(self._unlocked_weapons))
+        self._has_rerolled = False
+        self._hull_locked = False
+        self._weapons_revealed = False
+        self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
 
         get_audio_manager().play_music(MUSIC_MENU)
         log.info(
@@ -296,18 +356,35 @@ class LoadoutScene(BaseScene):
         key = event.key
 
         if key == pygame.K_ESCAPE:
-            self.manager.switch_to(SCENE_MENU)
+            if self._hull_locked:
+                self._reset_to_hull()
+            else:
+                self.manager.switch_to(SCENE_MENU)
             return
 
         if key in (pygame.K_RETURN, pygame.K_SPACE):
-            self._confirm()
+            if self._panel == LOADOUT_PANEL_HULL and not self._hull_locked:
+                self._lock_hull_and_reveal()
+            else:
+                self._confirm()
             return
 
         if key == pygame.K_TAB:
+            is_shift = event.mod & pygame.KMOD_SHIFT
+            if self._panel == LOADOUT_PANEL_HULL and not self._hull_locked and not is_shift:
+                # Forward TAB from hull locks + reveals + focuses weapons
+                self._lock_hull_and_reveal()
+                return
             if event.mod & pygame.KMOD_SHIFT:
-                self._panel = (self._panel - 1) % LOADOUT_PANEL_COUNT
+                new = (self._panel - 1) % LOADOUT_PANEL_COUNT
+                if new == LOADOUT_PANEL_WEAPONS and not self._hull_locked:
+                    new = (new - 1) % LOADOUT_PANEL_COUNT
+                self._panel = new
             else:
-                self._panel = (self._panel + 1) % LOADOUT_PANEL_COUNT
+                new = (self._panel + 1) % LOADOUT_PANEL_COUNT
+                if new == LOADOUT_PANEL_WEAPONS and not self._hull_locked:
+                    new = (new + 1) % LOADOUT_PANEL_COUNT
+                self._panel = new
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
             return
 
@@ -319,6 +396,8 @@ class LoadoutScene(BaseScene):
             self._handle_map(key)
 
     def _handle_hull(self, key: int) -> None:
+        if self._hull_locked:
+            return  # Hull is locked — no navigation
         unlocked = [t for t in _TANK_ORDER if t in self._unlocked_tanks]
         if not unlocked:
             return
@@ -331,7 +410,6 @@ class LoadoutScene(BaseScene):
                 ui = 0
             ui = (ui - 1) % len(unlocked)
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
-            self._load_weapon_defaults()
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
             cur = _TANK_ORDER[self._tank_cursor] if self._tank_cursor < len(_TANK_ORDER) else unlocked[0]
@@ -341,22 +419,21 @@ class LoadoutScene(BaseScene):
                 ui = 0
             ui = (ui + 1) % len(unlocked)
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
-            self._load_weapon_defaults()
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     def _handle_weapons(self, key: int) -> None:
+        if not self._weapons_revealed:
+            return
         if key in (pygame.K_UP, pygame.K_w):
             self._slot_focus = (self._slot_focus - 1) % MAX_WEAPON_SLOTS
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
             self._slot_focus = (self._slot_focus + 1) % MAX_WEAPON_SLOTS
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_LEFT, pygame.K_a):
-            self._cycle_slot(self._slot_focus, -1)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_RIGHT, pygame.K_d):
-            self._cycle_slot(self._slot_focus, +1)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key == pygame.K_r and not self._has_rerolled:
+            self._roll_weapons()
+            self._has_rerolled = True
+            get_audio_manager().play_sfx(SFX_REROLL)
 
     def _handle_map(self, key: int) -> None:
         if key in (pygame.K_UP, pygame.K_w):
@@ -371,7 +448,8 @@ class LoadoutScene(BaseScene):
     # ------------------------------------------------------------------
 
     def update(self, dt: float) -> None:
-        pass
+        if self._roll_anim_timer > 0:
+            self._roll_anim_timer -= dt
 
     # ------------------------------------------------------------------
     # Draw
@@ -394,12 +472,15 @@ class LoadoutScene(BaseScene):
         self._draw_xp_bar(surface)
         self._draw_confirm_button(surface)
 
-        # Hint
+        # Hint — context-sensitive
         font_hint = pygame.font.SysFont(None, 20)
-        hint = font_hint.render(
-            "TAB  Switch Panel     \u2191\u2193  Select     \u2190\u2192  Cycle (Weapons)     ENTER  Start     ESC  Back",
-            True, _COLOR_DIM,
-        )
+        if not self._hull_locked:
+            hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     ESC  Back"
+        elif self._panel == LOADOUT_PANEL_WEAPONS:
+            hint_text = "TAB  Switch Panel     \u2191\u2193  Select     R  Re-Roll     ENTER  Start     ESC  Unlock Hull"
+        else:
+            hint_text = "TAB  Switch Panel     \u2191\u2193  Select     ENTER  Start     ESC  Unlock Hull"
+        hint = font_hint.render(hint_text, True, _COLOR_DIM)
         surface.blit(hint, ((SCREEN_WIDTH - hint.get_width()) // 2, SCREEN_HEIGHT - 20))
 
     # ------------------------------------------------------------------
@@ -469,6 +550,12 @@ class LoadoutScene(BaseScene):
         div_y = row_y + 4
         pygame.draw.line(surface, (55, 55, 60), (cx + 12, div_y), (cx + _PANEL_W - 12, div_y))
 
+        # Locked indicator
+        if self._hull_locked:
+            lock_font = pygame.font.SysFont(None, 20)
+            lock_surf = lock_font.render("LOCKED", True, COLOR_NEON_PINK)
+            surface.blit(lock_surf, (cx + _PANEL_W - lock_surf.get_width() - 12, cy + 12))
+
         # Stat bars for selected tank
         sel_cfg = self._tank_configs.get(self._selected_tank, {})
         bar_color = TANK_SELECT_COLORS.get(self._selected_tank, COLOR_GREEN)
@@ -481,6 +568,19 @@ class LoadoutScene(BaseScene):
 
         font_slot = pygame.font.SysFont(None, 24)
         font_wep = pygame.font.SysFont(None, 26)
+        font_rarity = pygame.font.SysFont(None, 16)
+
+        # Subtitle when weapons not yet revealed
+        if not self._weapons_revealed:
+            hint_font = pygame.font.SysFont(None, 18)
+            hint_surf = hint_font.render("select hull first", True, (100, 100, 105))
+            surface.blit(hint_surf, (cx + 12, cy + 30))
+
+        # Load weights for rarity display
+        weights = getattr(self._weapon_roller, '_weights', {}) if self._weapon_roller else {}
+
+        # During roll animation, pick random display names that cycle rapidly
+        animating = self._roll_anim_timer > 0 and self._weapons_revealed
 
         slot_row_y = cy + 40
         slot_row_h = 52
@@ -500,10 +600,25 @@ class LoadoutScene(BaseScene):
             num_surf = font_slot.render(slot_num, True, badge_col)
             surface.blit(num_surf, (cx + 14, slot_row_y + (slot_row_h - num_surf.get_height()) // 2))
 
-            # Weapon name (or "— empty —")
-            if wtype:
-                wlabel = wtype.replace("_", " ").title()
-                wcolor = WEAPON_CARD_COLORS.get(wtype, COLOR_WHITE)
+            # Determine display weapon (animation spins slots 2-3)
+            if animating and i > 0 and self._weapon_roller and self._weapon_roller.pool_size > 0:
+                display_wtype = random.choice(self._weapon_roller._pool)
+            else:
+                display_wtype = wtype
+
+            # Weapon name
+            if i == 0:
+                # Slot 1 is always fixed
+                wlabel = "Standard Shell (FIXED)"
+                wcolor = _COLOR_DIM
+                wname_col = (130, 130, 135)
+            elif not self._weapons_revealed:
+                wlabel = "? ? ?"
+                wcolor = _COLOR_DIM
+                wname_col = (80, 80, 85)
+            elif display_wtype:
+                wlabel = display_wtype.replace("_", " ").title()
+                wcolor = WEAPON_CARD_COLORS.get(display_wtype, COLOR_WHITE)
                 wname_col = COLOR_WHITE if is_focused_slot else (170, 170, 175)
             else:
                 wlabel = "— empty —"
@@ -511,10 +626,18 @@ class LoadoutScene(BaseScene):
                 wname_col = (80, 80, 85)
 
             wname_surf = font_wep.render(wlabel, True, wname_col)
-            surface.blit(wname_surf, (cx + 34, slot_row_y + (slot_row_h - wname_surf.get_height()) // 2))
+            name_y = slot_row_y + 6
+            surface.blit(wname_surf, (cx + 34, name_y))
+
+            # Rarity label below weapon name (slots 2-3 only, revealed + not animating)
+            if i > 0 and wtype and self._weapons_revealed and not animating:
+                w = weights.get(wtype, 10)
+                rarity_label, rarity_color = _get_rarity(w)
+                rarity_surf = font_rarity.render(rarity_label, True, rarity_color)
+                surface.blit(rarity_surf, (cx + 34, name_y + wname_surf.get_height() + 1))
 
             # Colored dot — neon pink when focused, weapon color otherwise
-            if wtype or is_focused_slot:
+            if display_wtype or is_focused_slot:
                 dot_col = COLOR_NEON_PINK if is_focused_slot else wcolor
                 pygame.draw.circle(
                     surface, dot_col,
@@ -523,17 +646,40 @@ class LoadoutScene(BaseScene):
 
             slot_row_y += slot_row_h
 
+        # Re-roll prompt / hint
+        reroll_y = slot_row_y + 2
+        if self._weapons_revealed:
+            if not self._has_rerolled:
+                reroll_surf = font_slot.render("Press R to Re-Roll", True, COLOR_NEON_PINK)
+            else:
+                reroll_surf = font_slot.render("Re-Roll Used", True, _COLOR_DIM)
+            surface.blit(reroll_surf, (cx + 14, reroll_y))
+
         # Divider
-        div_y = slot_row_y + 4
+        div_y = reroll_y + 20 + 6
         pygame.draw.line(surface, (55, 55, 60), (cx + 12, div_y), (cx + _PANEL_W - 12, div_y))
 
         # Stat bars for focused slot's weapon
-        focused_wtype = self._slot_selections[self._slot_focus] if focused else self._slot_selections[0]
+        focused_wtype = (
+            self._slot_selections[self._slot_focus]
+            if (focused and self._weapons_revealed) else None
+        )
         stat_y = div_y + 10
         if focused_wtype:
             wcfg = self._weapon_configs.get(focused_wtype, {})
             bar_col = WEAPON_CARD_COLORS.get(focused_wtype, COLOR_GREEN)
             self._draw_stat_bars(surface, cx + 12, stat_y, wcfg, _WEAPON_STATS, _norm_weapon, bar_col)
+
+            # Weapon tip below stat bars
+            tip = wcfg.get("tips", "")
+            if tip:
+                tip_font = pygame.font.SysFont(None, 18)
+                tip_max_w = _PANEL_W - 24
+                tip_y = stat_y + len(_WEAPON_STATS) * _STAT_ROW_H + 8
+                for line in _wrap_text(tip, tip_font, tip_max_w):
+                    tip_surf = tip_font.render(line, True, (160, 160, 165))
+                    surface.blit(tip_surf, (cx + 12, tip_y))
+                    tip_y += tip_surf.get_height() + 2
         else:
             ph_font = pygame.font.SysFont(None, 22)
             ph = ph_font.render("No weapon selected", True, _COLOR_DIM)
@@ -720,7 +866,40 @@ class LoadoutScene(BaseScene):
         self._slot_selections[slot_idx] = choices[(idx + direction) % len(choices)]
 
     # ------------------------------------------------------------------
-    # Weapon defaults (called on enter + on tank change)
+    # Weapon roll (v0.25.5 — replaces manual weapon selection)
+    # ------------------------------------------------------------------
+
+    def _roll_weapons(self) -> None:
+        """Generate a random weapon loadout and apply it to slot selections."""
+        if self._weapon_roller is not None:
+            loadout = self._weapon_roller.roll()
+            self._slot_selections = list(loadout)
+            self._roll_anim_timer = _ROLL_ANIM_DURATION
+            log.info("Loadout rolled: %s", self._slot_selections)
+
+    # ------------------------------------------------------------------
+    # Hull lock / reveal (v0.25.5)
+    # ------------------------------------------------------------------
+
+    def _lock_hull_and_reveal(self) -> None:
+        """Lock the hull choice, roll weapons, and reveal the weapon panel."""
+        self._hull_locked = True
+        self._weapons_revealed = True
+        self._roll_weapons()
+        self._panel = LOADOUT_PANEL_WEAPONS
+        get_audio_manager().play_sfx(SFX_UI_CONFIRM)
+
+    def _reset_to_hull(self) -> None:
+        """Unlock hull, hide weapons, reset reroll, return to hull panel."""
+        self._hull_locked = False
+        self._weapons_revealed = False
+        self._has_rerolled = False
+        self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
+        self._roll_anim_timer = 0.0
+        self._panel = LOADOUT_PANEL_HULL
+
+    # ------------------------------------------------------------------
+    # Weapon defaults (legacy — kept for compatibility)
     # ------------------------------------------------------------------
 
     def _load_weapon_defaults(self) -> None:
@@ -743,6 +922,9 @@ class LoadoutScene(BaseScene):
     # ------------------------------------------------------------------
 
     def _confirm(self) -> None:
+        if not self._weapons_revealed:
+            log.debug("LoadoutScene: weapons not revealed — cannot confirm.")
+            return
         if self._slot_selections[0] is None:
             log.debug("LoadoutScene: slot 0 empty — cannot confirm.")
             return
