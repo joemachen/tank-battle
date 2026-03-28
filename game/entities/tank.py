@@ -14,6 +14,7 @@ v0.16 additions:
   - fire event is now a 5-tuple: ("fire", x, y, turret_angle, weapon_type)
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -113,6 +114,9 @@ class Tank:
         self._combat_effects: dict[str, StatusEffect] = {}
         # Stun timer (v0.24) — when > 0, all input is suppressed
         self._stun_timer: float = 0.0
+        # Knockback (v0.26) — impulse velocity, decays exponentially
+        self._knockback_vx: float = 0.0
+        self._knockback_vy: float = 0.0
 
         # Energy system (v0.25) — for hitscan weapons (laser beam)
         self._energy: float = 0.0
@@ -342,8 +346,21 @@ class Tank:
         effective_speed = self.speed * self._combat_speed_mult()
         if self.has_status("speed_boost"):
             effective_speed *= self._status_effects["speed_boost"]["value"]
+        if self.has_status("pool_slow"):
+            effective_speed *= self._status_effects["pool_slow"]["value"]
         self.x += dx * intent.throttle * effective_speed * dt
         self.y += dy * intent.throttle * effective_speed * dt
+
+        # Knockback displacement (v0.26) — external impulse, decays exponentially
+        if abs(self._knockback_vx) > 0.5 or abs(self._knockback_vy) > 0.5:
+            self.x += self._knockback_vx * dt
+            self.y += self._knockback_vy * dt
+            decay = math.exp(-8.0 * dt)
+            self._knockback_vx *= decay
+            self._knockback_vy *= decay
+        else:
+            self._knockback_vx = 0.0
+            self._knockback_vy = 0.0
 
         # Velocity (world-space px/s) — used by CollisionSystem for damage scaling
         if dt > 0:
@@ -494,6 +511,14 @@ class Tank:
         """Stun the tank — no movement, turning, or firing for duration seconds."""
         self._stun_timer = max(self._stun_timer, duration)
         log.debug("Tank stunned for %.1fs at (%.0f, %.0f)", duration, self.x, self.y)
+
+    def apply_knockback(self, force: float, angle_deg: float) -> None:
+        """Apply an impulse that displaces the tank. Decays exponentially in update()."""
+        rad = math.radians(angle_deg)
+        self._knockback_vx += math.cos(rad) * force
+        self._knockback_vy += math.sin(rad) * force
+        log.debug("Knockback applied: force=%.0f angle=%.1f at (%.0f, %.0f)",
+                  force, angle_deg, self.x, self.y)
 
     @property
     def is_stunned(self) -> bool:

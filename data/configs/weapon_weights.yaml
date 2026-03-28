@@ -17,3 +17,6 @@ grenade_launcher:  12    # uncommon — high AoE damage
 homing_missile:    10    # rare — powerful tracking
 railgun:           8     # rare — high skill ceiling
 laser_beam:        6     # very rare — unique hitscan mechanic
+glue_gun:          22    # uncommon — strong utility
+lava_gun:          14    # rare — area denial + damage
+concussion_blast:  18    # uncommon — fun disruption

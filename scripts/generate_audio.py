@@ -949,6 +949,86 @@ def gen_sfx_reroll(sr: int) -> list[float]:
     return [s / peak * 0.8 for s in out]
 
 
+def gen_sfx_glue_splat(sr: int) -> list[float]:
+    """Wet sticky impact — low noise burst + descending sine + squelchy modulation."""
+    dur = 0.25
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        # Initial noise burst (0-0.08s)
+        if t < 0.08:
+            env = adsr(t, 0.08, attack=0.002, decay=0.03, sustain_level=0.4, release=0.03)
+            val += noise() * 0.5 * env
+        # Descending sine 300→80 Hz
+        sweep_freq = 300.0 - (300.0 - 80.0) * min(1.0, t / 0.15)
+        env2 = adsr(t, 0.2, attack=0.003, decay=0.05, sustain_level=0.5, release=0.08)
+        val += sine(t, sweep_freq) * 0.4 * env2
+        # Squelchy overtone (noise × sine modulation)
+        if 0.05 < t < 0.2:
+            mod_t = t - 0.05
+            mod_env = adsr(mod_t, 0.15, attack=0.01, decay=0.04, sustain_level=0.3, release=0.05)
+            val += noise() * sine(t, 200.0) * 0.25 * mod_env
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.7 for s in out]
+
+
+def gen_sfx_lava_sizzle(sr: int) -> list[float]:
+    """Hot splatter — crackling noise + sustained low hiss + deep bubble pop."""
+    dur = 0.4
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        # Crackling noise (0-0.1s, fast envelope)
+        if t < 0.1:
+            env = adsr(t, 0.1, attack=0.001, decay=0.02, sustain_level=0.6, release=0.04)
+            val += noise() * 0.6 * env
+        # Sustained low hiss (filtered feel via slow decay)
+        hiss_env = adsr(t, 0.35, attack=0.01, decay=0.1, sustain_level=0.3, release=0.15)
+        val += noise() * 0.2 * hiss_env * sine(t, 180.0)
+        # Deep bubble pop (sine 60Hz, brief)
+        if t < 0.08:
+            pop_env = adsr(t, 0.08, attack=0.003, decay=0.02, sustain_level=0.3, release=0.03)
+            val += sine(t, 60.0) * 0.5 * pop_env
+        # Secondary crackle pops
+        if 0.1 < t < 0.3:
+            val += noise() * 0.1 * math.exp(-(t - 0.1) * 8.0)
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.7 for s in out]
+
+
+def gen_sfx_concussion_hit(sr: int) -> list[float]:
+    """Heavy impact — sharp crack + deep bass thump + whooshy air displacement."""
+    dur = 0.35
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        val = 0.0
+        # Sharp noise crack (0-0.02s)
+        if t < 0.02:
+            env = adsr(t, 0.02, attack=0.001, decay=0.005, sustain_level=0.5, release=0.008)
+            val += noise() * 0.8 * env
+        # Deep bass thump (sine 50Hz, 0.15s)
+        if t < 0.18:
+            bass_env = adsr(t, 0.18, attack=0.003, decay=0.04, sustain_level=0.6, release=0.08)
+            val += sine(t, 50.0) * 0.7 * bass_env
+            val += sine(t, 100.0) * 0.2 * bass_env
+        # Whooshy air displacement (noise with attack/decay)
+        if t > 0.01:
+            air_t = t - 0.01
+            air_env = adsr(air_t, 0.3, attack=0.005, decay=0.08, sustain_level=0.25, release=0.15)
+            val += noise() * 0.3 * air_env * math.exp(-air_t * 3.0)
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -985,6 +1065,9 @@ def main() -> None:
         ("sfx_railgun_fire.wav",        gen_sfx_railgun_fire),
         ("sfx_laser_hum.wav",           gen_sfx_laser_hum),
         ("sfx_reroll.wav",              gen_sfx_reroll),
+        ("sfx_glue_splat.wav",          gen_sfx_glue_splat),
+        ("sfx_lava_sizzle.wav",         gen_sfx_lava_sizzle),
+        ("sfx_concussion_hit.wav",      gen_sfx_concussion_hit),
     ]
 
     print("--- SFX ---")

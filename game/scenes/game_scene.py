@@ -26,6 +26,7 @@ import pygame
 
 from game.entities.bullet import Bullet
 from game.entities.explosion import Explosion
+from game.entities.ground_pool import GroundPool
 from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
@@ -35,6 +36,7 @@ from game.systems.collision import (
     _DAMAGE_TYPE_TO_EFFECT,
     _get_status_configs,
 )
+from game.systems.ground_pool_system import GroundPoolSystem
 from game.systems.raycast import cast_ray
 from game.systems.weapon_roller import WeaponRoller
 from game.systems.debris_system import DebrisSystem
@@ -73,6 +75,7 @@ from game.utils.constants import (
     GRENADE_BULLET_RADIUS,
     HOMING_BULLET_COLOR,
     HOMING_BULLET_RADIUS,
+    MAX_GROUND_POOLS,
     MAX_RUBBLE_PIECES,
     COLOR_BG,
     COLOR_NEON_PINK,
@@ -119,6 +122,9 @@ from game.utils.constants import (
     SFX_TANK_FIRE,
     SFX_RAILGUN_FIRE,
     SFX_LASER_HUM,
+    SFX_GLUE_SPLAT,
+    SFX_LAVA_SIZZLE,
+    SFX_CONCUSSION_HIT,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
     TANK_BARREL_WIDTH,
@@ -257,6 +263,8 @@ class GameplayScene(BaseScene):
         map_data = load_map(map_path)
         self._bullets = []
         self._explosions: list[Explosion] = []
+        self._ground_pools: list[GroundPool] = []
+        self._ground_pool_system = GroundPoolSystem()
         self._obstacles = map_data["obstacles"]
         self._theme = map_data["theme"]
         self._materials: dict = _load_materials()
@@ -382,6 +390,8 @@ class GameplayScene(BaseScene):
         self._theme = {}
         self._bullets = []
         self._explosions = []
+        self._ground_pools = []
+        self._ground_pool_system = None
         self._combo_visuals = []
 
     # ------------------------------------------------------------------
@@ -458,13 +468,24 @@ class GameplayScene(BaseScene):
         all_tanks = [self._tank] + self._ai_tanks
         self._physics.update(dt, tanks=all_tanks, bullets=self._bullets)
 
-        # Check for max-range grenade detonations before pruning dead bullets
+        # Check for max-range detonations before pruning dead bullets
         for bullet in self._bullets:
             if getattr(bullet, '_detonated', False) and getattr(bullet, 'is_explosive', False):
                 self._explosions.append(
                     Explosion(bullet.x, bullet.y, bullet.aoe_radius, bullet.damage,
                               bullet.damage_type, bullet.owner, bullet.aoe_falloff)
                 )
+            if getattr(bullet, '_pool_detonated', False) and getattr(bullet, 'spawns_pool', False):
+                self._ground_pools.append(GroundPool(
+                    x=bullet.x, y=bullet.y,
+                    pool_type=bullet.pool_type,
+                    radius=bullet.pool_radius,
+                    duration=bullet.pool_duration,
+                    slow_mult=bullet.pool_slow,
+                    dps=bullet.pool_dps,
+                    color=bullet.pool_color,
+                    owner=bullet.owner,
+                ))
         self._bullets = [b for b in self._bullets if b.is_alive]
 
         # Record speed trail positions for physics-based speed lines
@@ -492,7 +513,7 @@ class GameplayScene(BaseScene):
         ai_alive_before = {id(t): t.is_alive for t in self._ai_tanks}
 
         # Collision: bullets, obstacles, tank-to-tank, explosions
-        audio_events, new_explosions = self._collision.update(
+        audio_events, new_explosions, new_pools = self._collision.update(
             tanks=all_tanks,
             bullets=self._bullets,
             obstacles=self._obstacles,
@@ -500,7 +521,26 @@ class GameplayScene(BaseScene):
             explosions=self._explosions,
         )
         self._explosions.extend(new_explosions)
+        self._ground_pools.extend(new_pools)
         self._bullets = [b for b in self._bullets if b.is_alive]
+
+        # Ground pool effects on tanks (v0.26)
+        if self._ground_pool_system:
+            pool_events = self._ground_pool_system.update(
+                self._ground_pools, all_tanks, dt)
+            # Pool spawn SFX
+            for pool in new_pools:
+                if pool.pool_type == "glue":
+                    get_audio_manager().play_sfx(SFX_GLUE_SPLAT)
+                elif pool.pool_type == "lava":
+                    get_audio_manager().play_sfx(SFX_LAVA_SIZZLE)
+        # Tick and prune ground pools
+        for pool in self._ground_pools:
+            pool.update(dt)
+        self._ground_pools = [p for p in self._ground_pools if p.is_alive]
+        if len(self._ground_pools) > MAX_GROUND_POOLS:
+            self._ground_pools.sort(key=lambda p: p.duration)
+            self._ground_pools = self._ground_pools[-MAX_GROUND_POOLS:]
 
         # Elemental interaction check (v0.24)
         combo_events = self._elemental_resolver.resolve(all_tanks)
@@ -530,6 +570,7 @@ class GameplayScene(BaseScene):
             "obstacle_destroy":    SFX_OBSTACLE_DESTROY,
             "tank_collision":      SFX_TANK_COLLISION,
             "explosion":           SFX_EXPLOSION,
+            "concussion_hit":      SFX_CONCUSSION_HIT,
         }
         played: set[str] = set()
         for ev in audio_events:
@@ -792,6 +833,8 @@ class GameplayScene(BaseScene):
             return
 
         _draw_arena(surface, self._camera, self._theme)
+        _draw_ground_pools(surface, self._ground_pools, self._camera,
+                           time.monotonic() - self._match_start_time)
         _draw_pickups(surface, self._pickup_spawner.active_pickups, self._camera, self._pickup_configs)
         _draw_obstacles(surface, self._obstacles, self._camera, self._theme)
         self._debris.draw(surface, self._camera)
@@ -857,6 +900,57 @@ def _build_tank_surface(body_color: tuple) -> pygame.Surface:
     surf = pygame.Surface((TANK_BODY_WIDTH, TANK_BODY_HEIGHT), pygame.SRCALPHA)
     pygame.draw.rect(surf, body_color, (0, 0, TANK_BODY_WIDTH, TANK_BODY_HEIGHT), border_radius=5)
     return surf
+
+
+def _draw_ground_pools(surface: pygame.Surface, pools: list, camera: Camera,
+                       time_elapsed: float) -> None:
+    """Draw ground pools on the arena floor."""
+    for pool in pools:
+        if not pool.is_alive:
+            continue
+        sx, sy = camera.world_to_screen(pool.x, pool.y)
+        sx_i, sy_i = int(sx), int(sy)
+        radius_i = int(pool.radius)
+
+        # Fade out as pool expires (starts fading at 30% life remaining)
+        fade = max(0.0, 1.0 - pool.age_ratio * 0.7)
+        base_alpha = int(120 * fade)
+        if base_alpha <= 0:
+            continue
+
+        overlay = pygame.Surface((radius_i * 2 + 4, radius_i * 2 + 4), pygame.SRCALPHA)
+        cx, cy = radius_i + 2, radius_i + 2
+
+        if pool.pool_type == "glue":
+            # Yellow-green puddle with darker center
+            pygame.draw.circle(overlay, (*pool.color, base_alpha), (cx, cy), radius_i)
+            inner_r = int(radius_i * 0.6)
+            dark = (int(pool.color[0] * 0.7), int(pool.color[1] * 0.7), int(pool.color[2] * 0.7))
+            pygame.draw.circle(overlay, (*dark, base_alpha), (cx, cy), inner_r)
+            # Bubble dots (deterministic from position)
+            import random as _rng
+            rng = _rng.Random(int(pool.x * 100 + pool.y))
+            for _ in range(5):
+                bx = cx + rng.randint(-int(radius_i * 0.7), int(radius_i * 0.7))
+                by = cy + rng.randint(-int(radius_i * 0.7), int(radius_i * 0.7))
+                br = rng.randint(2, 4)
+                pygame.draw.circle(overlay, (*pool.color, min(255, base_alpha + 40)),
+                                   (int(bx), int(by)), br)
+
+        elif pool.pool_type == "lava":
+            # Orange-red pool with pulsing glow
+            glow = 0.8 + 0.2 * math.sin(time_elapsed * 4.0 + pool.x * 0.1)
+            lava_alpha = int(base_alpha * glow)
+            pygame.draw.circle(overlay, (*pool.color, lava_alpha), (cx, cy), radius_i)
+            # Bright yellow core
+            core_r = int(radius_i * 0.4)
+            pygame.draw.circle(overlay, (255, 180, 40, int(lava_alpha * 0.7)),
+                               (cx, cy), core_r)
+            # Edge glow ring
+            pygame.draw.circle(overlay, (255, 40, 10, int(lava_alpha * 0.5)),
+                               (cx, cy), radius_i, 2)
+
+        surface.blit(overlay, (sx_i - cx, sy_i - cy))
 
 
 def _draw_arena(surface: pygame.Surface, camera: Camera, theme: dict | None = None) -> None:

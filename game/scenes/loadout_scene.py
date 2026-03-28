@@ -99,6 +99,9 @@ _WEAPON_ORDER: list[str] = [
     "emp_blast",
     "railgun",
     "laser_beam",
+    "glue_gun",
+    "lava_gun",
+    "concussion_blast",
 ]
 _MAP_NAMES: list[str] = ["map_01", "map_02", "map_03"]
 

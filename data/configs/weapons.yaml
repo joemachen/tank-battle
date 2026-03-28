@@ -147,3 +147,49 @@ laser_beam:
   dps: 45
   description: "Continuous energy beam. Hold fire to sustain. Drains energy, recharges when idle."
   tips: "Hold fire for continuous beam. Uses energy bar. Fire damage burns targets."
+
+glue_gun:
+  type: glue_gun
+  damage: 5
+  speed: 320
+  fire_rate: 0.5
+  max_bounces: 0
+  max_range: 800
+  damage_type: standard
+  pool_type: glue
+  pool_radius: 60
+  pool_duration: 25.0
+  pool_slow: 0.35
+  pool_dps: 0
+  pool_color: [180, 200, 80]
+  description: "Shoots a glue glob that creates a sticky puddle on the ground."
+  tips: "Area denial — slows enemies to 35% speed for 25s. Block chokepoints and retreat paths."
+
+lava_gun:
+  type: lava_gun
+  damage: 10
+  speed: 280
+  fire_rate: 0.4
+  max_bounces: 0
+  max_range: 700
+  damage_type: fire
+  pool_type: lava
+  pool_radius: 50
+  pool_duration: 15.0
+  pool_slow: 0.6
+  pool_dps: 20
+  pool_color: [255, 80, 20]
+  description: "Launches a lava glob that creates a burning pool on the ground."
+  tips: "Area denial + damage. 20 DPS fire pool for 15s. Combo potential with ICE weapons."
+
+concussion_blast:
+  type: concussion_blast
+  damage: 20
+  speed: 500
+  fire_rate: 0.6
+  max_bounces: 0
+  max_range: 900
+  damage_type: standard
+  knockback_force: 400.0
+  description: "Concussive round that pushes targets backward on hit."
+  tips: "Moderate damage + strong knockback. Disrupts aim and positioning. Push tanks into hazards."

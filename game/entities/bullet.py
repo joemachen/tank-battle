@@ -57,6 +57,19 @@ class Bullet:
         self.pierce_count: int = int(config.get("pierce_count", 0))
         self._pierced_tanks: set = set()  # tracks hit tank ids to prevent double-hit
 
+        # Ground pool support (v0.26)
+        self.pool_type: str = config.get("pool_type", "")
+        self.pool_radius: float = float(config.get("pool_radius", 0))
+        self.pool_duration: float = float(config.get("pool_duration", 0))
+        self.pool_slow: float = float(config.get("pool_slow", 1.0))
+        self.pool_dps: float = float(config.get("pool_dps", 0))
+        self.pool_color: tuple = tuple(config.get("pool_color", (128, 128, 128)))
+        self.spawns_pool: bool = bool(self.pool_type)
+        self._pool_detonated: bool = False
+
+        # Knockback support (v0.26)
+        self.knockback_force: float = float(config.get("knockback_force", 0))
+
         # Homing support
         self._tracking_strength: float = float(config.get("tracking_strength", 0.0))
         self._targets_getter = None  # injected after construction for homing bullets
@@ -113,6 +126,8 @@ class Bullet:
         if self._distance_traveled >= self.max_range:
             if self.is_explosive:
                 self._detonated = True
+            if self.spawns_pool:
+                self._pool_detonated = True
             self.destroy()
             return
         # Adjust heading for next frame (homing missiles only)
