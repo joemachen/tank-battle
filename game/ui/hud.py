@@ -122,6 +122,21 @@ class HUD:
         if combat_effects:
             self._draw_combat_effects(surface, combat_effects, HUD_MARGIN, label_y - 16)
 
+        # Energy bar — shown when a hitscan weapon is equipped (v0.25)
+        energy_max = getattr(player_tank, '_energy_max', 0)
+        if isinstance(energy_max, (int, float)) and energy_max > 0:
+            energy_y = weapon_y + 20
+            # Background bar
+            pygame.draw.rect(surface, COLOR_GRAY, (HUD_MARGIN, energy_y, HUD_BAR_WIDTH, 8))
+            # Fill bar — cyan when healthy, red when critically low
+            fill_w = int(HUD_BAR_WIDTH * player_tank.energy_ratio)
+            fill_color = (60, 200, 255) if player_tank.energy_ratio > 0.25 else COLOR_RED
+            if fill_w > 0:
+                pygame.draw.rect(surface, fill_color, (HUD_MARGIN, energy_y, fill_w, 8))
+            # Label
+            energy_label = self._small_font.render("ENERGY", True, (60, 200, 255))
+            surface.blit(energy_label, (HUD_MARGIN + HUD_BAR_WIDTH + 6, energy_y - 2))
+
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
         if ai_tanks is None:
             tanks = []

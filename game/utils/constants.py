@@ -179,6 +179,7 @@ MATERIALS_CONFIG: str = "data/configs/materials.yaml"
 PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
 STATUS_EFFECTS_CONFIG: str = "data/configs/status_effects.yaml"
 ELEMENTAL_INTERACTIONS_CONFIG: str = "data/configs/elemental_interactions.yaml"
+WEAPON_WEIGHTS_CONFIG: str = "data/configs/weapon_weights.yaml"
 
 # Pickup spawner
 PICKUP_SPAWN_INTERVAL: float = 8.0
@@ -263,6 +264,7 @@ SFX_PICKUP_SHIELD:       str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_pickup_
 SFX_SHIELD_POP:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_shield_pop.wav")
 SFX_RAILGUN_FIRE:        str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_railgun_fire.wav")
 SFX_LASER_HUM:           str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_laser_hum.wav")
+SFX_REROLL:              str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_reroll.wav")
 
 # Combat status effect SFX (v0.23)
 SFX_EFFECT_FIRE:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav")

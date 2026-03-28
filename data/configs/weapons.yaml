@@ -20,6 +20,7 @@ standard_shell:
   max_range: 1400
   damage_type: standard
   description: "Standard issue. No frills."
+  tips: "Reliable all-rounder. No special effects."
 
 spread_shot:
   type: spread_shot
@@ -32,6 +33,7 @@ spread_shot:
   spread_angle: 18
   damage_type: standard
   description: "Fires 3 shells in a spread. Lower per-shot damage."
+  tips: "Fan of 3 bullets. Great for close-range sweeps."
 
 bouncing_round:
   type: bouncing_round
@@ -42,6 +44,7 @@ bouncing_round:
   max_range: 2400
   damage_type: standard
   description: "Ricochets off walls up to 3 times."
+  tips: "Bounces off walls 3 times. Use angles to hit around cover."
 
 homing_missile:
   type: homing_missile
@@ -53,6 +56,7 @@ homing_missile:
   tracking_strength: 2.5
   damage_type: explosive
   description: "Slow but tracks the nearest enemy. High damage."
+  tips: "Tracks nearest enemy. Explosive — can destroy reinforced steel."
 
 grenade_launcher:
   type: grenade_launcher
@@ -65,3 +69,81 @@ grenade_launcher:
   aoe_radius: 120
   aoe_falloff: 0.25
   description: "Lobs an explosive grenade. Devastating area damage, long cooldown."
+  tips: "AoE explosion on impact. Devastating in tight spaces. 4s cooldown."
+
+cryo_round:
+  type: cryo_round
+  damage: 20
+  speed: 360
+  fire_rate: 0.7
+  max_bounces: 0
+  max_range: 1200
+  damage_type: ice
+  description: "Freezing projectile. Slows enemy movement and turning on hit."
+  tips: "Slows target movement and turning for 4s. Combo: ICE + ELECTRIC = Deep Freeze stun."
+
+poison_shell:
+  type: poison_shell
+  damage: 12
+  speed: 350
+  fire_rate: 0.8
+  max_bounces: 0
+  max_range: 1100
+  damage_type: poison
+  description: "Toxic round. Low initial damage but poisons the target for 6 seconds."
+  tips: "Poisons for 6s. Low direct damage but high total. Combo: POISON + FIRE = massive burst."
+
+flamethrower:
+  type: flamethrower
+  damage: 6
+  speed: 300
+  fire_rate: 6.0
+  max_bounces: 0
+  max_range: 250
+  damage_type: fire
+  spread_count: 3
+  spread_angle: 12
+  description: "Short-range fire stream. Rapid fire, 3-way spread. Sets enemies ablaze."
+  tips: "Short range fire stream. Hold close and melt. Combo: FIRE + ICE = Steam Burst AoE."
+
+emp_blast:
+  type: emp_blast
+  damage: 30
+  speed: 300
+  fire_rate: 0.3
+  max_bounces: 0
+  max_range: 500
+  damage_type: electric
+  aoe_radius: 140
+  aoe_falloff: 0.2
+  description: "Electromagnetic pulse bomb. Area effect slows enemy fire rate."
+  tips: "Electric AoE bomb. Slows fire rate in blast radius. Combo: ICE + ELECTRIC = Deep Freeze."
+
+railgun:
+  type: railgun
+  damage: 65
+  speed: 800
+  fire_rate: 0.2
+  max_bounces: 0
+  max_range: 1800
+  damage_type: standard
+  pierce_count: 1
+  description: "Hypervelocity round. Pierces through the first target. Massive damage, 5s reload."
+  tips: "Pierces first target. Fastest bullet. 5s reload — make every shot count."
+
+laser_beam:
+  type: laser_beam
+  damage: 12
+  speed: 0
+  fire_rate: 0
+  max_bounces: 0
+  max_range: 2000
+  damage_type: fire
+  hitscan: true
+  energy_max: 100.0
+  energy_drain_rate: 30.0
+  energy_recharge_rate: 15.0
+  energy_min_to_fire: 20.0
+  dps: 45
+  description: "Continuous energy beam. Hold fire to sustain. Drains energy, recharges when idle."
+  tips: "Hold fire for continuous beam. Uses energy bar. Fire damage burns targets."

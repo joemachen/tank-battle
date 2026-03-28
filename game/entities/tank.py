@@ -114,6 +114,15 @@ class Tank:
         # Stun timer (v0.24) — when > 0, all input is suppressed
         self._stun_timer: float = 0.0
 
+        # Energy system (v0.25) — for hitscan weapons (laser beam)
+        self._energy: float = 0.0
+        self._energy_max: float = 0.0
+        self._energy_drain_rate: float = 0.0
+        self._energy_recharge_rate: float = 0.0
+        self._energy_min_to_fire: float = 0.0
+        self._is_firing_beam: bool = False
+        self._beam_dps: float = 0.0
+
         log.debug(
             "Tank created at (%.0f, %.0f) type=%s hp=%d spd=%.0f",
             x, y, self.tank_type, self.max_health, self.speed,
@@ -157,6 +166,24 @@ class Tank:
         self._slot_cooldowns = [0.0] * len(configs)
         # Sync fire_rate to active weapon for legacy compatibility
         self.fire_rate = float(self._weapon_slots[0].get("fire_rate", self.fire_rate))
+
+        # Initialize energy pool if any hitscan weapon is loaded (v0.25)
+        self._energy = 0.0
+        self._energy_max = 0.0
+        self._energy_drain_rate = 0.0
+        self._energy_recharge_rate = 0.0
+        self._energy_min_to_fire = 0.0
+        self._beam_dps = 0.0
+        for slot in self._weapon_slots:
+            if slot.get("hitscan", False):
+                self._energy_max = float(slot.get("energy_max", 100.0))
+                self._energy = self._energy_max  # start fully charged
+                self._energy_drain_rate = float(slot.get("energy_drain_rate", 30.0))
+                self._energy_recharge_rate = float(slot.get("energy_recharge_rate", 15.0))
+                self._energy_min_to_fire = float(slot.get("energy_min_to_fire", 20.0))
+                self._beam_dps = float(slot.get("dps", 45.0))
+                break  # only one energy pool
+
         log.debug(
             "Tank loaded %d weapon(s): %s",
             len(configs), [c.get("type") for c in configs],
@@ -213,6 +240,25 @@ class Tank:
     def slot_cooldowns(self) -> list[float]:
         """Current cooldown timers for all weapon slots (seconds remaining)."""
         return list(self._slot_cooldowns)
+
+    # Energy properties (v0.25)
+
+    @property
+    def energy(self) -> float:
+        """Current energy level."""
+        return self._energy
+
+    @property
+    def energy_ratio(self) -> float:
+        """Energy as a 0–1 fraction; 0 when no hitscan weapon equipped."""
+        if self._energy_max <= 0:
+            return 0.0
+        return self._energy / self._energy_max
+
+    @property
+    def is_firing_beam(self) -> bool:
+        """True when this tank is actively firing a hitscan beam this frame."""
+        return self._is_firing_beam
 
     # ------------------------------------------------------------------
     # Update
@@ -309,17 +355,39 @@ class Tank:
             if self._slot_cooldowns[i] > 0:
                 self._slot_cooldowns[i] -= dt
 
-        # Fire — uses active slot's cooldown and config
+        # Fire — split into hitscan vs. projectile branches (v0.25)
         active_wep = self.active_weapon
-        active_fire_rate = float(active_wep.get("fire_rate", self.fire_rate)) * self._combat_fire_rate_mult()
+        is_hitscan = active_wep.get("hitscan", False)
 
-        if intent.fire and self._slot_cooldowns[self._active_slot] <= 0:
-            self._slot_cooldowns[self._active_slot] = 1.0 / active_fire_rate
-            weapon_type = active_wep.get("type", DEFAULT_WEAPON_TYPE)
-            events.append(("fire", self.x, self.y, self.turret_angle, weapon_type))
-            log.debug(
-                "Tank fired weapon=%s at turret_angle %.1f", weapon_type, self.turret_angle
-            )
+        if is_hitscan:
+            # Hitscan weapon — energy-based sustained fire
+            if intent.fire and self._energy >= self._energy_min_to_fire:
+                self._is_firing_beam = True
+                self._energy = max(0.0, self._energy - self._energy_drain_rate * dt)
+                weapon_type = active_wep.get("type", DEFAULT_WEAPON_TYPE)
+                events.append(("beam", self.x, self.y, self.turret_angle, weapon_type))
+                log.debug("Tank firing beam weapon=%s energy=%.1f", weapon_type, self._energy)
+                if self._energy <= 0:
+                    self._is_firing_beam = False  # ran out of energy
+            else:
+                self._is_firing_beam = False
+                # Recharge when not firing
+                if self._energy < self._energy_max:
+                    self._energy = min(self._energy_max, self._energy + self._energy_recharge_rate * dt)
+        else:
+            self._is_firing_beam = False
+            # Existing projectile fire logic
+            active_fire_rate = float(active_wep.get("fire_rate", self.fire_rate)) * self._combat_fire_rate_mult()
+            if intent.fire and self._slot_cooldowns[self._active_slot] <= 0:
+                self._slot_cooldowns[self._active_slot] = 1.0 / active_fire_rate
+                weapon_type = active_wep.get("type", DEFAULT_WEAPON_TYPE)
+                events.append(("fire", self.x, self.y, self.turret_angle, weapon_type))
+                log.debug(
+                    "Tank fired weapon=%s at turret_angle %.1f", weapon_type, self.turret_angle
+                )
+            # Passive recharge for non-hitscan (e.g. player switches away from laser)
+            if self._energy < self._energy_max and self._energy_max > 0:
+                self._energy = min(self._energy_max, self._energy + self._energy_recharge_rate * dt)
 
         return events
 

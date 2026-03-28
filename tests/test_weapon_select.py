@@ -181,8 +181,8 @@ def _make_scene(
 
 class TestStatNormalisation:
     def test_standard_shell_speed_is_one(self):
-        """standard_shell speed (420) / WEAPON_STAT_MAX speed (420) == 1.0."""
-        ratio = _normalise_weapon(420.0, "speed")
+        """railgun speed (800) / WEAPON_STAT_MAX speed (800) == 1.0 (v0.25 new max)."""
+        ratio = _normalise_weapon(800.0, "speed")
         assert ratio == pytest.approx(1.0)
 
     def test_grenade_launcher_damage_is_one(self):
@@ -196,9 +196,9 @@ class TestStatNormalisation:
         assert ratio == pytest.approx(1.0)
 
     def test_spread_shot_speed_ratio(self):
-        """spread_shot speed (380) / 420 ≈ 0.905."""
+        """spread_shot speed (380) / 800 (v0.25 new max) ≈ 0.475."""
         ratio = _normalise_weapon(380.0, "speed")
-        assert ratio == pytest.approx(380 / 420, rel=1e-4)
+        assert ratio == pytest.approx(380 / 800, rel=1e-4)
 
     def test_value_below_zero_clamps_to_zero(self):
         assert _normalise_weapon(-10.0, "damage") == pytest.approx(0.0)

@@ -102,6 +102,12 @@ _WEAPON_ORDER: list = [
     "bouncing_round",
     "homing_missile",
     "grenade_launcher",
+    "cryo_round",
+    "poison_shell",
+    "flamethrower",
+    "emp_blast",
+    "railgun",
+    "laser_beam",
 ]
 
 

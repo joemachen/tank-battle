@@ -105,13 +105,16 @@ class CollisionSystem:
     def check_bullet_vs_tank(self, bullet, tank) -> bool:
         """
         Check if a single bullet has hit a single tank and apply damage if so.
-        Returns True if a hit occurred (bullet destroyed, tank damaged).
+        Returns True if a hit occurred (bullet may survive if piercing).
 
         Signature is v0.4-ready: GameplayScene will call this individually for
         each (player_bullet, ai_tank) and (ai_bullet, player_tank) pair once
         AI opponents exist. Currently invoked in batch via _bullets_vs_tanks().
         """
         if not bullet.is_alive or not tank.is_alive or tank is bullet.owner:
+            return False
+        # Skip tanks this bullet has already pierced (v0.25)
+        if id(tank) in getattr(bullet, '_pierced_tanks', set()):
             return False
         if self._circles_overlap(bullet.position, BULLET_RADIUS, tank.position, TANK_RADIUS):
             if getattr(bullet, 'is_explosive', False):
@@ -125,7 +128,14 @@ class CollisionSystem:
             tank.take_damage(bullet.damage, damage_type=bullet.damage_type)
             if tank.is_alive:
                 _apply_combat_effect(tank, bullet.damage_type)
-            bullet.destroy()
+            # Pierce or destroy (v0.25)
+            pierce_count = getattr(bullet, 'pierce_count', 0)
+            if isinstance(pierce_count, int) and pierce_count > 0:
+                bullet.pierce_count -= 1
+                bullet._pierced_tanks.add(id(tank))
+                log.debug("Bullet pierced tank — %d pierce(s) remaining", bullet.pierce_count)
+            else:
+                bullet.destroy()
             log.debug("Bullet hit tank. Damage=%d type=%s, Tank HP=%d",
                       bullet.damage, bullet.damage_type.name, tank.health)
             return True
@@ -151,7 +161,8 @@ class CollisionSystem:
                         # hits and damage without the CollisionSystem needing
                         # to know which tank is the player.
                         events.append(("bullet_hit_tank_stat", bullet.owner, bullet.damage, bullet.damage_type))
-                    break
+                    if not bullet.is_alive:
+                        break  # non-piercing or out of pierces — stop checking tanks
         return events
 
     def _bullets_vs_obstacles(self, bullets: list, obstacles: list) -> list[str]:

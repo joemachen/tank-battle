@@ -53,6 +53,10 @@ class Bullet:
         self.is_explosive: bool = self.aoe_radius > 0
         self._detonated: bool = False
 
+        # Pierce support (v0.25) — railgun and future piercing weapons
+        self.pierce_count: int = int(config.get("pierce_count", 0))
+        self._pierced_tanks: set = set()  # tracks hit tank ids to prevent double-hit
+
         # Homing support
         self._tracking_strength: float = float(config.get("tracking_strength", 0.0))
         self._targets_getter = None  # injected after construction for homing bullets

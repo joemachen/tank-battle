@@ -53,4 +53,42 @@ levels:
 
   - level: 10
     xp_required: 9000
+    unlocks:
+      - cryo_round
+
+  - level: 11
+    xp_required: 12000
+    unlocks:
+      - poison_shell
+
+  - level: 12
+    xp_required: 15500
+    unlocks:
+      - flamethrower
+
+  - level: 13
+    xp_required: 19500
     unlocks: []
+
+  - level: 14
+    xp_required: 23000
+    unlocks:
+      - emp_blast
+
+  - level: 15
+    xp_required: 28000
+    unlocks: []
+
+  - level: 16
+    xp_required: 33000
+    unlocks:
+      - railgun
+
+  - level: 17
+    xp_required: 39500
+    unlocks: []
+
+  - level: 18
+    xp_required: 46000
+    unlocks:
+      - laser_beam

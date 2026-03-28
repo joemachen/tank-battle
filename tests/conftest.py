@@ -70,6 +70,7 @@ def _install_pygame_stub() -> None:
     stub.K_m        = 109
     stub.K_x        = 120
     stub.K_n        = 110
+    stub.K_r        = 114     # Re-roll key (v0.25.5)
     # Direct slot-select keys (v0.16)
     stub.K_1        = 49
     stub.K_2        = 50
