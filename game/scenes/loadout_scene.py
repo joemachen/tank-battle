@@ -430,6 +430,12 @@ class LoadoutScene(BaseScene):
         elif key in (pygame.K_DOWN, pygame.K_s):
             self._slot_focus = (self._slot_focus + 1) % MAX_WEAPON_SLOTS
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_LEFT, pygame.K_a) and self._slot_focus == 0:
+            self._cycle_slot(0, -1)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_RIGHT, pygame.K_d) and self._slot_focus == 0:
+            self._cycle_slot(0, +1)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key == pygame.K_r and not self._has_rerolled:
             self._roll_weapons()
             self._has_rerolled = True
@@ -477,7 +483,7 @@ class LoadoutScene(BaseScene):
         if not self._hull_locked:
             hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     ESC  Back"
         elif self._panel == LOADOUT_PANEL_WEAPONS:
-            hint_text = "TAB  Switch Panel     \u2191\u2193  Select     R  Re-Roll     ENTER  Start     ESC  Unlock Hull"
+            hint_text = "\u25c4\u25ba  Change Slot 1     \u2191\u2193  Select     R  Re-Roll     TAB  Panel     ENTER  Start     ESC  Back"
         else:
             hint_text = "TAB  Switch Panel     \u2191\u2193  Select     ENTER  Start     ESC  Unlock Hull"
         hint = font_hint.render(hint_text, True, _COLOR_DIM)
@@ -607,12 +613,7 @@ class LoadoutScene(BaseScene):
                 display_wtype = wtype
 
             # Weapon name
-            if i == 0:
-                # Slot 1 is always fixed
-                wlabel = "Standard Shell (FIXED)"
-                wcolor = _COLOR_DIM
-                wname_col = (130, 130, 135)
-            elif not self._weapons_revealed:
+            if not self._weapons_revealed and i > 0:
                 wlabel = "? ? ?"
                 wcolor = _COLOR_DIM
                 wname_col = (80, 80, 85)
@@ -628,6 +629,16 @@ class LoadoutScene(BaseScene):
             wname_surf = font_wep.render(wlabel, True, wname_col)
             name_y = slot_row_y + 6
             surface.blit(wname_surf, (cx + 34, name_y))
+
+            # Arrow indicators for slot 0 (player-chosen) when focused
+            if i == 0 and is_focused_slot and self._weapons_revealed:
+                arr_font = pygame.font.SysFont(None, 22)
+                arr_col = COLOR_NEON_PINK
+                left_arr = arr_font.render("\u25c4", True, arr_col)
+                right_arr = arr_font.render("\u25ba", True, arr_col)
+                arr_y = name_y + (wname_surf.get_height() - left_arr.get_height()) // 2
+                surface.blit(left_arr, (cx + 34 + wname_surf.get_width() + 8, arr_y))
+                surface.blit(right_arr, (cx + 34 + wname_surf.get_width() + 8 + left_arr.get_width() + 6, arr_y))
 
             # Rarity label below weapon name (slots 2-3 only, revealed + not animating)
             if i > 0 and wtype and self._weapons_revealed and not animating:
@@ -680,6 +691,10 @@ class LoadoutScene(BaseScene):
                     tip_surf = tip_font.render(line, True, (160, 160, 165))
                     surface.blit(tip_surf, (cx + 12, tip_y))
                     tip_y += tip_surf.get_height() + 2
+                # Cycling hint for slot 0 only
+                if self._slot_focus == 0:
+                    cyc_surf = tip_font.render("\u25c4 \u25ba to change weapon", True, COLOR_NEON_PINK)
+                    surface.blit(cyc_surf, (cx + 12, tip_y + 2))
         else:
             ph_font = pygame.font.SysFont(None, 22)
             ph = ph_font.render("No weapon selected", True, _COLOR_DIM)

@@ -345,16 +345,21 @@ class TestPanelNavigation:
         assert scene._panel == LOADOUT_PANEL_MAP
         assert scene._map_cursor == map_before
 
-    def test_left_right_in_weapons_stays_in_panel(self, monkeypatch):
-        """In the weapons panel LEFT/RIGHT does nothing (no panel switch, no cycling)."""
-        scene = _make_scene(monkeypatch)
+    def test_left_right_in_weapons_cycles_slot0(self, monkeypatch):
+        """In the weapons panel LEFT/RIGHT cycles slot 0 weapon when focused."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
         scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._weapons_revealed = True
+        scene._hull_locked = True
+        scene._slot_focus = 0
+        assert scene._slot_selections[0] == "standard_shell"
         ev_right = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
         scene.handle_event(ev_right)
         assert scene._panel == LOADOUT_PANEL_WEAPONS
-        ev_left = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
-        scene.handle_event(ev_left)
-        assert scene._panel == LOADOUT_PANEL_WEAPONS
+        assert scene._slot_selections[0] != "standard_shell"
 
 
 # ---------------------------------------------------------------------------
@@ -442,8 +447,8 @@ class TestWeaponSlots:
         # medium_tank default_weapons includes spread_shot, but it's locked
         assert scene._slot_selections[1] is None
 
-    def test_slot0_always_standard_shell(self, monkeypatch):
-        """Slot 0 is always locked to standard_shell (v0.25.5 random rolls)."""
+    def test_slot0_defaults_to_standard_shell(self, monkeypatch):
+        """Slot 0 starts as standard_shell but can be changed by the player."""
         scene = _make_scene(
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot"],
@@ -482,6 +487,126 @@ class TestWeaponSlots:
             scene._roll_weapons()
             filled = [w for w in scene._slot_selections if w is not None]
             assert len(filled) == len(set(filled)), "Duplicate weapon in slots"
+
+
+# ---------------------------------------------------------------------------
+# 4b. Slot 0 player choice
+# ---------------------------------------------------------------------------
+
+
+class TestSlot0PlayerChoice:
+    """Slot 0 is player-chosen via LEFT/RIGHT cycling."""
+
+    def test_slot0_starts_as_standard_shell(self, monkeypatch):
+        """After reveal, slot 0 defaults to standard_shell."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        assert scene._slot_selections[0] == "standard_shell"
+
+    def test_cycle_slot0_right(self, monkeypatch):
+        """RIGHT on slot 0 advances to next unlocked weapon."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 0
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        assert scene._slot_selections[0] == "spread_shot"
+
+    def test_cycle_slot0_left(self, monkeypatch):
+        """LEFT on slot 0 goes to previous unlocked weapon (wraps)."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 0
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
+        scene.handle_event(ev)
+        # Wraps to last unlocked weapon in _WEAPON_ORDER
+        assert scene._slot_selections[0] == "bouncing_round"
+
+    def test_cycle_slot0_wraps_forward(self, monkeypatch):
+        """Cycling past last weapon wraps to first."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 0
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        # standard_shell → spread_shot
+        scene.handle_event(ev)
+        assert scene._slot_selections[0] == "spread_shot"
+        # spread_shot → standard_shell (wrap)
+        scene.handle_event(ev)
+        assert scene._slot_selections[0] == "standard_shell"
+
+    def test_cycle_slot0_skips_duplicates(self, monkeypatch):
+        """Slot 0 cannot be set to the same weapon in slot 1 or 2."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 0
+        # Force slots 1-2 to specific weapons
+        scene._slot_selections[1] = "spread_shot"
+        scene._slot_selections[2] = None
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        # Should skip spread_shot (in slot 1) and go to bouncing_round
+        assert scene._slot_selections[0] == "bouncing_round"
+
+    def test_cycle_slot0_only_when_focused(self, monkeypatch):
+        """LEFT/RIGHT does nothing when slot 1 or 2 is focused."""
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 1
+        before = scene._slot_selections[0]
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        assert scene._slot_selections[0] == before
+
+    def test_slot0_can_be_any_unlocked_weapon(self, monkeypatch):
+        """Cycling through all options covers every unlocked weapon."""
+        weapons = ["standard_shell", "spread_shot", "bouncing_round"]
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=weapons,
+        )
+        scene._hull_locked = True
+        scene._weapons_revealed = True
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = 0
+        # Ensure slots 1-2 don't block anything
+        scene._slot_selections[1] = None
+        scene._slot_selections[2] = None
+        visited = {scene._slot_selections[0]}
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        for _ in range(len(weapons)):
+            scene.handle_event(ev)
+            visited.add(scene._slot_selections[0])
+        assert visited == set(weapons)
 
 
 # ---------------------------------------------------------------------------
