@@ -30,11 +30,12 @@ are completed or plans change.
 | v0.23.0 | Combat status effects — FIRE burn DoT, POISON slow DoT, ICE movement slow, ELECTRIC fire rate reduction, StatusEffect class, VFX/SFX/music layers, HUD labels |
 | v0.24.0 | Elemental interactions — Steam Burst (fire+ice AoE), Accelerated Burn (poison+fire instant), Deep Freeze (ice+electric stun), ElementalResolver, combo VFX/SFX/HUD |
 | v0.25.0 | Six elemental + combat weapons — cryo round, poison shell, flamethrower, EMP blast, railgun (pierce), laser beam (hitscan + energy bar); raycast system; 18-level progression; WEAPON_STAT_MAX updated |
+| v0.25.5 | Random weapon rolls + player-chosen slot 1 — WeaponRoller, weighted random slots 2-3, slot 1 player cycles from unlocked pool, hull-lock flow, re-roll, AI random loadouts + weapon cycling, rarity labels, weapon tips |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/random-weapons          | v0.25.5 — Random weapon rolls |
+| feature/utility-weapons         | v0.26 — Area denial + utility weapons |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -46,7 +47,7 @@ materials.yaml was designed for this — this phase fills it in.*
 | ~~v0.23~~ | ~~Status effects~~          | ✅ Completed v0.23.0                                                                                                                                                                    |
 | ~~v0.24~~ | ~~Elemental interactions~~ | ✅ Completed v0.24.0                                                                                                                                                                     |
 | ~~v0.25~~ | ~~Elemental + combat weapons content~~ | ✅ Completed v0.25.0 |
-| v0.25.5 | Random weapon rolls              | Roguelike weapon selection: slot 1 always standard_shell, slots 2–3 randomly assigned from unlocked pool with weighted probability. WeaponRoller utility class. LoadoutScene shows random assignments with optional re-roll. AI tanks also get random loadouts. Weapon probability table driven by data/configs/weapon_weights.yaml. |
+| ~~v0.25.5~~ | ~~Random weapon rolls~~ | ✅ Completed v0.25.5 |
 | v0.26   | Area denial + utility weapons    | Glue gun (shoots ground pool that slows enemies, persists 30s, new GluePool entity), Lava gun (fire damage ground pool, area denial + DoT), Knockback gun (concussion blast, moderate damage + strong pushback force scaling with proximity). These need new entity types (ground pools) and knockback physics in CollisionSystem. |
 ---
 ### Phase 4 — Ultimates System
@@ -145,4 +146,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.25.0 — Six elemental + combat weapons shipped; v0.25.5 random rolls next*
+*Last updated: v0.25.5 — Random weapon rolls + player-chosen slot 1 shipped; v0.26 utility weapons next*

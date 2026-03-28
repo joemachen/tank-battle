@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.25.0*
+*Last updated: v0.25.5*
 
 ---
 
@@ -25,7 +25,7 @@ game/
     base_scene.py                   Abstract base scene interface
     game_over_scene.py              Match result + XP progression display
     game_scene.py                   Main gameplay arena orchestrator
-    loadout_scene.py                Unified hull/weapon/map selection screen; _WEAPON_ORDER 11 entries (v0.25)
+    loadout_scene.py                Unified hull/weapon/map selection; hull-lock → weapon reveal → slot 1 choice → reroll → map (v0.25.5)
     map_select_scene.py             Deprecated v0.17.5 — merged into loadout
     menu_scene.py                   Main menu with synthwave grid background
     profile_select_scene.py         Four-slot profile picker
@@ -34,7 +34,7 @@ game/
     weapon_select_scene.py          Deprecated v0.17.5 — merged into loadout; _WEAPON_ORDER 11 entries (v0.25)
   systems/
     __init__.py
-    ai_controller.py                State machine AI with stuck recovery
+    ai_controller.py                State machine AI with stuck recovery + weapon cycling timer (v0.25.5)
     collision.py                    All entity collision detection + resolution
     debris_system.py                Particle burst on obstacle destruction
     input_handler.py                Keyboard/mouse input → TankInput
@@ -44,6 +44,7 @@ game/
     status_effect.py                StatusEffect class — tick damage, multipliers, expiry
     elemental_resolver.py           Elemental combo detector — scans tanks for effect pairs, triggers combos
     raycast.py                      Hitscan raycast — line-vs-AABB + line-vs-circle; used by laser beam (v0.25)
+    weapon_roller.py                Weighted random weapon selection for loadout slots (v0.25.5)
     progression_manager.py          XP/level/unlock progression logic
   ui/
     __init__.py
@@ -71,7 +72,8 @@ data/
     status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
     elemental_interactions.yaml     Three elemental combo definitions (steam_burst, accelerated_burn, deep_freeze)
     tanks.yaml                      Four tank type definitions
-    weapons.yaml                    Eleven weapon type definitions (v0.25)
+    weapons.yaml                    Eleven weapon type definitions + tips field (v0.25.5)
+    weapon_weights.yaml             Probability weights for random weapon rolls (v0.25.5)
   maps/
     map_01.yaml                     "Headquarters" — default theme, 8 obstacles (incl. 2 reinforced_steel)
     map_02.yaml                     "Dunes" — desert theme, 7 obstacles
@@ -96,7 +98,7 @@ tests/
   test_collision.py                 Collision detection + resolution
   test_damage_types.py              DamageType enum, bullet/collision/obstacle routing, color dict
   test_debris.py                    Debris particle lifecycle + cap
-  test_loadout.py                   Loadout scene selection logic
+  test_loadout.py                   Loadout scene selection logic + hull-lock flow + slot 0 cycling (v0.25.5)
   test_map_loader.py                Map YAML parsing
   test_match_calculator.py          XP formula + MatchResult factory
   test_math_utils.py                Geometry utility functions
@@ -118,6 +120,7 @@ tests/
   test_tank_status.py               Status effects: apply, tick, regen
   test_theme_loader.py              Theme loading + fallback
   test_turret.py                    Independent turret aiming
+  test_weapon_roller.py             WeaponRoller unit tests (v0.25.5)
   test_weapon_select.py             Weapon selection (legacy)
   test_weapon_slots.py              Multi-slot weapon cycling
 
@@ -138,6 +141,7 @@ assets/
     sfx_tank_explosion.wav          Big explosion, 1.2s
     sfx_explosion.wav                AoE explosion, 0.6s (v0.22)
     sfx_railgun_fire.wav            Deep electromagnetic thump + crack, 0.4s (v0.25)
+    sfx_reroll.wav                  Ascending arpeggio C5→E5→G5→C6 + ding, 0.4s (v0.25.5)
     sfx_laser_hum.wav               Sustained 220+330 Hz hum, 2s loopable layer (v0.25)
     sfx_tank_fire.wav               Sharp crack, 0.35s
     sfx_ui_confirm.wav              Two-tone chime, 0.22s
@@ -665,6 +669,14 @@ This is repulsion, not pathfinding — stuck recovery catches what it misses.
 | `set_pickups_getter(getter)` | GameplayScene | Inject `() -> list[Pickup]` for pickup awareness |
 | `tick(dt)` | GameplayScene (before tank.update) | Advance stuck detector + recovery timer |
 
+#### Weapon Cycling Timer (v0.25.5)
+
+`_weapon_cycle_timer: float` — counts down from a random 4.0-8.0s interval. When
+expired, sets `_pending_weapon_cycle = True`. `get_input()` injects `cycle_weapon=+1`
+into the returned TankInput and resets the timer to a new random interval.
+
+---
+
 #### Pickup Awareness (v0.20)
 
 AI seeks pickups based on state:
@@ -771,6 +783,70 @@ Tests obstacles first (line-vs-AABB slab method via `_line_vs_aabb`), then tanks
 
 Used by `GameplayScene._resolve_beam()` every frame the laser beam is active.
 `TANK_RADIUS` imported locally from `game.systems.collision` to avoid circular import.
+
+---
+
+### WeaponRoller (game/systems/weapon_roller.py) (v0.25.5)
+
+Weighted random weapon selection for loadout slots 1-2 (indices 1-2). Slot 0 defaults to
+`standard_shell` from the roller but is player-editable in LoadoutScene via LEFT/RIGHT cycling.
+
+#### Construction
+
+```python
+WeaponRoller(unlocked_weapons: list[str])
+```
+
+Loads weights from `data/configs/weapon_weights.yaml`. Pool = unlocked weapons that have
+a weight entry (standard_shell excluded — it's the slot 0 default, not a random candidate).
+
+#### Public Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `roll()` | `list[str\|None]` | 3-element loadout: `["standard_shell", <random>, <random>]`. No duplicates in slots 1-2. Falls back to None if pool exhausted. |
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `pool_size` | `int` | Number of weapons in the random pool |
+
+#### Weight Schema (`data/configs/weapon_weights.yaml`)
+
+```yaml
+spread_shot: 30        # COMMON (≥25)
+bouncing_round: 25     # COMMON
+cryo_round: 20         # UNCOMMON (≥18)
+poison_shell: 20       # UNCOMMON
+flamethrower: 18       # UNCOMMON
+emp_blast: 15          # RARE (≥12)
+grenade_launcher: 12   # RARE
+homing_missile: 10     # EPIC (≥8)
+railgun: 8             # EPIC
+laser_beam: 6          # LEGENDARY (<8)
+```
+
+Rarity thresholds (display only, in `_get_rarity()` in loadout_scene.py):
+≥25=COMMON, ≥18=UNCOMMON, ≥12=RARE, ≥8=EPIC, else=LEGENDARY.
+
+#### LoadoutScene Integration
+
+Two-step loadout flow (v0.25.5):
+1. **Hull panel** — player navigates hulls with UP/DOWN. ENTER/TAB locks hull.
+2. **Weapon panel** — weapons revealed with roll animation. Slot 0 cycles via LEFT/RIGHT
+   (`_cycle_slot(0, ±1)` — reuses existing method with duplicate prevention). Slots 1-2
+   are view-only random assignments. One re-roll via R key. Rarity labels on slots 1-2 only.
+3. **Map panel** — standard map selection. ENTER confirms and starts match.
+
+State fields: `_hull_locked`, `_weapons_revealed`. ESC when locked resets to hull.
+ESC when unlocked exits to menu. Weapon tips from `weapons.yaml` displayed below stat bars.
+
+#### AI Random Loadouts
+
+GameScene creates `WeaponRoller` for AI tanks, excluding hitscan weapons (`laser_beam`)
+from the pool. AI tanks cycle weapons every 4-8 seconds via `_weapon_cycle_timer` in
+AIController (injects `cycle_weapon` into TankInput when timer expires).
 
 ---
 
@@ -1023,13 +1099,15 @@ MenuScene()
   → "SWITCH PROFILE"   → ProfileSelectScene()
 
 LoadoutScene()
-  loads: tanks.yaml, weapons.yaml, xp_table.yaml, all map YAMLs via MapLoader
+  loads: tanks.yaml, weapons.yaml, weapon_weights.yaml, xp_table.yaml, all map YAMLs via MapLoader
+  flow: HULL (lock) → WEAPONS (reveal + slot 1 choice + optional reroll) → MAP → confirm
   → "START" → GameplayScene(
       tank_type: str,
       weapon_types: list[str],
       map_name: str
     )
-  → ESC → MenuScene()
+  → ESC (hull locked) → reset to hull
+  → ESC (hull unlocked) → MenuScene()
 
 GameplayScene(tank_type, weapon_types, map_name, ai_count)
   loads: tanks.yaml, weapons.yaml, pickups.yaml, ai_difficulty.yaml,
