@@ -146,3 +146,45 @@ class TestArenaBounce:
         bullet.update(0.05)
         physics._check_bullet_boundary(bullet)
         assert not bullet.is_alive
+
+    def test_explosive_bullet_detonates_at_wall(self):
+        """Grenade hitting arena boundary should set _detonated flag."""
+        owner = _MockTank()
+        config = {
+            "type": "grenade_launcher", "speed": 300, "damage": 40,
+            "max_bounces": 0, "max_range": 1000,
+            "aoe_radius": 80, "aoe_falloff": True,
+        }
+        bullet = Bullet(2, 100, 180.0, owner, config)
+        physics = self._make_physics()
+        bullet.update(0.05)
+        physics._check_bullet_boundary(bullet)
+        assert not bullet.is_alive
+        assert bullet._detonated is True
+
+    def test_pool_bullet_detonates_at_wall(self):
+        """Lava/glue bullet hitting arena boundary should set _pool_detonated flag."""
+        owner = _MockTank()
+        config = {
+            "type": "lava_gun", "speed": 280, "damage": 10,
+            "max_bounces": 0, "max_range": 700,
+            "pool_type": "lava", "pool_radius": 50, "pool_duration": 15,
+            "pool_slow": 0.6, "pool_dps": 20,
+            "pool_color": [255, 100, 30],
+        }
+        bullet = Bullet(2, 100, 180.0, owner, config)
+        physics = self._make_physics()
+        bullet.update(0.05)
+        physics._check_bullet_boundary(bullet)
+        assert not bullet.is_alive
+        assert bullet._pool_detonated is True
+
+    def test_boundary_bullet_clamped_inside(self):
+        """Non-bouncing bullet destroyed at wall should be clamped inside arena."""
+        owner = _MockTank()
+        bullet = Bullet(2, 100, 180.0, owner, _STANDARD_CONFIG)
+        physics = self._make_physics()
+        bullet.update(0.05)
+        physics._check_bullet_boundary(bullet)
+        assert 0 <= bullet.x <= ARENA_WIDTH
+        assert 0 <= bullet.y <= ARENA_HEIGHT

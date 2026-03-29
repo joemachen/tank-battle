@@ -116,6 +116,10 @@ the pickup/powerup system.*
 - Shotgun blast weapon (6-8 pellets in tight cone, massive close-range damage, useless at distance)
 - Gravity well weapon (slow-moving orb that pulls nearby bullets and tanks, detonates after 3s)
 - Mine layer weapon (drops invisible mine at tank position, detonates on enemy contact)
+- 3-4 new map layouts with chokepoints, corridors, asymmetric design
+- New themes: castle/medieval, wild west, space, fast food (color palettes + floor patterns)
+- AI retreat-to-cover behavior (pathfind to nearest obstacle instead of fleeing to corner)
+- AI expanded detection range (~80% arena diagonal)
 ---
 ## ⚠️ Architecture Notes
 ### Turret system (v0.15) decouples aim from movement

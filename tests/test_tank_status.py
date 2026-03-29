@@ -307,3 +307,26 @@ class TestPassiveRegen:
             tank.update(1 / 60)
         assert tank.health >= 109
         assert tank.health <= 111
+
+
+# -----------------------------------------------------------------------
+# Laser beam state clearing (v0.26)
+# -----------------------------------------------------------------------
+
+class TestBeamStateClearing:
+    """is_firing_beam must be cleared on death and stun."""
+
+    def test_beam_cleared_on_death(self):
+        tank = _make_tank(health=100)
+        # Simulate mid-beam state
+        tank._is_firing_beam = True
+        tank.is_alive = False
+        tank.update(1 / 60)
+        assert tank.is_firing_beam is False
+
+    def test_beam_cleared_on_stun(self):
+        tank = _make_tank(health=100)
+        tank._is_firing_beam = True
+        tank.apply_stun(2.0)
+        tank.update(1 / 60)
+        assert tank.is_firing_beam is False

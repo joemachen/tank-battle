@@ -427,5 +427,13 @@ class TestLaserBeam(unittest.TestCase):
         self.assertEqual(len(fire_events), 0)
 
 
+class TestLaserDpsConfig(unittest.TestCase):
+
+    def test_laser_dps_is_40(self):
+        """Laser beam DPS should be 40 after v0.26 nerf."""
+        cfg = _weapon_cfg("laser_beam")
+        self.assertEqual(cfg["dps"], 40)
+
+
 if __name__ == "__main__":
     unittest.main()

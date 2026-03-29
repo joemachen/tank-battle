@@ -277,10 +277,12 @@ class Tank:
         Caller is responsible for collision response after this call.
         """
         if not self.is_alive:
+            self._is_firing_beam = False
             return []
 
         # Stun — suppress all input but still tick effects (v0.24)
         if self._stun_timer > 0:
+            self._is_firing_beam = False
             self._stun_timer -= dt
             # Tick cooldowns so weapons are ready when stun ends
             for i in range(len(self._slot_cooldowns)):

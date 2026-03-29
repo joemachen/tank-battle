@@ -144,7 +144,7 @@ laser_beam:
   energy_drain_rate: 30.0
   energy_recharge_rate: 15.0
   energy_min_to_fire: 20.0
-  dps: 45
+  dps: 40
   description: "Continuous energy beam. Hold fire to sustain. Drains energy, recharges when idle."
   tips: "Hold fire for continuous beam. Uses energy bar. Fire damage burns targets."
 
