@@ -1030,6 +1030,94 @@ def gen_sfx_concussion_hit(sr: int) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
+# Ultimate ability SFX (v0.28)
+# ---------------------------------------------------------------------------
+
+def gen_sfx_ult_speed_burst(sr: int) -> list[float]:
+    """Overdrive — rising electronic whine + power surge."""
+    dur = 0.5
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        # Rising frequency whine (200Hz → 1200Hz)
+        freq = 200 + 2000 * (t / dur)
+        env = adsr(t, dur, attack=0.01, decay=0.1, sustain_level=0.7, release=0.15)
+        val = sine(t, freq) * 0.5 * env
+        val += square(t, freq * 0.5) * 0.2 * env
+        # Noise burst at start
+        if t < 0.05:
+            val += noise() * 0.6 * (1.0 - t / 0.05)
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
+def gen_sfx_ult_shield_dome(sr: int) -> list[float]:
+    """Fortress — deep resonant hum + crystalline chime."""
+    dur = 0.6
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.02, decay=0.15, sustain_level=0.5, release=0.2)
+        # Deep resonant hum
+        val = sine(t, 80.0) * 0.5 * env
+        val += sine(t, 160.0) * 0.3 * env
+        # Crystalline chime overtone
+        chime_env = adsr(t, 0.4, attack=0.005, decay=0.05, sustain_level=0.3, release=0.2)
+        val += sine(t, 880.0) * 0.25 * chime_env
+        val += sine(t, 1320.0) * 0.15 * chime_env
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
+def gen_sfx_ult_artillery(sr: int) -> list[float]:
+    """Barrage — falling whistle + heavy thud."""
+    dur = 0.5
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        # Falling whistle (1500Hz → 200Hz)
+        freq = 1500 - 2600 * (t / dur)
+        freq = max(freq, 100)
+        whistle_env = adsr(t, 0.3, attack=0.005, decay=0.05, sustain_level=0.6, release=0.15)
+        val = sine(t, freq) * 0.4 * whistle_env
+        # Heavy thud impact at 0.25s
+        if t > 0.2:
+            impact_t = t - 0.2
+            impact_env = adsr(impact_t, 0.25, attack=0.002, decay=0.04, sustain_level=0.4, release=0.12)
+            val += sine(impact_t, 55.0) * 0.6 * impact_env
+            val += noise() * 0.4 * impact_env * math.exp(-impact_t * 6.0)
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
+def gen_sfx_ult_cloak(sr: int) -> list[float]:
+    """Phantom — shimmer/phase shift + ethereal whoosh."""
+    dur = 0.55
+    n = _seconds(dur)
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = adsr(t, dur, attack=0.01, decay=0.1, sustain_level=0.5, release=0.2)
+        # Phase-shifting shimmer (two close frequencies for beating)
+        val = sine(t, 440.0) * 0.3 * env
+        val += sine(t, 445.0) * 0.3 * env  # 5Hz beat frequency
+        # Ethereal whoosh (filtered noise)
+        whoosh_env = adsr(t, 0.4, attack=0.02, decay=0.08, sustain_level=0.3, release=0.2)
+        val += noise() * 0.25 * whoosh_env * math.exp(-t * 4.0)
+        # Sub bass undertone
+        val += sine(t, 65.0) * 0.2 * env
+        out.append(val)
+    peak = max(abs(s) for s in out) or 1.0
+    return [s / peak * 0.8 for s in out]
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1068,6 +1156,10 @@ def main() -> None:
         ("sfx_glue_splat.wav",          gen_sfx_glue_splat),
         ("sfx_lava_sizzle.wav",         gen_sfx_lava_sizzle),
         ("sfx_concussion_hit.wav",      gen_sfx_concussion_hit),
+        ("sfx_ult_speed_burst.wav",     gen_sfx_ult_speed_burst),
+        ("sfx_ult_shield_dome.wav",     gen_sfx_ult_shield_dome),
+        ("sfx_ult_artillery.wav",       gen_sfx_ult_artillery),
+        ("sfx_ult_cloak.wav",           gen_sfx_ult_cloak),
     ]
 
     print("--- SFX ---")

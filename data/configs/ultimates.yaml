@@ -1,0 +1,65 @@
+# Ultimate abilities per tank type (v0.28)
+#
+# charge_max:          total charge needed to activate
+# charge_per_damage:   charge gained per 1 HP of damage dealt
+# charge_per_hit:      charge gained per 1 HP of damage received
+# charge_passive_rate: charge gained per second (passive)
+# ability_type:        speed_burst | shield_dome | artillery_strike | cloak
+# duration:            seconds active (0 = instant)
+# color:               flash color [R, G, B]
+# sfx_key:             key into ULTIMATE_SFX dict
+# (type-specific fields below)
+
+light_tank:
+  charge_max: 100.0
+  charge_per_damage: 0.8
+  charge_per_hit: 0.5
+  charge_passive_rate: 2.0
+  ability_type: speed_burst
+  duration: 4.0
+  speed_multiplier: 2.5
+  fire_rate_multiplier: 2.0
+  color: [255, 200, 60]
+  description: "Overdrive — 2.5x speed, 2x fire rate for 4s"
+  sfx_key: ult_speed_burst
+
+medium_tank:
+  charge_max: 100.0
+  charge_per_damage: 0.6
+  charge_per_hit: 0.7
+  charge_passive_rate: 1.8
+  ability_type: shield_dome
+  duration: 5.0
+  dome_radius: 120.0
+  dome_hp: 200.0
+  color: [100, 180, 255]
+  description: "Fortress — 120px shield dome, 200 HP, 5s"
+  sfx_key: ult_shield_dome
+
+heavy_tank:
+  charge_max: 100.0
+  charge_per_damage: 0.7
+  charge_per_hit: 0.4
+  charge_passive_rate: 1.5
+  ability_type: artillery_strike
+  duration: 0
+  explosion_count: 5
+  explosion_radius: 80.0
+  explosion_damage: 80
+  strike_area: 250.0
+  stagger_delay: 0.3
+  color: [255, 80, 40]
+  description: "Barrage — 5 explosions in 250px area, 80 dmg each"
+  sfx_key: ult_artillery
+
+scout_tank:
+  charge_max: 100.0
+  charge_per_damage: 0.9
+  charge_per_hit: 0.6
+  charge_passive_rate: 2.2
+  ability_type: cloak
+  duration: 5.0
+  speed_multiplier: 1.3
+  color: [160, 100, 220]
+  description: "Phantom — invisible for 5s, 1.3x speed, firing breaks cloak"
+  sfx_key: ult_cloak

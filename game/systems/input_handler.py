@@ -43,6 +43,7 @@ _DEFAULT_KEYS: dict = {
     "cycle_next":      pygame.K_TAB,
     "cycle_prev":      pygame.K_q,
     "cycle_next_alt":  pygame.K_e,
+    "ultimate":        pygame.K_f,
 }
 
 
@@ -75,6 +76,7 @@ class InputHandler:
         # Edge-detection state for weapon cycle keys
         self._prev_cycle_next: bool = False
         self._prev_cycle_prev: bool = False
+        self._prev_ult_key: bool = False
 
         log.debug("InputHandler initialized (camera=%s).", "yes" if camera else "no")
 
@@ -116,12 +118,18 @@ class InputHandler:
         self._prev_cycle_next = next_held
         self._prev_cycle_prev = prev_held
 
+        # Ultimate activation — edge-detected F key (v0.28)
+        ult_key = bool(keys[self._keys["ultimate"]])
+        activate_ult = ult_key and not self._prev_ult_key
+        self._prev_ult_key = ult_key
+
         return TankInput(
             throttle=throttle,
             rotate=rotate,
             fire=fire,
             turret_angle=turret_angle,
             cycle_weapon=cycle,
+            activate_ultimate=activate_ult,
         )
 
     def update_keybinds(self, keybinds: dict) -> None:

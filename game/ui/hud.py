@@ -17,6 +17,8 @@ AI health bars mirror the same y-anchor in the bottom-right corner
 HUD pulls all data at draw time — no entity references are stored here.
 """
 
+import math
+
 import pygame
 
 from game.utils.constants import (
@@ -136,6 +138,43 @@ class HUD:
             # Label
             energy_label = self._small_font.render("ENERGY", True, (60, 200, 255))
             surface.blit(energy_label, (HUD_MARGIN + HUD_BAR_WIDTH + 6, energy_y - 2))
+
+        # Ultimate charge bar (v0.28)
+        from game.systems.ultimate import UltimateCharge
+        ult = getattr(player_tank, 'ultimate', None)
+        if isinstance(ult, UltimateCharge):
+            # Position below energy bar (or below weapon slots if no energy)
+            energy_max = getattr(player_tank, '_energy_max', 0)
+            if isinstance(energy_max, (int, float)) and energy_max > 0:
+                ult_y = weapon_y + 20 + 14
+            else:
+                ult_y = weapon_y + 20
+            # Background bar
+            pygame.draw.rect(surface, COLOR_GRAY, (HUD_MARGIN, ult_y, HUD_BAR_WIDTH, 8))
+            # Fill bar — yellow when charging, pink when ready, pulsing when active
+            ratio = ult.charge_ratio
+            fill_w = int(HUD_BAR_WIDTH * ratio)
+            if ult.is_active:
+                pulse = int(80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.01)))
+                fill_color = (255, 100 + pulse, 200)
+                fill_w = HUD_BAR_WIDTH  # full bar while active
+            elif ult.is_ready:
+                fill_color = COLOR_NEON_PINK
+            else:
+                # Yellow → pink gradient
+                fill_color = (
+                    255,
+                    int(200 * (1 - ratio) + 100 * ratio),
+                    int(60 * (1 - ratio) + 200 * ratio),
+                )
+            if fill_w > 0:
+                pygame.draw.rect(surface, fill_color, (HUD_MARGIN, ult_y, fill_w, 8))
+            # Label
+            ult_text = "ULTIMATE [F]" if ult.is_ready else "ULTIMATE"
+            if ult.is_active:
+                ult_text = f"ACTIVE {ult.active_remaining:.1f}s"
+            ult_label = self._small_font.render(ult_text, True, fill_color)
+            surface.blit(ult_label, (HUD_MARGIN + HUD_BAR_WIDTH + 6, ult_y - 2))
 
         # Normalise ai_tanks to a list (supports single Tank for backwards compat)
         if ai_tanks is None:

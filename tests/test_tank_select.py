@@ -310,6 +310,8 @@ class TestGameplaySceneTankType:
             is_alive = True
             health_ratio = 1.0
             fire_rate = 1.0
+            tank_type = "medium_tank"
+            ultimate = None
             position = (0.0, 0.0)
             weapon_slots = [{"type": "standard_shell", "fire_rate": 1.0}]
             active_slot = 0

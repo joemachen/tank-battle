@@ -71,6 +71,7 @@ def _install_pygame_stub() -> None:
     stub.K_x        = 120
     stub.K_n        = 110
     stub.K_r        = 114     # Re-roll key (v0.25.5)
+    stub.K_f        = 102     # Ultimate key (v0.28)
     # Direct slot-select keys (v0.16)
     stub.K_1        = 49
     stub.K_2        = 50
@@ -149,6 +150,7 @@ def _install_pygame_stub() -> None:
                 self._w, self._h = 1280, 720
         def fill(self, *a, **kw): pass
         def blit(self, *a, **kw): pass
+        def set_alpha(self, *a, **kw): pass
         def get_width(self):  return self._w
         def get_height(self): return self._h
         def get_rect(self, **kwargs):
@@ -229,6 +231,13 @@ def _install_pygame_stub() -> None:
     stub.mouse = mouse_mod
 
     # ---------------------------------------------------------------------------
+    # Time sub-module (needed by HUD pulsing effects)
+    # ---------------------------------------------------------------------------
+    time_mod = types.ModuleType("pygame.time")
+    time_mod.get_ticks = lambda: 0
+    stub.time = time_mod
+
+    # ---------------------------------------------------------------------------
     # Register everything
     # ---------------------------------------------------------------------------
     sys.modules["pygame"]             = stub
@@ -241,6 +250,7 @@ def _install_pygame_stub() -> None:
     sys.modules["pygame.mixer.music"] = music_mod
     sys.modules["pygame.transform"]   = transform_mod
     sys.modules["pygame.mouse"]       = mouse_mod
+    sys.modules["pygame.time"]        = time_mod
 
 
 # Only install the stub when pygame is not available in this environment.

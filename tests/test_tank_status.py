@@ -22,6 +22,7 @@ class _StubController:
         turret_angle = 0.0
         cycle_weapon = 0
         switch_slot = -1
+        activate_ultimate = False
 
     def get_input(self):
         return self._Intent()
@@ -102,6 +103,7 @@ class TestSpeedBoostInUpdate:
                 turret_angle = 0.0
                 cycle_weapon = 0
                 switch_slot = -1
+                activate_ultimate = False
 
             def get_input(self):
                 return self._Intent()

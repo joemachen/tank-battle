@@ -87,7 +87,10 @@ class Bullet:
             return
 
         targets = self._targets_getter()
-        candidates = [t for t in targets if t.is_alive and t is not self.owner]
+        candidates = [
+            t for t in targets
+            if t.is_alive and t is not self.owner and not getattr(t, '_cloaked', False)
+        ]
         if not candidates:
             return
 

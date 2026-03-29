@@ -255,6 +255,28 @@ class AIController:
             )
             self._pending_weapon_cycle = 0
 
+        # AI ultimate activation (v0.28)
+        # Offensive ultimates (speed_burst, artillery_strike) activate in ATTACK.
+        # Defensive ultimates (shield_dome, cloak) activate in EVADE.
+        activate_ult = False
+        if self._owner is not None and self._owner.ultimate is not None:
+            ult = self._owner.ultimate
+            if ult.is_ready:
+                ult_type = ult.ability_type
+                if ult_type in ("speed_burst", "artillery_strike") and self._state == AIState.ATTACK:
+                    activate_ult = random.random() < 0.30
+                elif ult_type in ("shield_dome", "cloak") and self._state == AIState.EVADE:
+                    activate_ult = random.random() < 0.40
+        if activate_ult:
+            result = TankInput(
+                throttle=result.throttle,
+                rotate=result.rotate,
+                fire=result.fire,
+                turret_angle=result.turret_angle,
+                cycle_weapon=result.cycle_weapon,
+                activate_ultimate=True,
+            )
+
         return result
 
     # ------------------------------------------------------------------
@@ -268,6 +290,11 @@ class AIController:
 
         dist = distance(self._owner.position, target.position)
         health_ratio = self._owner.health_ratio if self._owner else 1.0
+
+        # Cloaked target — treat as invisible, revert to patrol (v0.28)
+        if getattr(target, '_cloaked', False):
+            self._transition(AIState.PATROL)
+            return
 
         if health_ratio <= self.evasion_threshold:
             self._transition(AIState.EVADE)
