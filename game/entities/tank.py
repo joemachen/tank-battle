@@ -87,7 +87,8 @@ class Tank:
         # Stats from config — fall back to defaults if key missing
         self.speed: float = float(config.get("speed", DEFAULT_TANK_SPEED))
         self.max_health: int = int(config.get("health", DEFAULT_TANK_HEALTH))
-        self.health: int = self.max_health
+        self._health_float: float = float(self.max_health)
+        self.regen_rate: float = float(config.get("regen_rate", 0.0))
         self.turn_rate: float = float(config.get("turn_rate", DEFAULT_TANK_TURN_RATE))
         self.fire_rate: float = float(config.get("fire_rate", DEFAULT_FIRE_RATE))
 
@@ -322,6 +323,18 @@ class Tank:
             if self.health <= 0:
                 self.is_alive = False
             log.debug("DoT damage: %d — hp=%d/%d", dot_damage, self.health, self.max_health)
+
+        # Passive HP regen — heals every frame, capped at max_health
+        # Suppressed while any DoT combat effect is active (fire, poison counter regen)
+        if self.regen_rate > 0 and self.health < self.max_health:
+            has_dot = any(
+                e.tick_damage > 0 for e in self._combat_effects.values()
+            )
+            if not has_dot:
+                self._health_float = min(
+                    float(self.max_health),
+                    self._health_float + self.regen_rate * dt,
+                )
 
         if not self.is_alive:
             return []
@@ -566,6 +579,15 @@ class Tank:
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
+
+    @property
+    def health(self) -> int:
+        """Integer health for display and comparison. Backed by float accumulator."""
+        return int(self._health_float)
+
+    @health.setter
+    def health(self, value):
+        self._health_float = float(value)
 
     @property
     def position(self) -> tuple:

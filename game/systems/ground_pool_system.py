@@ -47,7 +47,7 @@ class GroundPoolSystem:
             if not pool.is_alive:
                 continue
             for tank in tanks:
-                if not tank.is_alive or tank is pool.owner:
+                if not tank.is_alive:
                     continue
                 if not pool.contains(tank.x, tank.y):
                     continue

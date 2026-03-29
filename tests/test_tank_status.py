@@ -2,12 +2,14 @@
 tests/test_tank_status.py
 
 Unit tests for Tank status effects — apply, tick, expire, speed boost (v0.19).
+Passive regen + health float accumulator tests (v0.26).
 """
 
 import pytest
 
 from game.entities.tank import Tank
-from game.utils.constants import DEFAULT_TANK_SPEED
+from game.systems.status_effect import StatusEffect
+from game.utils.constants import DEFAULT_TANK_SPEED, TANK_STAT_MAX
 
 
 class _StubController:
@@ -167,3 +169,141 @@ class TestRegenStatus:
             tank.tick_status_effects(1 / 60)
         # After 1 second at 1 HP/s → expect ~1 HP healed
         assert tank.health >= 51
+
+
+# -----------------------------------------------------------------------
+# Health float accumulator (v0.26)
+# -----------------------------------------------------------------------
+
+class TestHealthFloatAccumulator:
+    """health property returns int; _health_float stores float."""
+
+    def test_health_returns_int(self):
+        tank = _make_tank(health=100)
+        assert isinstance(tank.health, int)
+
+    def test_health_float_stores_float(self):
+        tank = _make_tank(health=100)
+        assert isinstance(tank._health_float, float)
+
+    def test_health_setter_updates_float(self):
+        tank = _make_tank(health=100)
+        tank.health = 75
+        assert tank._health_float == 75.0
+        assert tank.health == 75
+
+    def test_health_truncates_to_int(self):
+        tank = _make_tank(health=100)
+        tank._health_float = 99.7
+        assert tank.health == 99
+
+    def test_tank_stat_max_health(self):
+        assert TANK_STAT_MAX["health"] == 440.0
+
+
+# -----------------------------------------------------------------------
+# Passive HP regen (v0.26)
+# -----------------------------------------------------------------------
+
+class TestPassiveRegen:
+    """Passive regen heals every frame via float accumulator, suppressed by DoT."""
+
+    def test_regen_heals_over_time(self):
+        tank = _make_tank(health=200, regen_rate=5.0)
+        tank.health = 150
+        # Simulate 2 seconds at 60fps
+        for _ in range(120):
+            tank.update(1 / 60)
+        # 5 HP/s * 2s = 10 HP → health should be ~160
+        assert tank.health >= 159
+        assert tank.health <= 161
+
+    def test_regen_does_not_exceed_max(self):
+        tank = _make_tank(health=100, regen_rate=50.0)
+        tank.health = 95
+        # Large regen over 1 second should cap at max
+        for _ in range(60):
+            tank.update(1 / 60)
+        assert tank.health == 100
+
+    def test_regen_suppressed_by_fire_dot(self):
+        tank = _make_tank(health=200, regen_rate=10.0)
+        tank.health = 150
+        # Apply fire effect (tick_damage > 0)
+        fire_cfg = {
+            "duration": 5.0, "tick_interval": 0.5, "tick_damage": 8,
+            "speed_mult": 1.0, "turn_mult": 1.0, "fire_rate_mult": 1.0,
+            "color": [255, 80, 20],
+        }
+        tank.apply_combat_effect("fire", fire_cfg)
+        hp_before = tank.health
+        # Regen should NOT run — DoT is active
+        # Run for 1.5s so fire ticks at least twice (tick_interval=0.5)
+        for _ in range(90):
+            tank.update(1 / 60)
+        # Health should be LOWER (DoT damage), not higher (regen)
+        assert tank.health < hp_before
+
+    def test_regen_suppressed_by_poison_dot(self):
+        tank = _make_tank(health=200, regen_rate=10.0)
+        tank.health = 150
+        poison_cfg = {
+            "duration": 6.0, "tick_interval": 1.0, "tick_damage": 5,
+            "speed_mult": 1.0, "turn_mult": 1.0, "fire_rate_mult": 1.0,
+            "color": [80, 220, 80],
+        }
+        tank.apply_combat_effect("poison", poison_cfg)
+        hp_before = tank.health
+        for _ in range(30):
+            tank.update(1 / 60)
+        assert tank.health <= hp_before
+
+    def test_regen_not_suppressed_by_ice(self):
+        """ICE has tick_damage=0, so regen should still work."""
+        tank = _make_tank(health=200, regen_rate=10.0)
+        tank.health = 150
+        ice_cfg = {
+            "duration": 4.0, "tick_interval": 0, "tick_damage": 0,
+            "speed_mult": 0.4, "turn_mult": 0.5, "fire_rate_mult": 1.0,
+            "color": [100, 200, 255],
+        }
+        tank.apply_combat_effect("ice", ice_cfg)
+        for _ in range(60):
+            tank.update(1 / 60)
+        # 10 HP/s * 1s = 10 HP → should have healed despite ice
+        assert tank.health >= 159
+
+    def test_regen_resumes_after_dot_expires(self):
+        tank = _make_tank(health=300, regen_rate=10.0)
+        tank.health = 200
+        fire_cfg = {
+            "duration": 0.5, "tick_interval": 0.5, "tick_damage": 8,
+            "speed_mult": 1.0, "turn_mult": 1.0, "fire_rate_mult": 1.0,
+            "color": [255, 80, 20],
+        }
+        tank.apply_combat_effect("fire", fire_cfg)
+        # Run for 1 second — fire expires at 0.5s, regen kicks in for remaining 0.5s
+        for _ in range(60):
+            tank.update(1 / 60)
+        hp_after = tank.health
+        # Continue for another 2 seconds — regen should be active
+        for _ in range(120):
+            tank.update(1 / 60)
+        assert tank.health > hp_after
+
+    def test_zero_regen_rate_no_healing(self):
+        tank = _make_tank(health=100, regen_rate=0.0)
+        tank.health = 50
+        for _ in range(60):
+            tank.update(1 / 60)
+        assert tank.health == 50
+
+    def test_regen_fractional_accumulation(self):
+        """2.5 HP/s at 60fps = 0.0417 HP/frame — must accumulate via float."""
+        tank = _make_tank(health=200, regen_rate=2.5)
+        tank.health = 100
+        # Run for 4 seconds → expect ~10 HP healed
+        for _ in range(240):
+            tank.update(1 / 60)
+        assert tank.health >= 109
+        assert tank.health <= 111

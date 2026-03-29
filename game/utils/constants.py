@@ -396,7 +396,7 @@ MAX_BAR_WIDTH: int = 120
 # Reference maxima used for normalization (derived from tanks.yaml peak values)
 TANK_STAT_MAX: dict = {
     "speed":     260.0,   # scout_tank
-    "health":    220.0,   # heavy_tank
+    "health":    440.0,   # heavy_tank
     "turn_rate": 220.0,   # scout_tank
     "fire_rate": 2.0,     # scout_tank
 }
