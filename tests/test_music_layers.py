@@ -5,6 +5,7 @@ Unit tests for the per-pickup music layer system.
 """
 
 import pytest
+from unittest.mock import MagicMock
 
 from game.entities.tank import Tank, TankInput
 from game.utils import constants
@@ -83,11 +84,15 @@ class TestAudioManagerLayers:
         mgr = self._make_manager()
         mgr._initialized = True  # enable so stop_music_layer processes
         # Manually populate active layers to simulate running state
+        ch_a, ch_b, ch_c = MagicMock(), MagicMock(), MagicMock()
         mgr._active_layers = {"a": None, "b": None, "c": None}
-        mgr._layer_channels = {"a": None, "b": None, "c": None}
+        mgr._layer_channels = {"a": ch_a, "b": ch_b, "c": ch_c}
         mgr.stop_all_layers()
         assert len(mgr._active_layers) == 0
         assert len(mgr._layer_channels) == 0
+        ch_a.fadeout.assert_called_once()
+        ch_b.fadeout.assert_called_once()
+        ch_c.fadeout.assert_called_once()
 
     def test_duplicate_start_dict_unchanged(self):
         mgr = self._make_manager()
@@ -100,14 +105,35 @@ class TestAudioManagerLayers:
         mgr.start_music_layer("speed_boost", "fake.wav")
         assert mgr._active_layers["speed_boost"] == "placeholder"
 
-    def test_stop_layer_removes_from_dicts(self):
+    def test_stop_layer_removes_from_active_keeps_channel(self):
+        """stop_music_layer removes from _active_layers but keeps channel
+        ref in _layer_channels so start can hard-stop fading channels."""
         mgr = self._make_manager()
-        mgr._initialized = True  # enable so stop_music_layer processes
+        mgr._initialized = True
+        ch = MagicMock()
         mgr._active_layers["regen"] = "placeholder"
-        mgr._layer_channels["regen"] = None
+        mgr._layer_channels["regen"] = ch
         mgr.stop_music_layer("regen")
         assert "regen" not in mgr._active_layers
-        assert "regen" not in mgr._layer_channels
+        assert "regen" in mgr._layer_channels  # kept for cleanup
+        ch.fadeout.assert_called_once()
+
+    def test_start_kills_fading_channel(self):
+        """start_music_layer hard-stops a leftover fading channel before starting fresh."""
+        from unittest.mock import patch
+        mgr = self._make_manager()
+        mgr._initialized = True
+        old_ch = MagicMock()
+        new_ch = MagicMock()
+        mgr._layer_channels["laser_hum"] = old_ch  # fading from previous stop
+        # Pre-populate cache so pygame.mixer.Sound is not called
+        fake_sound = MagicMock()
+        mgr._layer_cache["fake.wav"] = fake_sound
+        with patch("pygame.mixer.find_channel", create=True, return_value=new_ch):
+            mgr.start_music_layer("laser_hum", "fake.wav")
+        old_ch.stop.assert_called_once()
+        # New channel should now be tracked
+        assert mgr._layer_channels["laser_hum"] is new_ch
 
 
 # ---------------------------------------------------------------------------
