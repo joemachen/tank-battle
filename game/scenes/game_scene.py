@@ -962,7 +962,7 @@ class GameplayScene(BaseScene):
             dtank = dome["tank"]
             if dtank.is_alive:
                 dsx, dsy = self._camera.world_to_screen(dtank.x, dtank.y)
-                dr = int(dome["radius"] * self._camera.zoom)
+                dr = int(dome["radius"])
                 dome_surf = pygame.Surface((dr * 2, dr * 2), pygame.SRCALPHA)
                 alpha = max(30, int(120 * (dome["hp"] / self._ultimate_configs.get(dtank.tank_type, {}).get("dome_hp", 200.0))))
                 dc = dome["color"]
@@ -973,7 +973,7 @@ class GameplayScene(BaseScene):
         # Artillery warning circles (v0.28)
         for w in self._artillery_warnings:
             wsx, wsy = self._camera.world_to_screen(w["x"], w["y"])
-            wr = int(w["radius"] * self._camera.zoom)
+            wr = int(w["radius"])
             warn_surf = pygame.Surface((wr * 2, wr * 2), pygame.SRCALPHA)
             pulse = int(80 + 40 * math.sin(w["timer"] * 20))
             pygame.draw.circle(warn_surf, (255, 80, 40, pulse), (wr, wr), wr)
