@@ -621,7 +621,7 @@ class GameplayScene(BaseScene):
             if arty["delay"] <= 0:
                 self._explosions.append(
                     Explosion(arty["x"], arty["y"], arty["radius"], arty["damage"],
-                              "standard", arty["owner"], damage_falloff=0.3, visual_duration=0.4)
+                              DamageType.STANDARD, arty["owner"], damage_falloff=0.3, visual_duration=0.4)
                 )
         self._pending_artillery = [a for a in self._pending_artillery if a["delay"] > 0]
         # Tick artillery warning circles
