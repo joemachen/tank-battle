@@ -16,6 +16,13 @@ from game.utils.logger import get_logger
 
 log = get_logger(__name__)
 
+# Weapons whose primary purpose is dealing damage (not pure utility/CC)
+_DPS_WEAPONS: set = {
+    "standard_shell", "spread_shot", "bouncing_round", "homing_missile",
+    "grenade_launcher", "flamethrower", "poison_shell", "railgun", "laser_beam",
+    "lava_gun",
+}
+
 
 class WeaponRoller:
     """
@@ -73,6 +80,14 @@ class WeaponRoller:
         remaining = [w for w in self._pool if w != slot1]
         if remaining:
             loadout[2] = self._weighted_pick(remaining)
+
+        # Soft guarantee: at least one DPS weapon in random slots (1-2)
+        random_weapons = [w for w in loadout[1:] if w is not None]
+        has_dps = any(w in _DPS_WEAPONS for w in random_weapons)
+        if not has_dps and random_weapons:
+            dps_candidates = [w for w in self._pool if w in _DPS_WEAPONS]
+            if dps_candidates:
+                loadout[1] = self._weighted_pick(dps_candidates)
 
         log.info("Weapon roll: %s", loadout)
         return loadout

@@ -33,6 +33,8 @@ class MockTank:
         self.max_health = max_health
         self.angle = 0.0
         self.is_alive = True
+        self.ultimate = None
+        self._cloaked = False
 
     @property
     def position(self):

@@ -172,8 +172,8 @@ class TestStatNormalisation:
         assert ratio == pytest.approx(1.0)
 
     def test_heavy_health_is_one(self):
-        """Heavy tank health (220) / max health (220) should be exactly 1.0."""
-        ratio = _normalise(220.0, "health")
+        """Heavy tank health (440) / max health (440) should be exactly 1.0."""
+        ratio = _normalise(440.0, "health")
         assert ratio == pytest.approx(1.0)
 
     def test_light_tank_speed_ratio(self):
@@ -182,9 +182,9 @@ class TestStatNormalisation:
         assert ratio == pytest.approx(200 / 260, rel=1e-4)
 
     def test_medium_tank_health_ratio(self):
-        """Medium tank health (120) / 220 ≈ 0.545."""
-        ratio = _normalise(120.0, "health")
-        assert ratio == pytest.approx(120 / 220, rel=1e-4)
+        """Medium tank health (240) / 440 ≈ 0.545."""
+        ratio = _normalise(240.0, "health")
+        assert ratio == pytest.approx(240 / 440, rel=1e-4)
 
     def test_ratio_clamped_to_zero(self):
         """Values below zero clamp to 0.0."""
@@ -310,6 +310,8 @@ class TestGameplaySceneTankType:
             is_alive = True
             health_ratio = 1.0
             fire_rate = 1.0
+            tank_type = "medium_tank"
+            ultimate = None
             position = (0.0, 0.0)
             weapon_slots = [{"type": "standard_shell", "fire_rate": 1.0}]
             active_slot = 0

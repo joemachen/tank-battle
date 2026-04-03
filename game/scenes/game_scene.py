@@ -38,6 +38,7 @@ from game.systems.collision import (
 )
 from game.systems.ground_pool_system import GroundPoolSystem
 from game.systems.raycast import cast_ray
+from game.systems.ultimate import UltimateCharge
 from game.systems.weapon_roller import WeaponRoller
 from game.systems.debris_system import DebrisSystem
 from game.systems.elemental_resolver import ElementalResolver
@@ -125,6 +126,8 @@ from game.utils.constants import (
     SFX_GLUE_SPLAT,
     SFX_LAVA_SIZZLE,
     SFX_CONCUSSION_HIT,
+    ULTIMATES_CONFIG,
+    ULTIMATE_SFX,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
     TANK_BARREL_WIDTH,
@@ -328,6 +331,16 @@ class GameplayScene(BaseScene):
             self._ai_controllers.append(controller)
             self._ai_surfs.append(_build_tank_surface(COLOR_RED))
 
+        # Ultimate abilities (v0.28) — assign based on tank_type
+        self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)
+        self._shield_domes: list[dict] = []
+        self._artillery_warnings: list[dict] = []
+        self._pending_artillery: list[dict] = []
+        for tank_ref in [self._tank] + self._ai_tanks:
+            ult_cfg = self._ultimate_configs.get(tank_ref.tank_type)
+            if ult_cfg:
+                tank_ref.ultimate = UltimateCharge(ult_cfg)
+
         # Remaining systems
         self._physics = PhysicsSystem()
         self._collision = CollisionSystem()
@@ -393,6 +406,9 @@ class GameplayScene(BaseScene):
         self._ground_pools = []
         self._ground_pool_system = None
         self._combo_visuals = []
+        self._shield_domes = []
+        self._artillery_warnings = []
+        self._pending_artillery = []
 
     # ------------------------------------------------------------------
     # Update
@@ -441,6 +457,12 @@ class GameplayScene(BaseScene):
                 _, bx, by, bangle, btype = event
                 weapon_cfg = self._weapon_configs.get(btype, {})
                 self._resolve_beam(self._tank, bx, by, bangle, weapon_cfg, dt)
+            elif event[0] == "ultimate_activated":
+                self._handle_ultimate_activated(event[1], event[2], audio)
+            elif event[0] == "ultimate_expired":
+                pass  # timer-based cleanup handled below
+            elif event[0] == "cloak_break":
+                pass  # visual handled by _cloaked flag already cleared
 
         # Laser beam SFX state machine (v0.25)
         firing_now = self._tank.is_firing_beam
@@ -463,6 +485,10 @@ class GameplayScene(BaseScene):
                     _, bx, by, bangle, btype = event
                     weapon_cfg = self._weapon_configs.get(btype, {})
                     self._resolve_beam(ai_tank, bx, by, bangle, weapon_cfg, dt)
+                elif event[0] == "ultimate_activated":
+                    self._handle_ultimate_activated(event[1], event[2], audio)
+                elif event[0] in ("ultimate_expired", "cloak_break"):
+                    pass
 
         # Physics: advance bullets, clamp all tanks to arena bounds
         all_tanks = [self._tank] + self._ai_tanks
@@ -585,6 +611,40 @@ class GameplayScene(BaseScene):
                 if owner is self._tank:
                     self._shots_hit += 1
                     self._damage_dealt += dmg
+                # Charge ultimate from damage dealt (v0.28)
+                if owner is not None and hasattr(owner, 'ultimate') and owner.ultimate is not None:
+                    owner.ultimate.add_damage_charge(dmg)
+
+        # Tick artillery strikes (v0.28)
+        for arty in self._pending_artillery:
+            arty["delay"] -= dt
+            if arty["delay"] <= 0:
+                self._explosions.append(
+                    Explosion(arty["x"], arty["y"], arty["radius"], arty["damage"],
+                              DamageType.STANDARD, arty["owner"], damage_falloff=0.3, visual_duration=0.4)
+                )
+        self._pending_artillery = [a for a in self._pending_artillery if a["delay"] > 0]
+        # Tick artillery warning circles
+        for w in self._artillery_warnings:
+            w["timer"] -= dt
+        self._artillery_warnings = [w for w in self._artillery_warnings if w["timer"] > 0]
+
+        # Tick shield domes (v0.28)
+        for dome in self._shield_domes:
+            dome["timer"] -= dt
+        self._shield_domes = [d for d in self._shield_domes if d["timer"] > 0 and d["hp"] > 0]
+
+        # Shield dome bullet interception (v0.28)
+        for dome in self._shield_domes:
+            dtank = dome["tank"]
+            dr = dome["radius"]
+            for bullet in self._bullets:
+                if not bullet.is_alive or bullet.owner is dtank:
+                    continue
+                bdist = math.hypot(bullet.x - dtank.x, bullet.y - dtank.y)
+                if bdist <= dr:
+                    dome["hp"] -= bullet.damage
+                    bullet.destroy()
 
         # Win / lose checks — build MatchResult and pass to GameOverScene
         if not self._tank.is_alive:
@@ -692,6 +752,48 @@ class GameplayScene(BaseScene):
             if path:
                 audio.stop_music_layer(buff)
         self._active_buff_layers = current_buffs
+
+    def _handle_ultimate_activated(self, tank, ability_type: str, audio) -> None:
+        """Handle an ultimate ability activation (v0.28)."""
+        ult = tank.ultimate
+        sfx_key = ult.config.get("sfx_key", "")
+        sfx_path = ULTIMATE_SFX.get(sfx_key)
+        if sfx_path:
+            audio.play_sfx(sfx_path)
+
+        if ability_type == "shield_dome":
+            self._shield_domes.append({
+                "tank": tank,
+                "hp": float(ult.config.get("dome_hp", 200.0)),
+                "radius": float(ult.config.get("dome_radius", 120.0)),
+                "timer": ult.duration,
+                "color": tuple(ult.config.get("color", [100, 180, 255])),
+            })
+        elif ability_type == "artillery_strike":
+            cx, cy = tank.x, tank.y
+            # If player, aim at turret direction; if AI, aim at current position
+            count = int(ult.config.get("explosion_count", 5))
+            area = float(ult.config.get("strike_area", 250.0))
+            delay_step = float(ult.config.get("stagger_delay", 0.3))
+            radius = float(ult.config.get("explosion_radius", 80.0))
+            damage = int(ult.config.get("explosion_damage", 80))
+            for i in range(count):
+                ox = random.uniform(-area, area)
+                oy = random.uniform(-area, area)
+                self._pending_artillery.append({
+                    "x": cx + ox,
+                    "y": cy + oy,
+                    "delay": delay_step * i,
+                    "radius": radius,
+                    "damage": damage,
+                    "owner": tank,
+                })
+                self._artillery_warnings.append({
+                    "x": cx + ox,
+                    "y": cy + oy,
+                    "timer": delay_step * i + 0.15,
+                    "radius": radius,
+                })
 
     def _process_elemental_combo(self, combo: dict) -> None:
         """Handle an elemental combo event (v0.24)."""
@@ -818,6 +920,9 @@ class GameplayScene(BaseScene):
                         entity.apply_combat_effect(effect_key, cfg)
             if owner is self._tank:
                 self._damage_dealt += frame_damage
+            # Charge ultimate from beam damage (v0.28)
+            if owner.ultimate is not None:
+                owner.ultimate.add_damage_charge(frame_damage)
 
         elif result["hit_type"] == "obstacle":
             entity = result["entity"]
@@ -851,6 +956,29 @@ class GameplayScene(BaseScene):
         for ai_tank in self._ai_tanks:
             _draw_tank_effects(surface, ai_tank, self._camera,
                                self._speed_trail_history.get(id(ai_tank)))
+
+        # Shield dome VFX (v0.28)
+        for dome in self._shield_domes:
+            dtank = dome["tank"]
+            if dtank.is_alive:
+                dsx, dsy = self._camera.world_to_screen(dtank.x, dtank.y)
+                dr = int(dome["radius"])
+                dome_surf = pygame.Surface((dr * 2, dr * 2), pygame.SRCALPHA)
+                alpha = max(30, int(120 * (dome["hp"] / self._ultimate_configs.get(dtank.tank_type, {}).get("dome_hp", 200.0))))
+                dc = dome["color"]
+                pygame.draw.circle(dome_surf, (*dc, alpha), (dr, dr), dr)
+                pygame.draw.circle(dome_surf, (*dc, min(255, alpha + 60)), (dr, dr), dr, 2)
+                surface.blit(dome_surf, (int(dsx) - dr, int(dsy) - dr))
+
+        # Artillery warning circles (v0.28)
+        for w in self._artillery_warnings:
+            wsx, wsy = self._camera.world_to_screen(w["x"], w["y"])
+            wr = int(w["radius"])
+            warn_surf = pygame.Surface((wr * 2, wr * 2), pygame.SRCALPHA)
+            pulse = int(80 + 40 * math.sin(w["timer"] * 20))
+            pygame.draw.circle(warn_surf, (255, 80, 40, pulse), (wr, wr), wr)
+            pygame.draw.circle(warn_surf, (255, 80, 40, min(255, pulse + 80)), (wr, wr), wr, 2)
+            surface.blit(warn_surf, (int(wsx) - wr, int(wsy) - wr))
 
         _draw_bullets(surface, self._bullets, self._camera)
         _draw_beams(surface, self._active_beams, self._camera)
@@ -1100,6 +1228,11 @@ def _draw_tank(
     # Pass 1: hull
     rotated_hull = pygame.transform.rotate(tank_surf, -tank.angle)
     hull_rect = rotated_hull.get_rect(center=(isx, isy))
+    # Cloak — semi-transparent when cloaked (v0.28)
+    if getattr(tank, '_cloaked', False):
+        rotated_hull.set_alpha(40)
+    else:
+        rotated_hull.set_alpha(255)
     surface.blit(rotated_hull, hull_rect)
 
     # Front stripe — bright accent line on leading edge

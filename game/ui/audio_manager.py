@@ -115,6 +115,11 @@ class AudioManager:
         if name in self._active_layers:
             return  # already playing
 
+        # Kill any leftover channel still fading out from a recent stop
+        old_ch = self._layer_channels.pop(name, None)
+        if old_ch is not None:
+            old_ch.stop()
+
         sound = self._layer_cache.get(path)
         if sound is None:
             try:
@@ -138,22 +143,29 @@ class AudioManager:
     def stop_music_layer(self, name: str, fade_ms: int = 800) -> None:
         """Stop a playing music layer with fade-out.
 
+        The channel reference is kept in _layer_channels so that
+        start_music_layer can hard-stop it if the layer is restarted
+        before the fade completes (prevents overlapping hum copies).
+
         Args:
             name: layer identifier passed to start_music_layer
             fade_ms: fade-out duration in milliseconds
         """
         if not self._initialized:
             return
-        channel = self._layer_channels.pop(name, None)
         self._active_layers.pop(name, None)
+        channel = self._layer_channels.get(name)
         if channel is not None:
             channel.fadeout(fade_ms)
         log.debug("Music layer stopped: %s", name)
 
     def stop_all_layers(self, fade_ms: int = 500) -> None:
-        """Stop all active music layers. Called on scene exit."""
-        for name in list(self._active_layers.keys()):
-            self.stop_music_layer(name, fade_ms)
+        """Stop all active music layers (including fading ones). Called on scene exit."""
+        for name in list(self._layer_channels.keys()):
+            channel = self._layer_channels[name]
+            channel.fadeout(fade_ms)
+        self._layer_channels.clear()
+        self._active_layers.clear()
 
     # ------------------------------------------------------------------
     # SFX

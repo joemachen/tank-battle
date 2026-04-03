@@ -48,6 +48,7 @@ class TankInput:
     fire: bool = False
     turret_angle: float = 0.0   # desired turret facing (degrees, pygame CW convention)
     cycle_weapon: int = 0       # +1 = next slot, -1 = prev slot, 0 = no change (v0.16)
+    activate_ultimate: bool = False  # edge-detected F key (v0.28)
 
 
 class ControllerProtocol(Protocol):
@@ -87,7 +88,8 @@ class Tank:
         # Stats from config — fall back to defaults if key missing
         self.speed: float = float(config.get("speed", DEFAULT_TANK_SPEED))
         self.max_health: int = int(config.get("health", DEFAULT_TANK_HEALTH))
-        self.health: int = self.max_health
+        self._health_float: float = float(self.max_health)
+        self.regen_rate: float = float(config.get("regen_rate", 0.0))
         self.turn_rate: float = float(config.get("turn_rate", DEFAULT_TANK_TURN_RATE))
         self.fire_rate: float = float(config.get("fire_rate", DEFAULT_FIRE_RATE))
 
@@ -117,6 +119,10 @@ class Tank:
         # Knockback (v0.26) — impulse velocity, decays exponentially
         self._knockback_vx: float = 0.0
         self._knockback_vy: float = 0.0
+
+        # Ultimate ability (v0.28)
+        self.ultimate: "UltimateCharge | None" = None
+        self._cloaked: bool = False
 
         # Energy system (v0.25) — for hitscan weapons (laser beam)
         self._energy: float = 0.0
@@ -276,10 +282,13 @@ class Tank:
         Caller is responsible for collision response after this call.
         """
         if not self.is_alive:
+            self._is_firing_beam = False
+            self._cloaked = False
             return []
 
         # Stun — suppress all input but still tick effects (v0.24)
         if self._stun_timer > 0:
+            self._is_firing_beam = False
             self._stun_timer -= dt
             # Tick cooldowns so weapons are ready when stun ends
             for i in range(len(self._slot_cooldowns)):
@@ -323,8 +332,24 @@ class Tank:
                 self.is_alive = False
             log.debug("DoT damage: %d — hp=%d/%d", dot_damage, self.health, self.max_health)
 
+        # Passive HP regen — heals every frame, capped at max_health
+        # Suppressed while any DoT combat effect is active (fire, poison counter regen)
+        if self.regen_rate > 0 and self.health < self.max_health:
+            has_dot = any(
+                e.tick_damage > 0 for e in self._combat_effects.values()
+            )
+            if not has_dot:
+                self._health_float = min(
+                    float(self.max_health),
+                    self._health_float + self.regen_rate * dt,
+                )
+
         if not self.is_alive:
             return []
+
+        # Ultimate passive charge (v0.28)
+        if self.ultimate is not None:
+            self.ultimate.tick_passive(dt)
 
         events = []
         intent = self.controller.get_input()
@@ -348,6 +373,10 @@ class Tank:
             effective_speed *= self._status_effects["speed_boost"]["value"]
         if self.has_status("pool_slow"):
             effective_speed *= self._status_effects["pool_slow"]["value"]
+        # Ultimate speed multiplier (v0.28)
+        if self.ultimate is not None and self.ultimate.is_active:
+            ult_spd = self.ultimate.config.get("speed_multiplier", 1.0)
+            effective_speed *= ult_spd
         self.x += dx * intent.throttle * effective_speed * dt
         self.y += dy * intent.throttle * effective_speed * dt
 
@@ -395,6 +424,10 @@ class Tank:
             self._is_firing_beam = False
             # Existing projectile fire logic
             active_fire_rate = float(active_wep.get("fire_rate", self.fire_rate)) * self._combat_fire_rate_mult()
+            # Ultimate fire rate multiplier (v0.28)
+            if self.ultimate is not None and self.ultimate.is_active:
+                ult_fr = self.ultimate.config.get("fire_rate_multiplier", 1.0)
+                active_fire_rate *= ult_fr
             if intent.fire and self._slot_cooldowns[self._active_slot] <= 0:
                 self._slot_cooldowns[self._active_slot] = 1.0 / active_fire_rate
                 weapon_type = active_wep.get("type", DEFAULT_WEAPON_TYPE)
@@ -405,6 +438,29 @@ class Tank:
             # Passive recharge for non-hitscan (e.g. player switches away from laser)
             if self._energy < self._energy_max and self._energy_max > 0:
                 self._energy = min(self._energy_max, self._energy + self._energy_recharge_rate * dt)
+
+        # Cloak break — firing while cloaked ends cloak (v0.28)
+        fired_this_frame = any(e[0] in ("fire", "beam") for e in events)
+        if fired_this_frame and self._cloaked and self.ultimate is not None:
+            self.ultimate.force_deactivate()
+            self._cloaked = False
+            events.append(("cloak_break", self.x, self.y))
+
+        # Ultimate activation (v0.28)
+        if intent.activate_ultimate and self.ultimate is not None:
+            if self.ultimate.activate():
+                ult_type = self.ultimate.ability_type
+                events.append(("ultimate_activated", self, ult_type))
+                if ult_type == "cloak":
+                    self._cloaked = True
+
+        # Ultimate timer expiry (v0.28)
+        if self.ultimate is not None and self.ultimate.is_active:
+            if self.ultimate.update(dt):
+                # Ability just expired
+                if self._cloaked:
+                    self._cloaked = False
+                events.append(("ultimate_expired", self, self.ultimate.ability_type))
 
         return events
 
@@ -557,6 +613,9 @@ class Tank:
                 log.debug("Shield broken by damage")
         if remaining > 0:
             self.health = clamp(self.health - remaining, 0, self.max_health)
+        # Charge ultimate from damage received (v0.28)
+        if self.ultimate is not None:
+            self.ultimate.add_hit_charge(amount)
         log.debug("Tank took %d %s damage (absorbed=%d), hp=%d/%d",
                   amount, damage_type.name, amount - remaining, self.health, self.max_health)
         if self.health <= 0:
@@ -566,6 +625,15 @@ class Tank:
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
+
+    @property
+    def health(self) -> int:
+        """Integer health for display and comparison. Backed by float accumulator."""
+        return int(self._health_float)
+
+    @health.setter
+    def health(self, value):
+        self._health_float = float(value)
 
     @property
     def position(self) -> tuple:

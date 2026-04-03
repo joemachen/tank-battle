@@ -182,6 +182,7 @@ PICKUPS_CONFIG: str = "data/configs/pickups.yaml"
 STATUS_EFFECTS_CONFIG: str = "data/configs/status_effects.yaml"
 ELEMENTAL_INTERACTIONS_CONFIG: str = "data/configs/elemental_interactions.yaml"
 WEAPON_WEIGHTS_CONFIG: str = "data/configs/weapon_weights.yaml"
+ULTIMATES_CONFIG: str = "data/configs/ultimates.yaml"
 
 # Pickup spawner
 PICKUP_SPAWN_INTERVAL: float = 8.0
@@ -271,6 +272,18 @@ SFX_REROLL:              str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_reroll.
 SFX_GLUE_SPLAT:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_glue_splat.wav")
 SFX_LAVA_SIZZLE:         str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_lava_sizzle.wav")
 SFX_CONCUSSION_HIT:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_concussion_hit.wav")
+# Ultimate ability SFX (v0.28)
+SFX_ULT_SPEED_BURST:    str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_speed_burst.wav")
+SFX_ULT_SHIELD_DOME:    str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_shield_dome.wav")
+SFX_ULT_ARTILLERY:      str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_artillery.wav")
+SFX_ULT_CLOAK:          str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_cloak.wav")
+
+ULTIMATE_SFX: dict = {
+    "ult_speed_burst": _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_speed_burst.wav"),
+    "ult_shield_dome": _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_shield_dome.wav"),
+    "ult_artillery":   _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_artillery.wav"),
+    "ult_cloak":       _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_cloak.wav"),
+}
 
 # Combat status effect SFX (v0.23)
 SFX_EFFECT_FIRE:     str = _os.path.join(_ASSET_ROOT, "sounds", "sfx_effect_fire.wav")
@@ -396,7 +409,7 @@ MAX_BAR_WIDTH: int = 120
 # Reference maxima used for normalization (derived from tanks.yaml peak values)
 TANK_STAT_MAX: dict = {
     "speed":     260.0,   # scout_tank
-    "health":    220.0,   # heavy_tank
+    "health":    440.0,   # heavy_tank
     "turn_rate": 220.0,   # scout_tank
     "fire_rate": 2.0,     # scout_tank
 }

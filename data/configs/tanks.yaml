@@ -13,9 +13,10 @@
 light_tank:
   type: light_tank
   speed: 200
-  health: 80
+  health: 160
   turn_rate: 180
   fire_rate: 1.5
+  regen_rate: 2.5
   description: "Fast and agile, but fragile."
   default_weapons:
     - standard_shell
@@ -25,9 +26,10 @@ light_tank:
 medium_tank:
   type: medium_tank
   speed: 150
-  health: 120
+  health: 240
   turn_rate: 130
   fire_rate: 1.0
+  regen_rate: 3.5
   description: "Balanced. Good all-rounder for new players."
   default_weapons:
     - standard_shell
@@ -37,9 +39,10 @@ medium_tank:
 heavy_tank:
   type: heavy_tank
   speed: 90
-  health: 220
+  health: 440
   turn_rate: 80
   fire_rate: 0.6
+  regen_rate: 5.0
   description: "Slow and heavily armored. Dominates in close range."
   default_weapons:
     - standard_shell
@@ -49,9 +52,10 @@ heavy_tank:
 scout_tank:
   type: scout_tank
   speed: 260
-  health: 60
+  health: 120
   turn_rate: 220
   fire_rate: 2.0
+  regen_rate: 2.0
   description: "Extremely fast, very low health. Hit-and-run specialist."
   default_weapons:
     - spread_shot

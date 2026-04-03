@@ -70,6 +70,7 @@ from game.utils.constants import (
     TANK_SELECT_COLORS,
     TANKS_CONFIG,
     TANK_STAT_MAX,
+    ULTIMATES_CONFIG,
     WEAPON_CARD_COLORS,
     WEAPON_STAT_MAX,
     WEAPON_WEIGHTS_CONFIG,
@@ -300,6 +301,7 @@ class LoadoutScene(BaseScene):
             cfg = dict(all_tanks.get(t, {}))
             cfg.setdefault("type", t)
             self._tank_configs[t] = cfg
+        self._ultimate_configs: dict = load_yaml(ULTIMATES_CONFIG) or {}
 
         # --- Weapon configs ---
         all_weapons = load_yaml(WEAPONS_CONFIG)
@@ -570,6 +572,22 @@ class LoadoutScene(BaseScene):
         bar_color = TANK_SELECT_COLORS.get(self._selected_tank, COLOR_GREEN)
         stat_y = div_y + 10
         self._draw_stat_bars(surface, cx + 12, stat_y, sel_cfg, _TANK_STATS, _norm_tank, bar_color)
+
+        # Ultimate ability description below stat bars (v0.28)
+        ult_cfg = self._ultimate_configs.get(self._selected_tank, {})
+        ult_desc = ult_cfg.get("description", "")
+        if ult_desc:
+            tip_font = pygame.font.SysFont(None, 18)
+            tip_max_w = _PANEL_W - 24
+            tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
+            ult_color = tuple(ult_cfg.get("color", [200, 180, 60]))
+            label_surf = tip_font.render("[F] Ultimate:", True, ult_color)
+            surface.blit(label_surf, (cx + 12, tip_y))
+            tip_y += label_surf.get_height() + 2
+            for line in _wrap_text(ult_desc, tip_font, tip_max_w):
+                tip_surf = tip_font.render(line, True, (160, 160, 165))
+                surface.blit(tip_surf, (cx + 12, tip_y))
+                tip_y += tip_surf.get_height() + 2
 
     def _draw_weapons_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
         focused = self._panel == LOADOUT_PANEL_WEAPONS

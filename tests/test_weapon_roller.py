@@ -118,6 +118,34 @@ class TestWeaponRoller(unittest.TestCase):
         unique = set(rolls)
         self.assertGreater(len(unique), 1, "Expected some variation across 20 rolls")
 
+    def test_utility_only_pool_rerolls_to_dps(self):
+        """When both random slots are utility-only, slot 1 should be replaced with a DPS weapon."""
+        # Pool has one DPS (spread_shot) and two utility (glue_gun, concussion_blast)
+        weights = {"glue_gun": 999, "concussion_blast": 999, "spread_shot": 1}
+        roller = _roller_with(
+            ["standard_shell", "glue_gun", "concussion_blast", "spread_shot"],
+            weights=weights,
+        )
+        # Run many rolls — whenever both random slots would be utility,
+        # the DPS guarantee should replace slot 1 with spread_shot
+        from game.systems.weapon_roller import _DPS_WEAPONS
+        for _ in range(50):
+            loadout = roller.roll()
+            random_slots = [w for w in loadout[1:] if w is not None]
+            has_dps = any(w in _DPS_WEAPONS for w in random_slots)
+            self.assertTrue(has_dps, f"No DPS weapon in random slots: {loadout}")
+
+    def test_mixed_pool_has_dps_in_random_slots(self):
+        """Normal mixed pool should always have at least one DPS in random slots."""
+        pool = list(_FAKE_WEIGHTS.keys())
+        roller = _roller_with(["standard_shell"] + pool)
+        from game.systems.weapon_roller import _DPS_WEAPONS
+        for _ in range(30):
+            loadout = roller.roll()
+            random_slots = [w for w in loadout[1:] if w is not None]
+            has_dps = any(w in _DPS_WEAPONS for w in random_slots)
+            self.assertTrue(has_dps, f"No DPS weapon in random slots: {loadout}")
+
 
 # ---------------------------------------------------------------------------
 # TestWeaponWeightsConfig

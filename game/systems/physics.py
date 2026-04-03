@@ -79,4 +79,12 @@ class PhysicsSystem:
             bullet.y = max(0, min(ARENA_HEIGHT, bullet.y))
             log.debug("Bullet reflected off arena wall. Remaining: %d", bullet.bounces_remaining)
         else:
+            # Clamp to boundary edge so pool/explosion spawns at wall, not outside
+            bullet.x = max(0, min(ARENA_WIDTH, bullet.x))
+            bullet.y = max(0, min(ARENA_HEIGHT, bullet.y))
+            # Set detonation flags — scene reads these after physics
+            if getattr(bullet, 'spawns_pool', False):
+                bullet._pool_detonated = True
+            if getattr(bullet, 'is_explosive', False):
+                bullet._detonated = True
             bullet.destroy()

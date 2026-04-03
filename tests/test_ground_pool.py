@@ -148,12 +148,13 @@ class TestGroundPoolSystem(unittest.TestCase):
         self.system.update([pool], [tank], 0.016)
         self.assertFalse(tank.has_status("pool_slow"))
 
-    def test_owner_immune(self):
+    def test_owner_takes_self_damage(self):
+        """Pool owner is NOT immune — self-damage is intentional risk/reward."""
         tank = _make_tank(hp=100, x=100, y=100)
         pool = _make_pool("lava", x=100, y=100, dps=20, owner=tank)
         hp_before = tank.health
         self.system.update([pool], [tank], 0.5)
-        self.assertEqual(tank.health, hp_before)
+        self.assertLess(tank.health, hp_before)
 
     def test_dead_pool_skipped(self):
         tank = _make_tank(x=100, y=100)
