@@ -32,11 +32,12 @@ are completed or plans change.
 | v0.25.0 | Six elemental + combat weapons — cryo round, poison shell, flamethrower, EMP blast, railgun (pierce), laser beam (hitscan + energy bar); raycast system; 18-level progression; WEAPON_STAT_MAX updated |
 | v0.25.5 | Random weapon rolls + player-chosen slot 1 — WeaponRoller, weighted random slots 2-3, slot 1 player cycles from unlocked pool, hull-lock flow, re-roll, AI random loadouts + weapon cycling, rarity labels, weapon tips |
 | v0.26.0 | Utility weapons — glue gun (area slow pool), lava gun (fire DPS pool), concussion blast (knockback); GroundPool entity, GroundPoolSystem, tank knockback physics, 21-level progression, 14 total weapons |
+| v0.28.0 | Ultimate system — UltimateCharge class, 4 abilities (Overdrive/Fortress/Barrage/Phantom), charge from damage/hits/passive, F key activation, AI ultimate usage, shield dome, artillery strike, cloak + homing exclusion, HUD charge bar, 4 SFX; also: HP doubling, passive regen, health float accumulator, ground pool self-damage, laser nerf/audio fix, boundary detonations, DPS weapon guarantee |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/ultimate-charge         | v0.28 — Ultimate charge system |
+| feature/ai-vs-ai                | v0.32 — AI-vs-AI targeting |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -56,10 +57,10 @@ materials.yaml was designed for this — this phase fills it in.*
 the pickup/powerup system.*
 | Version | Milestone                       | Notes                                                                                                                                                                       |
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.28   | Ultimate charge system          | (was v0.26) UltimateCharge class on Tank. Charges by: dealing damage, taking damage, time elapsed. Charge rate and ultimate type defined per tank in tanks.yaml. HUD shows charge bar. |
-| v0.29   | Ultimate abilities (first pass) | (was v0.27) Light = speed burst, Medium = shield dome, Heavy = artillery strike (AoE), Scout = cloak + speed.                                                               |
-| v0.30   | Ultimate + pickup interactions  | (was v0.28) charge_boost, ultimate_amp, charge_rate_up pickups.                                                                                                             |
-| v0.31   | Ultimate visual feedback        | (was v0.29) Charge bar animation, activation VFX, screen flash.                                                                                                             |
+| ~~v0.28~~ | ~~Ultimate charge system~~    | ✅ Completed v0.28.0 — shipped charge + 4 abilities + VFX + AI activation in one milestone |
+| ~~v0.29~~ | ~~Ultimate abilities~~        | ✅ Shipped as part of v0.28.0 |
+| ~~v0.30~~ | ~~Ultimate + pickup interactions~~ | Deferred to backlog (charge_boost, ultimate_amp pickups) |
+| ~~v0.31~~ | ~~Ultimate visual feedback~~  | ✅ Shipped as part of v0.28.0 (charge bar, dome VFX, warning circles, cloak alpha) |
 ---
 ### Phase 5 — AI Upgrade
 *Smarter, more varied opponents that use the full game system.*
@@ -68,8 +69,8 @@ the pickup/powerup system.*
 | v0.32   | AI-vs-AI targeting        | (was v0.30) Replace player-only target_getter with nearest_enemy_getter. Free-for-all mode enabled. |
 | v0.33   | AI weapon awareness       | (was v0.31) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
 | v0.34   | AI elemental awareness    | (was v0.32) AI prioritizes targets with active status effects it can combo.        |
-| v0.35   | AI ultimate usage         | (was v0.33) AI activates ultimate when charge is full and combat conditions are met. |
-| v0.36   | AI difficulty tuning pass | (was v0.34) Full review across all modes, maps, and opponent counts.               |
+| ~~v0.35~~ | ~~AI ultimate usage~~   | ✅ Shipped as part of v0.28.0 — offensive ults in ATTACK, defensive in EVADE, cloak detection |
+| v0.35   | AI difficulty tuning pass | (was v0.34) Full review across all modes, maps, and opponent counts.               |
 ---
 ### Phase 6 — Progression & Campaign
 *Reason to keep playing. Bosses unlock into sandbox.*
@@ -151,4 +152,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.26.0 — Utility weapons shipped (glue gun, lava gun, concussion blast); v0.28 ultimate charge next*
+*Last updated: v0.28.0 — Ultimate system shipped (charge + 4 abilities + VFX + AI); balance pass (HP doubling, passive regen, laser nerf); v0.32 AI-vs-AI targeting next*

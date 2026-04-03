@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.26.0*
+*Last updated: v0.28.0*
 
 ---
 
@@ -15,18 +15,18 @@ game/
   engine.py                         Main loop, scene registration, pygame init
   entities/
     __init__.py
-    bullet.py                       Projectile entity with bounce + range + AoE detonation + pierce + pool spawn + knockback (v0.26)
+    bullet.py                       Projectile entity with bounce + range + AoE detonation + pierce + pool spawn + knockback + cloak exclusion (v0.28)
     explosion.py                    AoE damage event with linear falloff + visual timer
     ground_pool.py                  Persistent floor hazard — slow and/or DPS area effect (v0.26)
     obstacle.py                     Destructible/indestructible arena wall + partial destruction
     pickup.py                       Collectible pickup with pulse animation
-    tank.py                         Tank entity, TankInput dataclass, status effects, energy system, knockback physics (v0.26)
+    tank.py                         Tank entity, TankInput dataclass, status effects, energy system, knockback physics, ultimate integration (v0.28)
   scenes/
     __init__.py                     SceneManager — scene registry + transitions
     base_scene.py                   Abstract base scene interface
     game_over_scene.py              Match result + XP progression display
-    game_scene.py                   Main gameplay arena orchestrator
-    loadout_scene.py                Unified hull/weapon/map selection; hull-lock → weapon reveal → slot 1 choice → reroll → map (v0.25.5)
+    game_scene.py                   Main gameplay arena orchestrator + ultimate systems (shield dome, artillery, cloak rendering) (v0.28)
+    loadout_scene.py                Unified hull/weapon/map selection; hull-lock → weapon reveal → slot 1 choice → reroll → map; ultimate description (v0.28)
     map_select_scene.py             Deprecated v0.17.5 — merged into loadout
     menu_scene.py                   Main menu with synthwave grid background
     profile_select_scene.py         Four-slot profile picker
@@ -35,10 +35,10 @@ game/
     weapon_select_scene.py          Deprecated v0.17.5 — merged into loadout; _WEAPON_ORDER 11 entries (v0.25)
   systems/
     __init__.py
-    ai_controller.py                State machine AI with stuck recovery + weapon cycling timer (v0.25.5)
+    ai_controller.py                State machine AI with stuck recovery + weapon cycling timer + ultimate activation + cloak detection (v0.28)
     collision.py                    All entity collision detection + resolution; 3-tuple return (v0.26)
     debris_system.py                Particle burst on obstacle destruction
-    input_handler.py                Keyboard/mouse input → TankInput
+    input_handler.py                Keyboard/mouse input → TankInput; F key ultimate activation (v0.28)
     match_calculator.py             MatchResult factory + XP formula
     physics.py                      Bullet movement + arena boundary clamping
     pickup_spawner.py               Timed pickup spawn + lifetime management
@@ -46,13 +46,14 @@ game/
     elemental_resolver.py           Elemental combo detector — scans tanks for effect pairs, triggers combos
     raycast.py                      Hitscan raycast — line-vs-AABB + line-vs-circle; used by laser beam (v0.25)
     ground_pool_system.py           Applies ground pool effects (slow, fire DPS) to tanks each frame (v0.26)
+    ultimate.py                     UltimateCharge data class — charge accumulation, activation, expiry (v0.28)
     weapon_roller.py                Weighted random weapon selection for loadout slots (v0.25.5)
     progression_manager.py          XP/level/unlock progression logic
   ui/
     __init__.py
     audio_manager.py                Singleton audio: SFX, music, volume control
     components.py                   ScrollingGrid, FadeTransition UI widgets
-    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels + energy bar (v0.25)
+    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels + energy bar + ultimate charge bar (v0.28)
   utils/
     __init__.py
     camera.py                       World-to-screen transform with lerp tracking
@@ -74,6 +75,7 @@ data/
     status_effects.yaml             Four combat status effect definitions (fire, poison, ice, electric)
     elemental_interactions.yaml     Three elemental combo definitions (steam_burst, accelerated_burn, deep_freeze)
     tanks.yaml                      Four tank type definitions
+    ultimates.yaml                  Four ultimate ability definitions per tank type (v0.28)
     weapons.yaml                    Fourteen weapon type definitions + tips field (v0.26)
     weapon_weights.yaml             Probability weights for random weapon rolls; 13 entries (v0.26)
   maps/
@@ -121,6 +123,7 @@ tests/
   test_stuck_detector.py            Stuck detection window logic
   test_tank_select.py               Tank selection (legacy)
   test_tank_status.py               Status effects: apply, tick, regen
+  test_ultimate.py                  UltimateCharge class, activation, tank integration, cloak, AI detection, config (v0.28)
   test_theme_loader.py              Theme loading + fallback
   test_turret.py                    Independent turret aiming
   test_weapon_roller.py             WeaponRoller unit tests (v0.25.5)
@@ -149,6 +152,10 @@ assets/
     sfx_lava_sizzle.wav             Crackling noise + low hiss + bubble pop, 0.4s (v0.26)
     sfx_concussion_hit.wav          Sharp crack + deep bass thump + whooshy air, 0.35s (v0.26)
     sfx_laser_hum.wav               Sustained 220+330 Hz hum, 2s loopable layer (v0.25)
+    sfx_ult_speed_burst.wav         Rising whine + square harmonics, 0.5s (v0.28)
+    sfx_ult_shield_dome.wav         Resonant hum + chime shimmer, 0.6s (v0.28)
+    sfx_ult_artillery.wav           Falling whistle + deep boom, 0.8s (v0.28)
+    sfx_ult_cloak.wav               Shimmer + whoosh, 0.5s (v0.28)
     sfx_tank_fire.wav               Sharp crack, 0.35s
     sfx_ui_confirm.wav              Two-tone chime, 0.22s
     sfx_ui_navigate.wav             Short blip, 0.08s
@@ -171,6 +178,8 @@ TankInput(
     fire: bool = False,
     turret_angle: float = 0.0,   # desired turret facing (degrees, CW from right)
     cycle_weapon: int = 0,       # +1 = next slot, -1 = prev, 0 = no change
+    switch_slot: int = -1,       # direct slot index (-1 = no change)
+    activate_ultimate: bool = False,  # F key edge-detected (v0.28)
 )
 ```
 
@@ -214,16 +223,18 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 | controller | ControllerProtocol | Assigned input controller |
 | vx | float | Current velocity X (px/s, inferred) |
 | vy | float | Current velocity Y (px/s, inferred) |
+| ultimate | UltimateCharge \| None | Ultimate ability state (v0.28) |
 
 #### Public Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `update(dt: float)` | `list` | Advance state; returns event list: `[("fire", x, y, angle, weapon_type)]` for projectiles or `[("beam", x, y, angle, weapon_type)]` for hitscan (v0.25) |
+| `update(dt: float)` | `list` | Advance state; returns event list: `[("fire", x, y, angle, weapon_type)]` for projectiles, `[("beam", x, y, angle, weapon_type)]` for hitscan (v0.25), `[("ultimate_activated", self, type)]`, `[("ultimate_expired", self, type)]`, `[("cloak_break", x, y)]` (v0.28) |
 | `take_damage(amount: int, damage_type: DamageType = DamageType.STANDARD)` | `None` | Apply damage (shield absorbs first); sets is_alive=False at 0 HP |
 | `load_weapons(configs: list[dict])` | `None` | Equip up to MAX_WEAPON_SLOTS weapons; rejects empty/duplicates |
 | `cycle_weapon(direction: int)` | `None` | Cycle active slot (+1 next, -1 prev) with wrapping |
 | `set_active_slot(index: int)` | `None` | Jump to slot by index; no-op if out of range |
+| `load_ultimate(config: dict)` | `None` | Create UltimateCharge from config dict (v0.28) |
 | `apply_status(name: str, value: float, duration: float)` | `None` | Apply or refresh a named status effect |
 | `tick_status_effects(dt: float)` | `None` | Decrement timers, accumulate regen, remove expired |
 | `has_status(name: str)` | `bool` | True if named effect is active |
@@ -241,6 +252,7 @@ Tank(x: float, y: float, config: dict, controller: ControllerProtocol)
 | energy | float | Current energy level (v0.25) |
 | energy_ratio | float | energy / energy_max; 0 when no hitscan weapon equipped (v0.25) |
 | is_firing_beam | bool | True when actively firing a hitscan beam this frame (v0.25) |
+| is_cloaked | bool | True when cloak ultimate is active (v0.28) |
 | status_effects | dict | Read-only access to _status_effects |
 
 #### Status Effect System
@@ -314,6 +326,85 @@ Powers hitscan weapons (laser beam). Initialized by `load_weapons()` when any sl
   at `_energy_recharge_rate * dt` when not firing.
 - **Projectile branch**: existing cooldown-timer fire logic; passively recharges energy
   if max > 0.
+
+#### Health Float Accumulator (v0.28)
+
+`_health_float: float` backing field stores fractional HP. The `health` property returns
+`int(self._health_float)`. Setting `health = N` updates `_health_float = float(N)`.
+This enables smooth sub-integer healing from passive regen without rounding loss.
+
+#### Passive HP Regen (v0.28)
+
+`regen_rate: float` from tank config (HP/sec). Applied in `update()` each frame via
+`_health_float += regen_rate * dt`, capped at `max_health`. Suppressed when any active
+combat effect has `tick_damage > 0` (fire, poison) — checked via `_has_dot_active()`.
+Resumes automatically when all DoTs expire.
+
+#### HP Doubling (v0.28)
+
+All tank HP values in `tanks.yaml` doubled (light 160, medium 240, heavy 440, scout 120).
+`TANK_STAT_MAX["health"]` updated to 440.0. Compensates for increased damage sources
+(ultimates, ground pools, elemental combos).
+
+#### Ground Pool Self-Damage (v0.28)
+
+`GroundPoolSystem` no longer exempts the pool owner from damage. All tanks standing in a
+lava pool take fire DPS, including the tank that created it.
+
+#### Tank Ultimate System (v0.28)
+
+`load_ultimate(config)` creates an `UltimateCharge` instance from `ultimates.yaml`.
+
+Charge sources (all no-op while ability is active):
+- `add_hit_charge(amount)` — called in `take_damage()` when `amount > 0`
+- `add_damage_charge(amount)` — called by GameScene when player/AI deals damage
+- `tick_passive(dt)` — called in `update()` each frame
+
+Activation: when `intent.activate_ultimate` and `ultimate.is_ready`, calls `ultimate.activate()`,
+emits `("ultimate_activated", self, ability_type)` event. Cloak sets `_cloaked = True`.
+
+Expiry: `ultimate.update(dt)` returns True when timer expires. Cloak clears `_cloaked`.
+Emits `("ultimate_expired", self, ability_type)`.
+
+Cloak break: after any fire event (projectile or hitscan), if `_cloaked` is True, clears
+cloak and calls `ultimate.force_deactivate()`. Emits `("cloak_break", x, y)`.
+
+Speed modifier: `speed_burst` and `cloak` multiply `effective_speed` by `config["speed_multiplier"]`.
+Fire rate modifier: `speed_burst` multiplies fire rate by `config["fire_rate_multiplier"]`.
+
+Death cleanup: `_cloaked = False` in the `is_alive` early-return block.
+
+### UltimateCharge (game/systems/ultimate.py) (v0.28)
+
+Plain data class — no pygame dependency. Designed for future server-authoritative multiplayer.
+
+```python
+UltimateCharge(config: dict)
+```
+
+Fields: `charge`, `charge_max`, `charge_per_damage`, `charge_per_hit`, `charge_passive_rate`,
+`ability_type`, `duration`, `config` (full dict), `_active_timer`, `_is_active`.
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `add_damage_charge(amount)` | `None` | Add `amount * charge_per_damage` to charge (no-op while active) |
+| `add_hit_charge(amount)` | `None` | Add `amount * charge_per_hit` to charge (no-op while active) |
+| `tick_passive(dt)` | `None` | Add `charge_passive_rate * dt` to charge (no-op while active) |
+| `activate()` | `bool` | Returns True if charge was full; resets charge to 0, starts active timer |
+| `update(dt)` | `bool` | Ticks active timer; returns True when ability expires |
+| `force_deactivate()` | `None` | Immediately end active ability (cloak break on fire) |
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `is_ready` | `bool` | True when `charge >= charge_max` and not active |
+| `is_active` | `bool` | True when ability timer is running |
+| `charge_ratio` | `float` | `charge / charge_max` (0.0–1.0) |
+| `active_remaining` | `float` | Seconds left on active ability (0 if not active) |
+
+Instant abilities (`duration=0`, e.g. artillery_strike): `update()` returns True and sets
+`_is_active = False` on the first call after activation.
+
+---
 
 ### StatusEffect (game/systems/status_effect.py)
 
@@ -437,8 +528,10 @@ Bullet(x: float, y: float, angle: float, owner: Tank, config: dict)
 #### Homing Tracking (`_track_target`)
 
 Called automatically by `update()`. No-op when `_tracking_strength == 0` or no targets getter.
-Finds nearest alive non-owner tank, computes desired angle, rotates heading by
+Finds nearest alive non-owner non-cloaked tank, computes desired angle, rotates heading by
 `tracking_strength * dt` radians/sec toward target. Updates `_dx`, `_dy`, `angle`.
+
+Cloaked tanks are excluded via `not getattr(t, '_cloaked', False)` (v0.28).
 
 #### Properties
 
@@ -684,12 +777,13 @@ Evaluated every `get_input()` call (skipped during RECOVERY):
 | Condition | Result |
 |-----------|--------|
 | owner/target is None or target dead | PATROL |
+| target is cloaked (v0.28) | PATROL |
 | health_ratio <= evasion_threshold | EVADE |
 | dist <= AI_ATTACK_RANGE (375) | ATTACK |
 | dist <= AI_DETECTION_RANGE (550) | PURSUE |
 | else | PATROL |
 
-Priority: EVADE > ATTACK > PURSUE > PATROL (evaluated top-to-bottom).
+Priority: cloak check > EVADE > ATTACK > PURSUE > PATROL (evaluated top-to-bottom).
 
 #### Per-State Input Methods
 
@@ -747,6 +841,19 @@ This is repulsion, not pathfinding — stuck recovery catches what it misses.
 `_weapon_cycle_timer: float` — counts down from a random 4.0-8.0s interval. When
 expired, sets `_pending_weapon_cycle = True`. `get_input()` injects `cycle_weapon=+1`
 into the returned TankInput and resets the timer to a new random interval.
+
+#### Ultimate Activation (v0.28)
+
+After weapon cycle injection in `get_input()`, AI checks if `owner.ultimate.is_ready`:
+- **Offensive** (`speed_burst`, `artillery_strike`): activates in ATTACK state with 30% chance per frame
+- **Defensive** (`shield_dome`, `cloak`): activates in EVADE state with 40% chance per frame
+
+Sets `activate_ultimate=True` on the returned TankInput.
+
+#### Cloak Detection (v0.28)
+
+In `_update_state()`, if `target._cloaked` is True, AI transitions to PATROL (loses tracking).
+Checked before distance-based state transitions.
 
 ---
 
@@ -975,6 +1082,7 @@ InputHandler(keybinds: dict | None = None, camera=None, tank_position_getter=Non
 | rotate_left | A | rotate = -1.0 |
 | rotate_right | D | rotate = +1.0 |
 | fire | SPACE | fire = True |
+| ultimate | F | activate_ultimate = True (edge-detected) (v0.28) |
 | cycle_next | TAB | cycle_weapon = +1 (edge-detected) |
 | cycle_prev | Q | cycle_weapon = -1 (edge-detected) |
 | cycle_next_alt | E | cycle_weapon = +1 (edge-detected) |
@@ -1234,6 +1342,30 @@ organically during turns. Trail auto-clears when speed boost expires or tank sto
 
 `_had_shield: dict[int, bool]` — tracks which tanks had shield last frame. When a
 tank transitions from shield → no-shield, spawns debris particles and plays `SFX_SHIELD_POP`.
+
+#### Ultimate Systems (v0.28)
+
+**Shield Dome** (`_shield_domes: list[dict]`): Created when medium_tank activates ultimate.
+Dict keys: `tank`, `x`, `y`, `radius`, `hp`, `max_hp`, `timer`, `color`. Dome follows tank
+each frame. Intercepts bullets before collision system — bullets within dome radius from
+non-owner tanks are destroyed and dome HP reduced. Dome expires when timer or HP reach 0.
+Rendered as translucent circle with HP-based alpha + border.
+
+**Artillery Strike** (`_pending_artillery: list[dict]`): Created when heavy_tank activates
+ultimate. `count` entries (default 5) staggered by `stagger_delay` (0.3s). If player → target
+is reticle world position; if AI → target is nearest enemy position. Random scatter within
+`strike_area` (250px). Each entry spawns an `Explosion(DamageType.STANDARD)` when delay reaches 0.
+`_artillery_warnings`: parallel list for red warning circle VFX with shrinking inner dot.
+
+**Cloak Rendering**: In `_draw_tank()`, cloaked tanks render with `set_alpha(40)` (near-invisible).
+Player's own cloak uses same alpha. AI loses target tracking on cloaked tanks (→PATROL).
+
+**Activation Flash** (`_ult_flash_timer`, `_ult_flash_color`): 0.3s screen-wide color overlay
+triggered on any ultimate activation.
+
+**Charge from Damage**: After damage tracking, calls `owner.ultimate.add_damage_charge(dmg)` for
+both bullet hits and beam damage.
+
   ai_count: from settings or default, capped at 3
   → player dies     → GameOverScene(result: MatchResult)
   → all AI dead     → GameOverScene(result: MatchResult)
@@ -1365,6 +1497,10 @@ Builds synthwave pattern: kick + snare + bass line + arpeggio + pad chords. Norm
 | `gen_pickup_spawn(sr)` | 0.3s | Rising C5-E5-G5 arpeggio |
 | `gen_pickup_collect(sr)` | 0.2s | Bright G5-C6 ding |
 | `gen_pickup_expire(sr)` | 0.4s | Soft E5-C5 descending |
+| `gen_sfx_ult_speed_burst(sr)` | 0.5s | Rising sine sweep + square harmonics + noise (v0.28) |
+| `gen_sfx_ult_shield_dome(sr)` | 0.6s | Expanding sine sweep + shimmer resonance (v0.28) |
+| `gen_sfx_ult_artillery(sr)` | 0.8s | Descending whistle + deep boom (v0.28) |
+| `gen_sfx_ult_cloak(sr)` | 0.5s | Descending filtered noise + quiet hum (v0.28) |
 | `gen_music_menu(sr)` | 8 bars | 80 BPM atmospheric Am |
 | `gen_music_gameplay(sr)` | 8 bars | 120 BPM driving Am |
 | `gen_music_game_over(sr)` | 4 bars | 70 BPM melancholic descending |
@@ -1457,6 +1593,41 @@ flamethrower (6/300/6.0, fire, 3-spread 12deg, 250px range),
 emp_blast (30/300/0.3, electric, 140px AoE),
 railgun (65/800/0.2, pierce_count=1),
 laser_beam (hitscan=true, dps=45, energy_max=100, drain=30/s, recharge=15/s) (v0.25).
+
+---
+
+### data/configs/ultimates.yaml (v0.28)
+
+Top-level: `dict[str, UltimateConfig]` — keyed by tank type.
+
+```yaml
+UltimateConfig:
+  charge_max: float           # Charge required to activate (100.0 for all)
+  charge_per_damage: float    # Charge per point of damage dealt
+  charge_per_hit: float       # Charge per point of damage received
+  charge_passive_rate: float  # Charge per second (passive)
+  ability_type: str           # speed_burst | shield_dome | artillery_strike | cloak
+  duration: float             # Seconds active (0 = instant, e.g. artillery)
+  color: [int, int, int]      # VFX / HUD tint
+  description: str            # UI display text
+  sfx_key: str                # Key into ULTIMATE_SFX dict
+  # Type-specific fields:
+  speed_multiplier: float     # (speed_burst, cloak) Speed mult while active
+  fire_rate_multiplier: float # (speed_burst) Fire rate mult while active
+  dome_radius: float          # (shield_dome) Dome radius in px
+  dome_hp: float              # (shield_dome) Dome hit points
+  explosion_count: int        # (artillery_strike) Number of explosions
+  explosion_radius: float     # (artillery_strike) Per-explosion radius
+  explosion_damage: int       # (artillery_strike) Per-explosion damage
+  strike_area: float          # (artillery_strike) Scatter radius
+  stagger_delay: float        # (artillery_strike) Seconds between explosions
+```
+
+All defined:
+- **light_tank** → `speed_burst` (Overdrive): 4s, 2.5× speed, 2× fire rate
+- **medium_tank** → `shield_dome` (Fortress): 5s, 120px radius, 200 HP dome
+- **heavy_tank** → `artillery_strike` (Barrage): instant, 5 explosions in 250px area, 80 dmg each
+- **scout_tank** → `cloak` (Phantom): 5s, 1.3× speed, invisible, firing breaks cloak
 
 ---
 
@@ -1638,7 +1809,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SCREEN_HEIGHT | 720 | |
 | FPS | 60 | |
 | TITLE | "Tank Battle" | |
-| GAME_VERSION | "v0.25.0" | |
+| GAME_VERSION | "v0.28.0" | |
 | CAMERA_LERP_SPEED | 6.0 | Smooth follow rate |
 | SUPPORTED_RESOLUTIONS | [(1280,720), (1600,900), (1920,1080)] | |
 
@@ -1771,6 +1942,11 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | PICKUP_COLLECT_SFX | dict | Maps pickup type → collect SFX path |
 | SFX_RAILGUN_FIRE | str | assets/sounds/sfx_railgun_fire.wav (v0.25) |
 | SFX_LASER_HUM | str | assets/sounds/sfx_laser_hum.wav — looping layer (v0.25) |
+| SFX_ULT_SPEED_BURST | str | assets/sounds/sfx_ult_speed_burst.wav (v0.28) |
+| SFX_ULT_SHIELD_DOME | str | assets/sounds/sfx_ult_shield_dome.wav (v0.28) |
+| SFX_ULT_ARTILLERY | str | assets/sounds/sfx_ult_artillery.wav (v0.28) |
+| SFX_ULT_CLOAK | str | assets/sounds/sfx_ult_cloak.wav (v0.28) |
+| ULTIMATE_SFX | dict | Maps sfx_key → ultimate SFX WAV path (v0.28) |
 
 ### UI / HUD
 
@@ -1828,6 +2004,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | PROFILES_DIR | "saves/profiles" |
 | SETTINGS_FILE | "saves/settings.json" |
 | TANKS_CONFIG | "data/configs/tanks.yaml" |
+| ULTIMATES_CONFIG | "data/configs/ultimates.yaml" |
 | WEAPONS_CONFIG | "data/configs/weapons.yaml" |
 | MATERIALS_CONFIG | "data/configs/materials.yaml" |
 | PICKUPS_CONFIG | "data/configs/pickups.yaml" |
