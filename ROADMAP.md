@@ -34,11 +34,12 @@ are completed or plans change.
 | v0.26.0 | Utility weapons — glue gun (area slow pool), lava gun (fire DPS pool), concussion blast (knockback); GroundPool entity, GroundPoolSystem, tank knockback physics, 21-level progression, 14 total weapons |
 | v0.28.0 | Ultimate system — UltimateCharge class, 4 abilities (Overdrive/Fortress/Barrage/Phantom), charge from damage/hits/passive, F key activation, AI ultimate usage, shield dome, artillery strike, cloak + homing exclusion, HUD charge bar, 4 SFX; also: HP doubling, passive regen, health float accumulator, ground pool self-damage, laser nerf/audio fix, boundary detonations, DPS weapon guarantee |
 | v0.32.0 | AI-vs-AI targeting + Watch Mode | make_nearest_enemy_getter factory, free-for-all targeting, Watch Mode on player death, opponent count selector, low-HP priority + target stickiness, center-seeking patrol, detection range 800px |
+| v0.33.0 | Loadout polish — 3× weapon rerolls, 1× ultimate reroll with UI, opponent count moved to map panel, AI hull colors by tank type |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/ai-weapon-awareness     | v0.33 — AI weapon awareness |
+| feature/ai-weapon-awareness     | v0.34 — AI weapon awareness |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in

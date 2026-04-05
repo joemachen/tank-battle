@@ -247,8 +247,9 @@ class LoadoutScene(BaseScene):
 
         # Hull panel state
         self._tank_cursor: int = 0          # index into unlocked tank list
-        self._hull_row: int = 0             # 0 = tank selection, 1 = opponent count
-        self._opponent_idx: int = 0         # index into _OPPONENT_COUNTS
+        self._opponent_idx: int = 0         # index into _OPPONENT_COUNTS (controlled from map panel)
+        self._ult_rerolls_remaining: int = 1  # ultimate rerolls available (v0.33)
+        self._rolled_ult_type: str | None = None  # overridden ultimate tank type (None = own)
         self._unlocked_tanks: list[str] = []
         self._tank_configs: dict = {}        # type → config dict
 
@@ -258,7 +259,7 @@ class LoadoutScene(BaseScene):
         self._unlocked_weapons: set = set()
         self._weapon_configs: dict = {}
         self._weapon_roller: WeaponRoller | None = None
-        self._has_rerolled: bool = False
+        self._rerolls_remaining: int = 3
         self._roll_anim_timer: float = 0.0
         self._hull_locked: bool = False
         self._weapons_revealed: bool = False
@@ -329,8 +330,9 @@ class LoadoutScene(BaseScene):
         self._panel = LOADOUT_PANEL_HULL
         self._map_cursor = 0
         self._slot_focus = 0
-        self._hull_row = 0
         self._opponent_idx = 0
+        self._ult_rerolls_remaining = 1
+        self._rolled_ult_type = None
 
         # Default tank cursor: first unlocked tank
         self._tank_cursor = 0
@@ -340,7 +342,7 @@ class LoadoutScene(BaseScene):
                 break
 
         self._weapon_roller = WeaponRoller(list(self._unlocked_weapons))
-        self._has_rerolled = False
+        self._rerolls_remaining = 3
         self._hull_locked = False
         self._weapons_revealed = False
         self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
@@ -348,7 +350,7 @@ class LoadoutScene(BaseScene):
         get_audio_manager().play_music(MUSIC_MENU)
         log.info(
             "LoadoutScene entered. tank=%s  weapons=%s  map=%s",
-            self._selected_tank, self._slot_selections, _MAP_NAMES[self._map_cursor],
+            self._selected_tank, self._slot_selections, _MAP_LIST[self._map_cursor],
         )
 
     def on_exit(self) -> None:
@@ -421,37 +423,21 @@ class LoadoutScene(BaseScene):
             ui = 0
 
         if key in (pygame.K_UP, pygame.K_w):
-            if self._hull_row == 1:
-                # Move from opponent row back to last tank
-                self._hull_row = 0
-            elif ui == 0:
-                # Wrap from first tank up to opponent count row
-                self._hull_row = 1
-            else:
-                # Normal upward navigation within tank list
-                ui -= 1
-                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            ui = (ui - 1) % len(unlocked)
+            self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            self._rolled_ult_type = None  # reset ult override on tank change
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
-            if self._hull_row == 1:
-                # Wrap from opponent row down to first tank
-                self._hull_row = 0
-                ui = 0
-                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
-            elif ui == len(unlocked) - 1:
-                # Move from last tank down to opponent count row
-                self._hull_row = 1
-            else:
-                # Normal downward navigation within tank list
-                ui += 1
-                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            ui = (ui + 1) % len(unlocked)
+            self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            self._rolled_ult_type = None  # reset ult override on tank change
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_LEFT, pygame.K_a) and self._hull_row == 1:
-            self._opponent_idx = (self._opponent_idx - 1) % len(_OPPONENT_COUNTS)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_RIGHT, pygame.K_d) and self._hull_row == 1:
-            self._opponent_idx = (self._opponent_idx + 1) % len(_OPPONENT_COUNTS)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key == pygame.K_r and self._ult_rerolls_remaining > 0:
+            # Reroll ultimate — pick a random tank type's ultimate (excluding current)
+            other_types = [t for t in _TANK_ORDER if t != self._selected_tank]
+            self._rolled_ult_type = random.choice(other_types)
+            self._ult_rerolls_remaining -= 1
+            get_audio_manager().play_sfx(SFX_REROLL)
 
     def _handle_weapons(self, key: int) -> None:
         if not self._weapons_revealed:
@@ -468,9 +454,9 @@ class LoadoutScene(BaseScene):
         elif key in (pygame.K_RIGHT, pygame.K_d) and self._slot_focus == 0:
             self._cycle_slot(0, +1)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key == pygame.K_r and not self._has_rerolled:
+        elif key == pygame.K_r and self._rerolls_remaining > 0:
             self._roll_weapons()
-            self._has_rerolled = True
+            self._rerolls_remaining -= 1
             get_audio_manager().play_sfx(SFX_REROLL)
 
     def _handle_map(self, key: int) -> None:
@@ -479,6 +465,12 @@ class LoadoutScene(BaseScene):
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
             self._map_cursor = (self._map_cursor + 1) % len(_MAP_LIST)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            self._opponent_idx = (self._opponent_idx - 1) % len(_OPPONENT_COUNTS)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            self._opponent_idx = (self._opponent_idx + 1) % len(_OPPONENT_COUNTS)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     # ------------------------------------------------------------------
@@ -513,9 +505,11 @@ class LoadoutScene(BaseScene):
         # Hint — context-sensitive
         font_hint = pygame.font.SysFont(None, 20)
         if not self._hull_locked:
-            hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     ESC  Back"
+            hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     R  Reroll Ult     ESC  Back"
         elif self._panel == LOADOUT_PANEL_WEAPONS:
             hint_text = "\u25c4\u25ba  Change Slot 1     \u2191\u2193  Select     R  Re-Roll     TAB  Panel     ENTER  Start     ESC  Back"
+        elif self._panel == LOADOUT_PANEL_MAP:
+            hint_text = "\u2191\u2193  Select Map     \u25c4\u25ba  Opponents     TAB  Panel     ENTER  Start     ESC  Unlock Hull"
         else:
             hint_text = "TAB  Switch Panel     \u2191\u2193  Select     ENTER  Start     ESC  Unlock Hull"
         hint = font_hint.render(hint_text, True, _COLOR_DIM)
@@ -601,14 +595,19 @@ class LoadoutScene(BaseScene):
         self._draw_stat_bars(surface, cx + 12, stat_y, sel_cfg, _TANK_STATS, _norm_tank, bar_color)
 
         # Ultimate ability description below stat bars (v0.28)
-        ult_cfg = self._ultimate_configs.get(self._selected_tank, {})
+        # If player rerolled, show the overridden ultimate; otherwise own tank's
+        ult_source = self._rolled_ult_type if self._rolled_ult_type else self._selected_tank
+        ult_cfg = self._ultimate_configs.get(ult_source, {})
         ult_desc = ult_cfg.get("description", "")
         tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
+        tip_font = pygame.font.SysFont(None, 18)
+        tip_max_w = _PANEL_W - 24
         if ult_desc:
-            tip_font = pygame.font.SysFont(None, 18)
-            tip_max_w = _PANEL_W - 24
             ult_color = tuple(ult_cfg.get("color", [200, 180, 60]))
-            label_surf = tip_font.render("[F] Ultimate:", True, ult_color)
+            ult_header = "[F] Ultimate:"
+            if self._rolled_ult_type:
+                ult_header += f" [{ult_source.replace('_', ' ').title()}]"
+            label_surf = tip_font.render(ult_header, True, ult_color)
             surface.blit(label_surf, (cx + 12, tip_y))
             tip_y += label_surf.get_height() + 2
             for line in _wrap_text(ult_desc, tip_font, tip_max_w):
@@ -616,18 +615,17 @@ class LoadoutScene(BaseScene):
                 surface.blit(tip_surf, (cx + 12, tip_y))
                 tip_y += tip_surf.get_height() + 2
 
-        # Opponent count selector row
-        opp_focused = focused and self._hull_row == 1
-        opp_row_y = tip_y + 8
-        opp_font = pygame.font.SysFont(None, 22)
-        if opp_focused:
-            opp_hl = pygame.Rect(cx + 6, opp_row_y - 2, _PANEL_W - 12, 26)
-            pygame.draw.rect(surface, (50, 50, 55), opp_hl, border_radius=4)
-            pygame.draw.rect(surface, COLOR_NEON_PINK, opp_hl, 1, border_radius=4)
-        count_val = _OPPONENT_COUNTS[self._opponent_idx]
-        label_color = COLOR_NEON_PINK if opp_focused else (160, 160, 165)
-        opp_label = opp_font.render(f"Opponents:  < {count_val} >", True, label_color)
-        surface.blit(opp_label, (cx + 12, opp_row_y))
+        # Ultimate reroll hint (v0.33)
+        ult_reroll_y = tip_y + 4
+        if not self._hull_locked:
+            if self._ult_rerolls_remaining > 0:
+                hint_col = COLOR_NEON_PINK if focused else (130, 130, 135)
+                reroll_hint = tip_font.render(
+                    f"R — Reroll Ultimate  ({self._ult_rerolls_remaining} left)", True, hint_col
+                )
+            else:
+                reroll_hint = tip_font.render("Ult Reroll Used", True, _COLOR_DIM)
+            surface.blit(reroll_hint, (cx + 12, ult_reroll_y))
 
     def _draw_weapons_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
         focused = self._panel == LOADOUT_PANEL_WEAPONS
@@ -721,10 +719,12 @@ class LoadoutScene(BaseScene):
         # Re-roll prompt / hint
         reroll_y = slot_row_y + 2
         if self._weapons_revealed:
-            if not self._has_rerolled:
-                reroll_surf = font_slot.render("Press R to Re-Roll", True, COLOR_NEON_PINK)
+            if self._rerolls_remaining > 0:
+                reroll_surf = font_slot.render(
+                    f"R — Re-Roll  ({self._rerolls_remaining} left)", True, COLOR_NEON_PINK
+                )
             else:
-                reroll_surf = font_slot.render("Re-Roll Used", True, _COLOR_DIM)
+                reroll_surf = font_slot.render("Re-Rolls Used", True, _COLOR_DIM)
             surface.blit(reroll_surf, (cx + 14, reroll_y))
 
         # Divider
@@ -841,6 +841,14 @@ class LoadoutScene(BaseScene):
                 accent = tuple(theme.get("border_color", [60, 80, 60]))
                 t_surf = font_small.render(theme_line, True, accent if not focused else COLOR_NEON_PINK)
                 surface.blit(t_surf, (cx + (_PANEL_W - t_surf.get_width()) // 2, label_y))
+
+        # Opponent count selector at bottom of map panel (v0.33)
+        opp_y = cy + _PANEL_H - 34
+        opp_font = pygame.font.SysFont(None, 22)
+        count_val = _OPPONENT_COUNTS[self._opponent_idx]
+        opp_color = COLOR_NEON_PINK if focused else (160, 160, 165)
+        opp_label = opp_font.render(f"Opponents:  \u25c4 {count_val} \u25ba", True, opp_color)
+        surface.blit(opp_label, (cx + (_PANEL_W - opp_label.get_width()) // 2, opp_y))
 
     # ------------------------------------------------------------------
     # XP bar + confirm button
@@ -996,13 +1004,14 @@ class LoadoutScene(BaseScene):
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
 
     def _reset_to_hull(self) -> None:
-        """Unlock hull, hide weapons, reset reroll, return to hull panel."""
+        """Unlock hull, hide weapons, reset rerolls, return to hull panel."""
         self._hull_locked = False
         self._weapons_revealed = False
-        self._has_rerolled = False
+        self._rerolls_remaining = 3
+        self._ult_rerolls_remaining = 1
+        self._rolled_ult_type = None
         self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
         self._roll_anim_timer = 0.0
-        self._hull_row = 0
         self._panel = LOADOUT_PANEL_HULL
 
     # ------------------------------------------------------------------
@@ -1044,13 +1053,15 @@ class LoadoutScene(BaseScene):
             tank_type, weapon_types, map_name,
         )
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
-        self.manager.switch_to(
-            SCENE_GAME,
-            tank_type=tank_type,
-            weapon_types=weapon_types,
-            map_name=map_name,
-            ai_count=_OPPONENT_COUNTS[self._opponent_idx],
-        )
+        switch_kwargs: dict = {
+            "tank_type": tank_type,
+            "weapon_types": weapon_types,
+            "map_name": map_name,
+            "ai_count": _OPPONENT_COUNTS[self._opponent_idx],
+        }
+        if self._rolled_ult_type:
+            switch_kwargs["ult_override"] = self._rolled_ult_type
+        self.manager.switch_to(SCENE_GAME, **switch_kwargs)
 
     # ------------------------------------------------------------------
     # Properties

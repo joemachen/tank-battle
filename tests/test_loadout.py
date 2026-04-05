@@ -380,14 +380,13 @@ class TestHullSelection:
         scene.handle_event(ev)
         assert scene._selected_tank == "medium_tank"
 
-    def test_up_from_first_tank_goes_to_opponent_row(self, monkeypatch):
+    def test_up_from_first_tank_wraps_to_last(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
         scene._panel = LOADOUT_PANEL_HULL
-        # cursor starts at light_tank (first); UP moves to the opponent count sub-row
+        # cursor starts at light_tank (first); UP wraps to last unlocked tank
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_UP)
         scene.handle_event(ev)
-        assert scene._hull_row == 1
-        assert scene._selected_tank == "light_tank"  # tank selection unchanged
+        assert scene._selected_tank == "medium_tank"
 
     def test_locked_tank_is_reported_as_locked(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
@@ -872,10 +871,9 @@ class TestOpponentCountSelector:
         from game.scenes.loadout_scene import _OPPONENT_COUNTS
         assert _OPPONENT_COUNTS[scene._opponent_idx] == 1
 
-    def test_opponent_count_increments_with_right(self, monkeypatch):
+    def test_opponent_count_increments_with_right_in_map_panel(self, monkeypatch):
         scene = _make_scene(monkeypatch)
-        scene._hull_row = 1
-        scene._panel = LOADOUT_PANEL_HULL
+        scene._panel = LOADOUT_PANEL_MAP
         from game.scenes.loadout_scene import _OPPONENT_COUNTS
         before = scene._opponent_idx
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
@@ -884,8 +882,7 @@ class TestOpponentCountSelector:
 
     def test_opponent_count_wraps_around(self, monkeypatch):
         scene = _make_scene(monkeypatch)
-        scene._hull_row = 1
-        scene._panel = LOADOUT_PANEL_HULL
+        scene._panel = LOADOUT_PANEL_MAP
         from game.scenes.loadout_scene import _OPPONENT_COUNTS
         scene._opponent_idx = len(_OPPONENT_COUNTS) - 1
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
@@ -895,8 +892,167 @@ class TestOpponentCountSelector:
     def test_ai_count_forwarded_on_confirm(self, monkeypatch):
         scene = _make_scene(monkeypatch)
         scene._weapons_revealed = True
-        scene._hull_row = 0
         from game.scenes.loadout_scene import _OPPONENT_COUNTS
         scene._opponent_idx = 1  # count = 2
         scene._confirm()
         assert scene.manager.last_kwargs["ai_count"] == _OPPONENT_COUNTS[1]
+
+    def test_opponent_count_left_decrements(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._panel = LOADOUT_PANEL_MAP
+        scene._opponent_idx = 1
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
+        scene.handle_event(ev)
+        assert scene._opponent_idx == 0
+
+    def test_opponent_right_not_active_in_hull_panel(self, monkeypatch):
+        """RIGHT in hull panel no longer cycles opponents (opponent moved to map panel)."""
+        scene = _make_scene(monkeypatch)
+        scene._panel = LOADOUT_PANEL_HULL
+        scene._opponent_idx = 0
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        assert scene._opponent_idx == 0  # unchanged
+
+
+# ---------------------------------------------------------------------------
+# 12. Weapon reroll count (v0.33)
+# ---------------------------------------------------------------------------
+
+
+class TestWeaponRerollCount:
+    def test_default_rerolls_is_three(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        assert scene._rerolls_remaining == 3
+
+    def test_r_key_in_weapons_decrements_rerolls(self, monkeypatch):
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._weapons_revealed = True
+        scene._rerolls_remaining = 3
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev)
+        assert scene._rerolls_remaining == 2
+
+    def test_r_key_blocked_when_no_rerolls_left(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._weapons_revealed = True
+        scene._rerolls_remaining = 0
+        before = list(scene._slot_selections)
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev)
+        assert scene._slot_selections == before  # unchanged
+
+    def test_reset_restores_three_rerolls(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._lock_hull_and_reveal()
+        scene._rerolls_remaining = 0
+        scene._reset_to_hull()
+        assert scene._rerolls_remaining == 3
+
+    def test_three_r_presses_all_decrement(self, monkeypatch):
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._weapons_revealed = True
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        for expected_remaining in (2, 1, 0):
+            scene.handle_event(ev)
+            assert scene._rerolls_remaining == expected_remaining
+
+    def test_fourth_r_press_is_blocked(self, monkeypatch):
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
+        )
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._weapons_revealed = True
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        for _ in range(4):
+            scene.handle_event(ev)
+        assert scene._rerolls_remaining == 0  # clamped, not negative
+
+
+# ---------------------------------------------------------------------------
+# 13. Ultimate reroll (v0.33)
+# ---------------------------------------------------------------------------
+
+
+class TestUltimateReroll:
+    def test_default_ult_rerolls_is_one(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        assert scene._ult_rerolls_remaining == 1
+
+    def test_default_rolled_ult_type_is_none(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        assert scene._rolled_ult_type is None
+
+    def test_r_in_hull_panel_sets_rolled_ult_type(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
+        scene._panel = LOADOUT_PANEL_HULL
+        scene._ult_rerolls_remaining = 1
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev)
+        assert scene._rolled_ult_type is not None
+        # Must be a different tank type
+        from game.scenes.loadout_scene import _TANK_ORDER
+        assert scene._rolled_ult_type in _TANK_ORDER
+        assert scene._rolled_ult_type != scene._selected_tank
+
+    def test_r_in_hull_decrements_ult_rerolls(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
+        scene._panel = LOADOUT_PANEL_HULL
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev)
+        assert scene._ult_rerolls_remaining == 0
+
+    def test_second_r_in_hull_blocked(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
+        scene._panel = LOADOUT_PANEL_HULL
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev)
+        first_roll = scene._rolled_ult_type
+        # Second press is blocked — rolled type should not change
+        scene.handle_event(ev)
+        assert scene._rolled_ult_type == first_roll
+        assert scene._ult_rerolls_remaining == 0
+
+    def test_tank_change_resets_rolled_ult(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
+        scene._panel = LOADOUT_PANEL_HULL
+        ev_r = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        scene.handle_event(ev_r)
+        assert scene._rolled_ult_type is not None
+        # Change tank
+        ev_down = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_DOWN)
+        scene.handle_event(ev_down)
+        assert scene._rolled_ult_type is None
+
+    def test_confirm_forwards_ult_override_when_set(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
+        scene._weapons_revealed = True
+        scene._rolled_ult_type = "heavy_tank"
+        scene._confirm()
+        assert scene.manager.last_kwargs.get("ult_override") == "heavy_tank"
+
+    def test_confirm_no_ult_override_when_not_rolled(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
+        scene._weapons_revealed = True
+        scene._rolled_ult_type = None
+        scene._confirm()
+        assert "ult_override" not in scene.manager.last_kwargs
+
+    def test_reset_restores_ult_rerolls(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._lock_hull_and_reveal()
+        scene._ult_rerolls_remaining = 0
+        scene._rolled_ult_type = "heavy_tank"
+        scene._reset_to_hull()
+        assert scene._ult_rerolls_remaining == 1
+        assert scene._rolled_ult_type is None
