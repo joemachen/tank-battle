@@ -108,8 +108,8 @@ class TestAIPickupSeeking:
         ai.set_pickups_getter(lambda: [pickup])
         ai.tick(0.016)
         inp = ai.get_input()
-        # Default patrol: throttle=0.5, rotate=0.3
-        assert inp.throttle == pytest.approx(0.5)
+        # Center-seeking patrol: moving but not firing
+        assert inp.throttle > 0
 
     def test_pursue_grabs_nearby_pickup(self):
         target = _make_tank(600, 300)  # within detection range => PURSUE
@@ -136,5 +136,5 @@ class TestAIPickupSeeking:
         ai.set_pickups_getter(lambda: [pickup])
         ai.tick(0.016)
         inp = ai.get_input()
-        # Default patrol behaviour
-        assert inp.throttle == pytest.approx(0.5)
+        # Center-seeking patrol: moving but not firing
+        assert inp.throttle > 0

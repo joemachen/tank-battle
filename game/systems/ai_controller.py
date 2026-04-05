@@ -347,15 +347,26 @@ class AIController:
     # ------------------------------------------------------------------
 
     def _patrol_input(self) -> TankInput:
-        """Wander by slowly rotating on a timer. Turret faces same direction as hull.
-        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE."""
+        """
+        Move toward arena center while no enemy is in detection range.
+        This ensures tanks converge from spawn corners rather than sitting idle.
+        Turret tracks hull direction during patrol.
+        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE.
+        """
+        from game.utils.constants import ARENA_WIDTH, ARENA_HEIGHT
         # Opportunistic pickup grab
         pickup = self._nearest_pickup(AI_PICKUP_OPPORTUNISTIC_RANGE)
         if pickup is not None:
             return self._steer_toward(pickup.position)
-        # Stub: just rotate slowly; waypoint patrol implemented later
-        turret = self._owner.angle if self._owner is not None else 0.0
-        return TankInput(throttle=0.5, rotate=0.3, fire=False, turret_angle=turret)
+        if self._owner is None:
+            return TankInput()
+        center = (ARENA_WIDTH / 2.0, ARENA_HEIGHT / 2.0)
+        desired_angle = angle_to(self._owner.position, center)
+        diff = angle_difference(self._owner.angle, desired_angle)
+        rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
+        throttle = 0.6 if abs(diff) < 60 else 0.2   # slow while turning hard
+        turret = self._owner.angle
+        return TankInput(throttle=throttle, rotate=rotate, fire=False, turret_angle=turret)
 
     def _pursue_input(self, target) -> TankInput:
         """Turn and move toward target with lightweight obstacle avoidance.

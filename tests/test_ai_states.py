@@ -59,8 +59,9 @@ class TestAIStateTransitions:
         owner = MockTank(x=0, y=0)
         target = MockTank(x=AI_DETECTION_RANGE + 100, y=0)
         ctrl = self._make_controller(owner, target)
-        ctrl.get_input()
+        inp = ctrl.get_input()
         assert ctrl._state == AIState.PATROL
+        assert inp.throttle > 0  # center-seeking patrol moves the tank
 
     def test_pursue_when_target_in_detection_range(self):
         owner = MockTank(x=0, y=0)
@@ -171,3 +172,17 @@ class TestAIStateTransitions:
             if inp.fire:
                 fired_count += 1
         assert fired_count == 0
+
+    def test_patrol_input_moves_toward_center(self):
+        """Patrol input drives tank toward arena center, never fires."""
+        owner = MockTank(x=200, y=200)
+        # Place target well out of detection range so PATROL state is maintained
+        target = MockTank(x=200 + AI_DETECTION_RANGE + 200, y=200)
+        ctrl = self._make_controller(owner, target)
+        ctrl.get_input()  # transition to PATROL
+        assert ctrl._state == AIState.PATROL
+        # Force state and call _patrol_input directly
+        ctrl._state = AIState.PATROL
+        inp = ctrl._patrol_input()
+        assert inp.throttle > 0
+        assert inp.fire is False
