@@ -83,6 +83,7 @@ from game.utils.constants import (
     DAMAGE_CRACK_DARKEN,
     DEBRIS_COUNT,
     DEBRIS_COUNT_DEFAULT,
+    TANK_SELECT_COLORS,
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_MAP,
@@ -336,7 +337,8 @@ class GameplayScene(BaseScene):
             ai_tank.load_weapons(ai_weapon_cfgs)
             self._ai_tanks.append(ai_tank)
             self._ai_controllers.append(controller)
-            self._ai_surfs.append(_build_tank_surface(COLOR_RED))
+            ai_color = TANK_SELECT_COLORS.get(ai_type, COLOR_RED)
+            self._ai_surfs.append(_build_tank_surface(ai_color))
 
         # Wire nearest-enemy targeting now that all tanks exist (v0.32)
         # The lambda captures self._ai_tanks by reference so newly-dead tanks
@@ -350,12 +352,17 @@ class GameplayScene(BaseScene):
             )
 
         # Ultimate abilities (v0.28) — assign based on tank_type
+        # ult_override lets LoadoutScene give the player a different ultimate (reroll)
+        ult_override: str | None = kwargs.get("ult_override")
         self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)
         self._shield_domes: list[dict] = []
         self._artillery_warnings: list[dict] = []
         self._pending_artillery: list[dict] = []
         for tank_ref in [self._tank] + self._ai_tanks:
-            ult_cfg = self._ultimate_configs.get(tank_ref.tank_type)
+            if tank_ref is self._tank and ult_override:
+                ult_cfg = self._ultimate_configs.get(ult_override)
+            else:
+                ult_cfg = self._ultimate_configs.get(tank_ref.tank_type)
             if ult_cfg:
                 tank_ref.ultimate = UltimateCharge(ult_cfg)
 

@@ -8,7 +8,7 @@ Uses a mock tank and mock target — no pygame required.
 import pytest
 
 from game.systems.ai_controller import AIController, AIState
-from game.utils.constants import AI_ATTACK_RANGE, AI_DETECTION_RANGE
+from game.utils.constants import AI_ATTACK_RANGE, AI_DETECTION_RANGE, AI_DIFFICULTY_COLORS
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +186,16 @@ class TestAIStateTransitions:
         inp = ctrl._patrol_input()
         assert inp.throttle > 0
         assert inp.fire is False
+
+
+# ---------------------------------------------------------------------------
+# AI difficulty color constants
+# ---------------------------------------------------------------------------
+
+class TestAIDifficultyColors:
+
+    def test_easy_is_green(self):
+        assert AI_DIFFICULTY_COLORS["easy"] == (100, 180, 100)
+
+    def test_hard_is_red(self):
+        assert AI_DIFFICULTY_COLORS["hard"] == (220, 70, 70)

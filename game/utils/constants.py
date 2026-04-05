@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.32.0"
+GAME_VERSION: str = "v0.33.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -439,6 +439,11 @@ LOADOUT_PANEL_COUNT: int = 3
 # AI
 # ---------------------------------------------------------------------------
 AI_DETECTION_RANGE: float = 800.0        # pixels — triggers PURSUE state
+AI_DIFFICULTY_COLORS: dict = {
+    "easy":   (100, 180, 100),   # green
+    "medium": (220, 180,  60),   # amber
+    "hard":   (220,  70,  70),   # red
+}
 AI_ATTACK_RANGE: float = 375.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 
