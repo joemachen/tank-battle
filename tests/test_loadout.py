@@ -380,13 +380,14 @@ class TestHullSelection:
         scene.handle_event(ev)
         assert scene._selected_tank == "medium_tank"
 
-    def test_up_wraps_to_last_unlocked(self, monkeypatch):
+    def test_up_from_first_tank_goes_to_opponent_row(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
         scene._panel = LOADOUT_PANEL_HULL
-        # cursor starts at light_tank, UP should wrap to medium_tank (last unlocked)
+        # cursor starts at light_tank (first); UP moves to the opponent count sub-row
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_UP)
         scene.handle_event(ev)
-        assert scene._selected_tank == "medium_tank"
+        assert scene._hull_row == 1
+        assert scene._selected_tank == "light_tank"  # tank selection unchanged
 
     def test_locked_tank_is_reported_as_locked(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
@@ -839,3 +840,45 @@ class TestHullLockFlow:
         scene = _make_scene(monkeypatch)
         scene._confirm()
         assert scene.manager.last_switch is None
+
+
+# ---------------------------------------------------------------------------
+# 11. Opponent count selector (v0.32)
+# ---------------------------------------------------------------------------
+
+
+class TestOpponentCountSelector:
+    def test_default_opponent_count_is_one(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        assert scene._opponent_idx == 0
+        from game.scenes.loadout_scene import _OPPONENT_COUNTS
+        assert _OPPONENT_COUNTS[scene._opponent_idx] == 1
+
+    def test_opponent_count_increments_with_right(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._hull_row = 1
+        scene._panel = LOADOUT_PANEL_HULL
+        from game.scenes.loadout_scene import _OPPONENT_COUNTS
+        before = scene._opponent_idx
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        assert scene._opponent_idx == (before + 1) % len(_OPPONENT_COUNTS)
+
+    def test_opponent_count_wraps_around(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._hull_row = 1
+        scene._panel = LOADOUT_PANEL_HULL
+        from game.scenes.loadout_scene import _OPPONENT_COUNTS
+        scene._opponent_idx = len(_OPPONENT_COUNTS) - 1
+        ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
+        scene.handle_event(ev)
+        assert scene._opponent_idx == 0
+
+    def test_ai_count_forwarded_on_confirm(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._weapons_revealed = True
+        scene._hull_row = 0
+        from game.scenes.loadout_scene import _OPPONENT_COUNTS
+        scene._opponent_idx = 1  # count = 2
+        scene._confirm()
+        assert scene.manager.last_kwargs["ai_count"] == _OPPONENT_COUNTS[1]

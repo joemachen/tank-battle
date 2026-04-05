@@ -244,6 +244,7 @@ class TestAIRandomLoadout(unittest.TestCase):
         owner = MagicMock()
         owner.x = 100.0
         owner.y = 100.0
+        owner.angle = 0.0
         owner.position = (100.0, 100.0)
         owner.health_ratio = 1.0
         owner.is_alive = True

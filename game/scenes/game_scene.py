@@ -30,7 +30,7 @@ from game.entities.ground_pool import GroundPool
 from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
-from game.systems.ai_controller import AIController
+from game.systems.ai_controller import AIController, make_nearest_enemy_getter
 from game.systems.collision import (
     CollisionSystem,
     _DAMAGE_TYPE_TO_EFFECT,
@@ -128,6 +128,7 @@ from game.utils.constants import (
     SFX_CONCUSSION_HIT,
     ULTIMATES_CONFIG,
     ULTIMATE_SFX,
+    WATCH_MODE_OVERLAY_COLOR,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
     TANK_BARREL_WIDTH,
@@ -155,6 +156,9 @@ _SPAWN_Y: float = ARENA_HEIGHT / 2.0
 
 # Maximum AI opponents supported
 _MAX_AI: int = 3
+
+# AI tank type rotation — varied hull types for visual and behavioral diversity
+_AI_TANK_TYPES: list[str] = ["light_tank", "medium_tank", "heavy_tank"]
 
 
 class GameplayScene(BaseScene):
@@ -190,6 +194,8 @@ class GameplayScene(BaseScene):
         # Laser beam rendering (v0.25) — rebuilt each frame
         self._active_beams: list[dict] = []
         self._player_was_firing_beam: bool = False
+        # Watch mode — match continues after player death (v0.32)
+        self._watch_mode: bool = False
 
     # ------------------------------------------------------------------
     # Scene lifecycle
@@ -291,18 +297,19 @@ class GameplayScene(BaseScene):
         self._pickup_spawner = PickupSpawner(pickup_spawns, self._pickup_configs)
         self._pickup_spawner.set_obstacles_getter(live_obstacles)
 
-        # AI tanks — all heavy_tank, shared difficulty, independent controllers
+        # AI tanks — varied hull types, shared difficulty, independent controllers
         ai_difficulty = get_ai_config(ai_difficulty_key, AI_DIFFICULTY_CONFIG)
-        ai_tank_config = get_tank_config("heavy_tank", TANKS_CONFIG)
         self._ai_tanks = []
         self._ai_controllers = []
         self._ai_surfs = []
 
         for i in range(ai_count):
             sx, sy = AI_SPAWN_POSITIONS[i % len(AI_SPAWN_POSITIONS)]
+            ai_type = _AI_TANK_TYPES[i % len(_AI_TANK_TYPES)]
+            ai_tank_config = get_tank_config(ai_type, TANKS_CONFIG)
             controller = AIController(
                 config=ai_difficulty,
-                target_getter=lambda t=self._tank: t,
+                target_getter=lambda: None,  # replaced below after all tanks created
             )
             ai_tank = Tank(
                 x=float(sx),
@@ -331,6 +338,17 @@ class GameplayScene(BaseScene):
             self._ai_controllers.append(controller)
             self._ai_surfs.append(_build_tank_surface(COLOR_RED))
 
+        # Wire nearest-enemy targeting now that all tanks exist (v0.32)
+        # The lambda captures self._ai_tanks by reference so newly-dead tanks
+        # are excluded dynamically via the is_alive check inside the getter.
+        _all_tanks_getter = lambda: [self._tank] + self._ai_tanks
+        for _ctrl, _ai_tank in zip(self._ai_controllers, self._ai_tanks):
+            _ctrl._target_getter = make_nearest_enemy_getter(
+                _ai_tank,
+                _all_tanks_getter,
+                low_hp_priority_weight=_ctrl.low_hp_priority_weight,
+            )
+
         # Ultimate abilities (v0.28) — assign based on tank_type
         self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)
         self._shield_domes: list[dict] = []
@@ -357,6 +375,9 @@ class GameplayScene(BaseScene):
         self._damage_dealt = 0
         self._damage_taken = 0
         self._match_start_time = time.monotonic()
+
+        # Watch mode — activated when player dies; match continues until 1 AI remains
+        self._watch_mode: bool = False
 
         # Shield pop detection — tracks which tanks had shield last frame
         self._had_shield: dict[int, bool] = {}
@@ -385,6 +406,7 @@ class GameplayScene(BaseScene):
 
     def on_exit(self) -> None:
         log.info("GameplayScene exited.")
+        self._watch_mode = False
         get_audio_manager().stop_all_layers()
         # Restore system cursor for all non-gameplay scenes
         pygame.mouse.set_visible(True)
@@ -417,7 +439,13 @@ class GameplayScene(BaseScene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                if self._watch_mode:
+                    self._end_match(won=False)
+                    return
                 self.manager.switch_to(SCENE_MENU)
+            elif event.key == pygame.K_RETURN and self._watch_mode:
+                self._end_match(won=False)
+                return
             elif event.key == self._mute_key:
                 get_audio_manager().toggle_mute()
             # Number keys — jump directly to weapon slot (no-op if slot doesn't exist)
@@ -646,40 +674,32 @@ class GameplayScene(BaseScene):
                     dome["hp"] -= bullet.damage
                     bullet.destroy()
 
-        # Win / lose checks — build MatchResult and pass to GameOverScene
-        if not self._tank.is_alive:
-            self.manager.switch_to(
-                SCENE_GAME_OVER,
-                result=MatchCalculator.build(
-                    won=False,
-                    survived=False,
-                    kills=self._kills,
-                    shots_fired=self._shots_fired,
-                    shots_hit=self._shots_hit,
-                    time_elapsed=time.monotonic() - self._match_start_time,
-                    damage_dealt=self._damage_dealt,
-                    damage_taken=self._damage_taken,
-                ),
-            )
+        # Win / lose checks with Watch Mode (v0.32)
+        # Player just died → activate Watch Mode instead of ending immediately
+        if not self._tank.is_alive and not self._watch_mode:
+            self._watch_mode = True
+
+        living_ai = [t for t in self._ai_tanks if t.is_alive]
+
+        if self._watch_mode and len(living_ai) <= 1:
+            # Last AI standing (or all dead) — match over, player lost
+            self._end_match(won=False)
             return
 
-        if all(not t.is_alive for t in self._ai_tanks):
-            self.manager.switch_to(
-                SCENE_GAME_OVER,
-                result=MatchCalculator.build(
-                    won=True,
-                    survived=True,
-                    kills=self._kills,
-                    shots_fired=self._shots_fired,
-                    shots_hit=self._shots_hit,
-                    time_elapsed=time.monotonic() - self._match_start_time,
-                    damage_dealt=self._damage_dealt,
-                    damage_taken=self._damage_taken,
-                ),
-            )
+        if not self._watch_mode and not living_ai:
+            # All AI dead while player is alive — player wins
+            self._end_match(won=True)
             return
 
-        self._camera.update(dt, self._tank.x, self._tank.y)
+        # Camera: follow nearest-to-arena-center living AI in Watch Mode
+        if self._watch_mode and living_ai:
+            arena_cx = ARENA_WIDTH / 2.0
+            arena_cy = ARENA_HEIGHT / 2.0
+            follow = min(living_ai,
+                         key=lambda t: math.hypot(t.x - arena_cx, t.y - arena_cy))
+            self._camera.update(dt, follow.x, follow.y)
+        else:
+            self._camera.update(dt, self._tank.x, self._tank.y)
 
         # Update obstacle flash timers
         for obs in self._obstacles:
@@ -752,6 +772,22 @@ class GameplayScene(BaseScene):
             if path:
                 audio.stop_music_layer(buff)
         self._active_buff_layers = current_buffs
+
+    def _end_match(self, won: bool) -> None:
+        """Transition to GameOverScene with a MatchResult."""
+        self.manager.switch_to(
+            SCENE_GAME_OVER,
+            result=MatchCalculator.build(
+                won=won,
+                survived=self._tank.is_alive,
+                kills=self._kills,
+                shots_fired=self._shots_fired,
+                shots_hit=self._shots_hit,
+                time_elapsed=time.monotonic() - self._match_start_time,
+                damage_dealt=self._damage_dealt,
+                damage_taken=self._damage_taken,
+            ),
+        )
 
     def _handle_ultimate_activated(self, tank, ability_type: str, audio) -> None:
         """Handle an ultimate ability activation (v0.28)."""
@@ -1003,6 +1039,8 @@ class GameplayScene(BaseScene):
                 slot_cooldowns=self._tank.slot_cooldowns,
                 combat_effects=self._tank.combat_effects,
             )
+            if self._watch_mode:
+                self._hud.draw_watch_overlay(surface)
 
         # Reticle — drawn after entities, before debug; hidden when paused or player dead
         if self._tank.is_alive:

@@ -70,6 +70,57 @@ _STUCK_WINDOW: float = 0.5       # rolling window for stuck detection (seconds)
 _STUCK_THRESHOLD: float = 10.0   # minimum displacement (px) to not be "stuck"
 
 
+def make_nearest_enemy_getter(owner_ref, all_tanks_getter, low_hp_priority_weight: float = 0.5):
+    """
+    Factory that returns a zero-arg callable targeting the best living enemy.
+
+    Target selection uses a weighted score:
+        effective_dist = real_dist * max(0.1, 1.0 - weight * (1.0 - hp_ratio))
+
+    A weight of 0.0 degrades to pure nearest-distance targeting.
+    A weight of 1.2 causes near-dead targets to be strongly preferred
+    over healthy targets at any distance.
+
+    Target stickiness: once a target's HP drops below 40%, the getter
+    locks onto them until they die or recover above the threshold,
+    preventing wounded tanks from escaping by being momentarily out-ranged.
+
+    Args:
+        owner_ref:              The Tank this controller belongs to.
+        all_tanks_getter:       Zero-arg callable returning current list of all tanks.
+        low_hp_priority_weight: Distance discount multiplier for low-HP targets.
+
+    Returns:
+        Callable returning the best living non-owner Tank, or None if none exist.
+    """
+    _cached_target = [None]   # list cell for mutation inside closure
+
+    def _getter():
+        all_tanks = all_tanks_getter()
+        enemies = [t for t in all_tanks if t is not owner_ref and t.is_alive]
+        if not enemies:
+            _cached_target[0] = None
+            return None
+
+        # Stick with current target while it is still alive and critically low on HP
+        current = _cached_target[0]
+        if (current is not None
+                and current.is_alive
+                and getattr(current, "health_ratio", 1.0) < 0.40):
+            return current
+
+        def _score(t) -> float:
+            dist = math.dist(owner_ref.position, t.position)
+            hp_ratio = getattr(t, "health_ratio", 1.0)
+            hp_discount = max(0.1, 1.0 - (low_hp_priority_weight * (1.0 - hp_ratio)))
+            return dist * hp_discount
+
+        _cached_target[0] = min(enemies, key=_score)
+        return _cached_target[0]
+
+    return _getter
+
+
 class AIState(Enum):
     PATROL = auto()
     PURSUE = auto()
@@ -96,6 +147,7 @@ class AIController:
         self.accuracy: float = float(config.get("accuracy", 0.72))
         self.aggression: float = float(config.get("aggression", 0.6))
         self.evasion_threshold: float = float(config.get("evasion_threshold", 0.40))
+        self.low_hp_priority_weight: float = float(config.get("low_hp_priority_weight", 0.5))
 
         # Internal state
         self._reaction_timer: float = 0.0
@@ -325,15 +377,26 @@ class AIController:
     # ------------------------------------------------------------------
 
     def _patrol_input(self) -> TankInput:
-        """Wander by slowly rotating on a timer. Turret faces same direction as hull.
-        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE."""
+        """
+        Move toward arena center while no enemy is in detection range.
+        This ensures tanks converge from spawn corners rather than sitting idle.
+        Turret tracks hull direction during patrol.
+        Opportunistically grabs nearby pickups within AI_PICKUP_OPPORTUNISTIC_RANGE.
+        """
+        from game.utils.constants import ARENA_WIDTH, ARENA_HEIGHT
         # Opportunistic pickup grab
         pickup = self._nearest_pickup(AI_PICKUP_OPPORTUNISTIC_RANGE)
         if pickup is not None:
             return self._steer_toward(pickup.position)
-        # Stub: just rotate slowly; waypoint patrol implemented later
-        turret = self._owner.angle if self._owner is not None else 0.0
-        return TankInput(throttle=0.5, rotate=0.3, fire=False, turret_angle=turret)
+        if self._owner is None:
+            return TankInput()
+        center = (ARENA_WIDTH / 2.0, ARENA_HEIGHT / 2.0)
+        desired_angle = angle_to(self._owner.position, center)
+        diff = angle_difference(self._owner.angle, desired_angle)
+        rotate = 1.0 if diff > 5 else (-1.0 if diff < -5 else 0.0)
+        throttle = 0.6 if abs(diff) < 60 else 0.2   # slow while turning hard
+        turret = self._owner.angle
+        return TankInput(throttle=throttle, rotate=rotate, fire=False, turret_angle=turret)
 
     def _pursue_input(self, target) -> TankInput:
         """Turn and move toward target with lightweight obstacle avoidance.

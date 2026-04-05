@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.28.0"
+GAME_VERSION: str = "v0.32.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -438,7 +438,7 @@ LOADOUT_PANEL_COUNT: int = 3
 # ---------------------------------------------------------------------------
 # AI
 # ---------------------------------------------------------------------------
-AI_DETECTION_RANGE: float = 550.0        # pixels — triggers PURSUE state
+AI_DETECTION_RANGE: float = 800.0        # pixels — triggers PURSUE state
 AI_ATTACK_RANGE: float = 375.0           # pixels — triggers ATTACK state
 AI_EVASION_HEALTH_RATIO: float = 0.30    # fraction — triggers EVADE state
 
@@ -486,6 +486,14 @@ DEFAULT_PROFILE: dict = {
     "losses": 0,
     "match_history": [],
 }
+
+# ---------------------------------------------------------------------------
+# Watch Mode overlay (v0.32)
+# ---------------------------------------------------------------------------
+WATCH_MODE_OVERLAY_COLOR: tuple = (220, 220, 80)   # amber text
+WATCH_MODE_OVERLAY_ALPHA: int = 160                  # semi-transparent background
+WATCH_MODE_OVERLAY_PADDING: int = 12                 # px padding around text
+WATCH_MODE_OVERLAY_Y: int = 60                       # px from top of screen
 
 DEFAULT_SETTINGS: dict = {
     "resolution": [SCREEN_WIDTH, SCREEN_HEIGHT],

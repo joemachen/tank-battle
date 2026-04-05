@@ -3,7 +3,7 @@
 Living reference for prompt authors. Derived from source code — not comments,
 not memory. If this file disagrees with the code, the code wins.
 
-*Last updated: v0.28.0*
+*Last updated: v0.32.0*
 
 ---
 
@@ -25,8 +25,8 @@ game/
     __init__.py                     SceneManager — scene registry + transitions
     base_scene.py                   Abstract base scene interface
     game_over_scene.py              Match result + XP progression display
-    game_scene.py                   Main gameplay arena orchestrator + ultimate systems (shield dome, artillery, cloak rendering) (v0.28)
-    loadout_scene.py                Unified hull/weapon/map selection; hull-lock → weapon reveal → slot 1 choice → reroll → map; ultimate description (v0.28)
+    game_scene.py                   Main gameplay arena orchestrator + ultimate systems (shield dome, artillery, cloak rendering) (v0.28); Watch Mode + AI tank type rotation + multi-AI targeting wire-up (v0.32)
+    loadout_scene.py                Unified hull/weapon/map selection; hull-lock → weapon reveal → slot 1 choice → reroll → map; ultimate description (v0.28); opponent count selector in hull panel (v0.32)
     map_select_scene.py             Deprecated v0.17.5 — merged into loadout
     menu_scene.py                   Main menu with synthwave grid background
     profile_select_scene.py         Four-slot profile picker
@@ -35,7 +35,7 @@ game/
     weapon_select_scene.py          Deprecated v0.17.5 — merged into loadout; _WEAPON_ORDER 11 entries (v0.25)
   systems/
     __init__.py
-    ai_controller.py                State machine AI with stuck recovery + weapon cycling timer + ultimate activation + cloak detection (v0.28)
+    ai_controller.py                State machine AI with stuck recovery + weapon cycling timer + ultimate activation + cloak detection (v0.28); make_nearest_enemy_getter factory + low-HP priority targeting + target stickiness (v0.32)
     collision.py                    All entity collision detection + resolution; 3-tuple return (v0.26)
     debris_system.py                Particle burst on obstacle destruction
     input_handler.py                Keyboard/mouse input → TankInput; F key ultimate activation (v0.28)
@@ -53,7 +53,7 @@ game/
     __init__.py
     audio_manager.py                Singleton audio: SFX, music, volume control
     components.py                   ScrollingGrid, FadeTransition UI widgets
-    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels + energy bar + ultimate charge bar (v0.28)
+    hud.py                          In-game health bars + weapon slot display + cooldown overlay + combat effect labels + energy bar + ultimate charge bar (v0.28); AI bar labels "AI N" + draw_watch_overlay (v0.32)
   utils/
     __init__.py
     camera.py                       World-to-screen transform with lerp tracking
@@ -124,6 +124,7 @@ tests/
   test_tank_select.py               Tank selection (legacy)
   test_tank_status.py               Status effects: apply, tick, regen
   test_ultimate.py                  UltimateCharge class, activation, tank integration, cloak, AI detection, config (v0.28)
+  test_ai_targeting.py              make_nearest_enemy_getter factory, low-HP priority, target stickiness, Watch Mode integration (v0.32)
   test_theme_loader.py              Theme loading + fallback
   test_turret.py                    Independent turret aiming
   test_weapon_roller.py             WeaponRoller unit tests (v0.25.5)
@@ -780,7 +781,7 @@ Evaluated every `get_input()` call (skipped during RECOVERY):
 | target is cloaked (v0.28) | PATROL |
 | health_ratio <= evasion_threshold | EVADE |
 | dist <= AI_ATTACK_RANGE (375) | ATTACK |
-| dist <= AI_DETECTION_RANGE (550) | PURSUE |
+| dist <= AI_DETECTION_RANGE (800) | PURSUE |
 | else | PATROL |
 
 Priority: cloak check > EVADE > ATTACK > PURSUE > PATROL (evaluated top-to-bottom).
@@ -789,13 +790,13 @@ Priority: cloak check > EVADE > ATTACK > PURSUE > PATROL (evaluated top-to-botto
 
 | Method | throttle | rotate | fire | turret_angle |
 |--------|----------|--------|------|--------------|
-| `_patrol_input()` | 0.5 | 0.3 | False | hull angle |
-| `_pursue_input(target)` | 0.3-1.0 (heading-dependent) | ±1.0 toward target | False | tracks player |
+| `_patrol_input()` | 0.2–0.6 (center-seeking) | ±1.0 toward center | False | hull angle |
+| `_pursue_input(target)` | 0.3-1.0 (heading-dependent) | ±1.0 toward target | False | tracks target |
 | `_attack_input(target)` | 0.0 | ±1.0 toward target | accuracy-jittered aim + aggression roll | jittered aim |
-| `_evade_input(target)` | 1.0 (forward = away) | ±1.0 toward flee angle | True if dist <= ATTACK_RANGE and aggression roll | tracks player |
+| `_evade_input(target)` | 1.0 (forward = away) | ±1.0 toward flee angle | True if dist <= ATTACK_RANGE and aggression roll | tracks target |
 | `_recovery_input()` | Phase 1: -1.0, Phase 2: 0.7 | alternating direction | False | hull angle |
 
-**Stub:** `_patrol_input()` is a simple rotation stub — waypoint patrol planned for later.
+`_patrol_input()` drives toward arena center `(ARENA_WIDTH/2, ARENA_HEIGHT/2)`: throttle 0.6 when heading within 60 degrees of center, 0.2 while turning hard. Ensures tanks converge from spawn corners (v0.32).
 
 #### RECOVERY Sub-State
 
@@ -854,6 +855,40 @@ Sets `activate_ultimate=True` on the returned TankInput.
 
 In `_update_state()`, if `target._cloaked` is True, AI transitions to PATROL (loses tracking).
 Checked before distance-based state transitions.
+
+#### make_nearest_enemy_getter (v0.32)
+
+Module-level factory — not a method. Returns a zero-arg callable that selects the best
+living non-owner enemy each frame using a weighted distance score.
+
+```python
+make_nearest_enemy_getter(owner_ref, all_tanks_getter, low_hp_priority_weight=0.5) -> callable
+```
+
+**Scoring formula:**
+```python
+effective_dist = real_dist * max(0.1, 1.0 - (weight * (1.0 - hp_ratio)))
+```
+
+`weight=0.0` → pure nearest-distance. `weight=1.2` → near-dead tanks effectively appear
+10× closer. A target at 600px with 20% HP has effective distance ≈ 24px at weight=1.2.
+
+**Target stickiness:** Once a target's `health_ratio < 0.40`, the getter locks onto them
+(via `_cached_target[0]` closure cell) until they die or recover above 0.40. Prevents
+wounded tanks from escaping by temporarily being out-ranged.
+
+`all_tanks_getter` is evaluated fresh on every call — dead tanks are excluded dynamically
+via the `is_alive` check, not by rebuilding the list.
+
+#### low_hp_priority_weight (v0.32)
+
+Difficulty parameter read from `ai_difficulty.yaml`:
+- **easy** = 0.0 — pure distance targeting, ignores HP
+- **medium** = 0.5 — mild preference for wounded targets
+- **hard** = 1.2 — aggressively hunts near-dead tanks
+
+Stored as `AIController.low_hp_priority_weight` and passed to `make_nearest_enemy_getter`
+during the post-loop wiring pass in `GameplayScene.on_enter()`.
 
 ---
 
@@ -1056,6 +1091,16 @@ Two-step loadout flow (v0.25.5):
 
 State fields: `_hull_locked`, `_weapons_revealed`. ESC when locked resets to hull.
 ESC when unlocked exits to menu. Weapon tips from `weapons.yaml` displayed below stat bars.
+
+#### Opponent Count Selector (v0.32)
+
+Hull panel has two sub-rows controlled by `_hull_row: int` (0 = tank list, 1 = opponent count):
+
+- **Navigation**: DOWN from last tank → opponent row; UP from first tank → opponent row (wrap);
+  DOWN from opponent row → first tank; UP from opponent row → last tank.
+- **LEFT/RIGHT** on opponent row cycles `_opponent_idx` through `_OPPONENT_COUNTS = [1, 2, 3]` with wrap.
+- `_confirm()` passes `ai_count=_OPPONENT_COUNTS[self._opponent_idx]` to `SCENE_GAME`.
+- Rendered as `Opponents: < N >` below the ultimate description; highlighted in neon pink when focused.
 
 #### AI Random Loadouts
 
@@ -1320,16 +1365,18 @@ LoadoutScene()
   → "START" → GameplayScene(
       tank_type: str,
       weapon_types: list[str],
-      map_name: str
+      map_name: str,
+      ai_count: int   # from opponent selector, default 1 (v0.32)
     )
   → ESC (hull locked) → reset to hull
   → ESC (hull unlocked) → MenuScene()
 
-GameplayScene(tank_type, weapon_types, map_name, ai_count)
-  loads: tanks.yaml, weapons.yaml, pickups.yaml, ai_difficulty.yaml,
+GameplayScene(tank_type, weapon_types, map_name, ai_count=1)
+  loads: tanks.yaml, weapons.yaml, pickups.yaml, ai_difficulty.yaml, ultimates.yaml
          map YAML via MapLoader, theme via ThemeLoader, settings (keybinds, AI difficulty)
-  creates: Camera, InputHandler, Tank (player + AI), PhysicsSystem,
+  creates: Camera, InputHandler, Tank (player + 1-3 AI), PhysicsSystem,
            CollisionSystem, DebrisSystem, PickupSpawner, HUD
+  AI hull types: _AI_TANK_TYPES[i % 3] rotation (light/medium/heavy) (v0.32)
 
 #### Speed Trail History (v0.20)
 
@@ -1342,6 +1389,48 @@ organically during turns. Trail auto-clears when speed boost expires or tank sto
 
 `_had_shield: dict[int, bool]` — tracks which tanks had shield last frame. When a
 tank transitions from shield → no-shield, spawns debris particles and plays `SFX_SHIELD_POP`.
+
+#### Watch Mode (v0.32)
+
+`_watch_mode: bool` — set True when the player tank dies. While active:
+- Camera follows the living AI tank nearest to arena center rather than the player.
+- Match ends (→ GAME_OVER with `won=False`) when `len(living_ai) <= 1`.
+- ESC or ENTER in `handle_event()` call `_end_match(won=False)` to skip.
+- `draw()` calls `hud.draw_watch_overlay(surface)` to render the "WATCHING" banner.
+
+When player is alive and all AI die, `_end_match(won=True)` is called normally.
+
+`_end_match(won: bool)` is a centralized helper that calls
+`switch_to(SCENE_GAME_OVER, result=MatchCalculator.build(...))`, replacing the duplicate
+win/lose switch_to calls that existed before v0.32.
+
+#### AI Tank Type Rotation (v0.32)
+
+```python
+_AI_TANK_TYPES: list[str] = ["light_tank", "medium_tank", "heavy_tank"]
+```
+
+AI tanks are assigned hull type by `_AI_TANK_TYPES[i % len(_AI_TANK_TYPES)]` in the spawn
+loop, giving visual and behavioral variety in multi-opponent matches. AI health bars in HUD
+are labeled "AI 1", "AI 2", "AI 3" (1-indexed).
+
+#### Multi-AI Targeting Wire-Up (v0.32)
+
+After the AI spawn loop, a two-pass wiring step assigns each AI controller its own
+`make_nearest_enemy_getter` targeting all tanks (player + all AI):
+
+```python
+_all_tanks_getter = lambda: [self._tank] + self._ai_tanks
+for _ctrl, _ai_tank in zip(self._ai_controllers, self._ai_tanks):
+    _ctrl._target_getter = make_nearest_enemy_getter(
+        _ai_tank, _all_tanks_getter,
+        low_hp_priority_weight=_ctrl.low_hp_priority_weight,
+    )
+```
+
+The lambda captures `self._ai_tanks` by reference — dynamically-dead tanks are excluded
+per call via the `is_alive` filter inside `_getter`. The two-pass approach avoids the
+chicken-and-egg problem of needing all tanks to exist before wiring any getter.
 
 #### Ultimate Systems (v0.28)
 
@@ -1366,9 +1455,10 @@ triggered on any ultimate activation.
 **Charge from Damage**: After damage tracking, calls `owner.ultimate.add_damage_charge(dmg)` for
 both bullet hits and beam damage.
 
-  ai_count: from settings or default, capped at 3
-  → player dies     → GameOverScene(result: MatchResult)
-  → all AI dead     → GameOverScene(result: MatchResult)
+  ai_count: from LoadoutScene opponent selector (1-3), capped at _MAX_AI
+  → all AI dead while player alive → GameOverScene(result: MatchResult, won=True)
+  → player dies     → Watch Mode (camera follows remaining AI) (v0.32)
+  → last AI dies / ENTER / ESC in watch mode → GameOverScene(won=False) (v0.32)
 
 GameOverScene(result: MatchResult)
   loads: active profile, applies progression via ProgressionManager
@@ -1665,10 +1755,11 @@ Top-level: `dict[str, DifficultyConfig]`
 
 ```yaml
 DifficultyConfig:
-  reaction_time: float     # Seconds before AI reacts (lower = sharper)
-  accuracy: float          # [0.0, 1.0] shot accuracy
-  aggression: float        # [0.0, 1.0] fire probability per frame
-  evasion_threshold: float # Health ratio to enter EVADE state
+  reaction_time: float          # Seconds before AI reacts (lower = sharper)
+  accuracy: float               # [0.0, 1.0] shot accuracy
+  aggression: float             # [0.0, 1.0] fire probability per frame
+  evasion_threshold: float      # Health ratio to enter EVADE state
+  low_hp_priority_weight: float # Distance discount for low-HP targets (v0.32)
 ```
 
 Example:
@@ -1678,10 +1769,11 @@ medium:
   accuracy: 0.72
   aggression: 0.55
   evasion_threshold: 0.35
+  low_hp_priority_weight: 0.5
 ```
 
-All defined: easy (0.80/0.45/0.25/0.20), medium (0.40/0.72/0.55/0.35),
-hard (0.15/0.92/0.85/0.55).
+All defined: easy (0.80/0.45/0.25/0.20/0.0), medium (0.40/0.72/0.55/0.35/0.5),
+hard (0.15/0.92/0.85/0.55/1.2).
 
 ---
 
@@ -1809,7 +1901,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | SCREEN_HEIGHT | 720 | |
 | FPS | 60 | |
 | TITLE | "Tank Battle" | |
-| GAME_VERSION | "v0.28.0" | |
+| GAME_VERSION | "v0.32.0" | |
 | CAMERA_LERP_SPEED | 6.0 | Smooth follow rate |
 | SUPPORTED_RESOLUTIONS | [(1280,720), (1600,900), (1920,1080)] | |
 
@@ -1867,7 +1959,7 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 
 | Constant | Value | Note |
 |----------|-------|------|
-| AI_DETECTION_RANGE | 550.0 | PATROL → PURSUE |
+| AI_DETECTION_RANGE | 800.0 | PATROL → PURSUE (raised from 550 in v0.32) |
 | AI_ATTACK_RANGE | 375.0 | PURSUE → ATTACK |
 | AI_EVASION_HEALTH_RATIO | 0.30 | Default evasion threshold |
 | AI_PICKUP_SEEK_RANGE | 550.0 | EVADE health-seek range (matches detection range) |
@@ -1962,6 +2054,10 @@ All constants in `game/utils/constants.py`. Grouped by domain.
 | BUFF_ICON_OFFSET_Y | 20 | Above tank |
 | BUFF_ICON_FONT_SIZE | 14 | |
 | BUFF_ICON_SPACING | 16 | |
+| WATCH_MODE_OVERLAY_COLOR | (220, 220, 80) | "WATCHING" banner text color (v0.32) |
+| WATCH_MODE_OVERLAY_ALPHA | 160 | Background box alpha (v0.32) |
+| WATCH_MODE_OVERLAY_PADDING | 12 | Box padding px (v0.32) |
+| WATCH_MODE_OVERLAY_Y | 60 | Banner Y position from top (v0.32) |
 | MENU_GRID_SPEED | 60 | Perspective grid scroll |
 | MENU_TITLE_ANIM_DURATION | 0.8 | |
 | MENU_FADE_DURATION | 0.3 | |

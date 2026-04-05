@@ -33,11 +33,12 @@ are completed or plans change.
 | v0.25.5 | Random weapon rolls + player-chosen slot 1 — WeaponRoller, weighted random slots 2-3, slot 1 player cycles from unlocked pool, hull-lock flow, re-roll, AI random loadouts + weapon cycling, rarity labels, weapon tips |
 | v0.26.0 | Utility weapons — glue gun (area slow pool), lava gun (fire DPS pool), concussion blast (knockback); GroundPool entity, GroundPoolSystem, tank knockback physics, 21-level progression, 14 total weapons |
 | v0.28.0 | Ultimate system — UltimateCharge class, 4 abilities (Overdrive/Fortress/Barrage/Phantom), charge from damage/hits/passive, F key activation, AI ultimate usage, shield dome, artillery strike, cloak + homing exclusion, HUD charge bar, 4 SFX; also: HP doubling, passive regen, health float accumulator, ground pool self-damage, laser nerf/audio fix, boundary detonations, DPS weapon guarantee |
+| v0.32.0 | AI-vs-AI targeting + Watch Mode | make_nearest_enemy_getter factory, free-for-all targeting, Watch Mode on player death, opponent count selector, low-HP priority + target stickiness, center-seeking patrol, detection range 800px |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
 |---------------------------------|----------------------------------------------------------|
-| feature/ai-vs-ai                | v0.32 — AI-vs-AI targeting |
+| feature/ai-weapon-awareness     | v0.33 — AI weapon awareness |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -66,7 +67,7 @@ the pickup/powerup system.*
 *Smarter, more varied opponents that use the full game system.*
 | Version | Milestone                  | Notes                                                                              |
 |---------|---------------------------|------------------------------------------------------------------------------------|
-| v0.32   | AI-vs-AI targeting        | (was v0.30) Replace player-only target_getter with nearest_enemy_getter. Free-for-all mode enabled. |
+| ~~v0.32~~ | ~~AI-vs-AI targeting~~  | ✅ Completed v0.32.0 — nearest_enemy_getter, Watch Mode, opponent selector, low-HP priority, stickiness, center-seeking patrol |
 | v0.33   | AI weapon awareness       | (was v0.31) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
 | v0.34   | AI elemental awareness    | (was v0.32) AI prioritizes targets with active status effects it can combo.        |
 | ~~v0.35~~ | ~~AI ultimate usage~~   | ✅ Shipped as part of v0.28.0 — offensive ults in ATTACK, defensive in EVADE, cloak detection |
@@ -152,4 +153,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.28.0 — Ultimate system shipped (charge + 4 abilities + VFX + AI); balance pass (HP doubling, passive regen, laser nerf); v0.32 AI-vs-AI targeting next*
+*Last updated: v0.32.0 — AI-vs-AI targeting + Watch Mode shipped; v0.33 AI weapon awareness next*
