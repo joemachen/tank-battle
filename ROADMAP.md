@@ -105,23 +105,39 @@ the pickup/powerup system.*
 | v0.52   | Controller support               | (was v0.50) Gamepad input via pygame joystick API. InputHandler abstraction makes this clean.                                                                                                                                                                              |
 ---
 ## 💡 Backlog
-*Unscheduled. Revisit after Phase 4.*
-- Fog of war / limited visibility
-- Terrain deformation (craters from explosions that slow movement)
-- Replay system
-- Leaderboard
-- Boss rush mode
-- Custom tank builder (mix stats within a point budget)
-- Destructible terrain that changes map layout mid-match
-- Ghost tank decoy pickup (spawns AI-controlled duplicate, attracts homing missiles, has own HP pool)
-- Invisibility pickup (tank becomes transparent, removed from AI targeting, homing loses lock, stealth music layer)
-- Shotgun blast weapon (6-8 pellets in tight cone, massive close-range damage, useless at distance)
-- Gravity well weapon (slow-moving orb that pulls nearby bullets and tanks, detonates after 3s)
-- Mine layer weapon (drops invisible mine at tank position, detonates on enemy contact)
-- 3-4 new map layouts with chokepoints, corridors, asymmetric design
-- New themes: castle/medieval, wild west, space, fast food (color palettes + floor patterns)
-- AI retreat-to-cover behavior (pathfind to nearest obstacle instead of fleeing to corner)
-- AI expanded detection range (~80% arena diagonal)
+*Unscheduled ideas and deferred feedback. Revisit during relevant phases.*
+
+### Weapons
+- Shotgun blast — 6–8 pellets in tight cone, massive close-range damage, useless at distance
+- Gravity well — slow-moving orb that pulls nearby bullets and tanks toward it, detonates after 3s
+- Mine layer — drops invisible mine at tank position, detonates on enemy contact
+- EMP redesign — current EMP deals electric AoE damage; redesign as area-denial: disables all movement and weapons for tanks within radius X for Y seconds (no damage). Needs new status effect type.
+- Concussive blast knockback increase — current knockback too weak; should push targets ~half the arena width at point blank. Tune force scalar in weapons.yaml.
+
+### Pickups
+- Ghost tank decoy — spawns AI-controlled duplicate of player tank with its own HP (~40); attracts homing missiles as a valid target; moves in random patrol; visual match to player tank
+- Invisibility — tank becomes ~20% alpha, removed from AI target lists, homing missiles lose lock; duration-limited with shimmer effect near expiry; triggers stealth music layer (Bond-esque low strings)
+
+### Ultimates
+- Expand to 6 total ultimates (currently 4)
+- Randomize ultimate assignment per match like weapons (player sees what they got at loadout, no choice)
+- Rock/paper/scissors synergy between ultimates — e.g. Phantom cloak counters Barrage (untargetable), Fortress blocks Barrage AoE, Overdrive outruns Fortress, etc. Design needed before implementation.
+- Slower charge rate — ultimates currently build too fast; reduce passive charge rate and damage-dealt contribution across all tiers
+
+### Maps
+- Expand to 6 total maps (currently 3)
+- Random map option in LoadoutScene — alongside manual selection, a "Random" card that picks a map at match start
+- Map themes to target: castle/medieval, wild west, space, fast food
+- Chokepoints and skinny pathways — current maps are too open; new maps should force close-quarters encounters
+- Partial destruction on stone walls — stone obstacles transition through damage states (full wall → rubble/half-wall → cleared) instead of binary alive/dead; rubble provides partial cover and opens new sightlines mid-match (Battlefield-style)
+
+### AI
+- AI retreat-to-cover — during EVADE, pathfind toward nearest obstacle for cover instead of fleeing in a straight line to a corner
+- AI difficulty visual differentiation — easy/medium/hard AI tanks should render in distinct hull colors in-game (currently all red regardless of difficulty)
+
+### UI / Feel
+- Map selection random option — "Random" entry in the map picker alongside named maps
+- AI tank hull colors by difficulty — color coding so players can read the threat level of each opponent at a glance
 ---
 ## ⚠️ Architecture Notes
 ### Turret system (v0.15) decouples aim from movement
