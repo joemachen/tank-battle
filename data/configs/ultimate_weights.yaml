@@ -1,0 +1,16 @@
+# Ultimate ability weights for UltimateRoller (v0.33.5)
+#
+# Higher weight = more common. Weights are relative (normalized internally).
+# Pool contains all 6 named ultimate keys.
+#
+# Design intent:
+#   Overdrive and Fortress are common — straightforward and readable to opponents.
+#   Barrage and Phantom are less common — higher impact / more game sense required.
+#   Lockdown and Disruptor are rare — powerful CC; players should feel lucky to roll them.
+
+overdrive:  30    # common — straightforward aggressor
+fortress:   25    # common — safe and readable
+barrage:    20    # less common — high impact
+phantom:    20    # less common — requires more game sense
+lockdown:   15    # rare — powerful CC
+disruptor:  15    # rare — hard counter

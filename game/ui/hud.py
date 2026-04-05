@@ -33,6 +33,9 @@ from game.utils.constants import (
     HUD_BOTTOM_MARGIN,
     HUD_MARGIN,
     MAX_WEAPON_SLOTS,
+    ULTIMATE_COLOR_AGGRESSOR,
+    ULTIMATE_COLOR_DISRUPTER,
+    ULTIMATE_COLOR_MITIGATOR,
     WATCH_MODE_OVERLAY_ALPHA,
     WATCH_MODE_OVERLAY_COLOR,
     WATCH_MODE_OVERLAY_PADDING,
@@ -153,30 +156,39 @@ class HUD:
                 ult_y = weapon_y + 20 + 14
             else:
                 ult_y = weapon_y + 20
+            # Determine category color for bar fill (v0.33.5)
+            _category_colors = {
+                "aggressor": ULTIMATE_COLOR_AGGRESSOR,
+                "mitigator": ULTIMATE_COLOR_MITIGATOR,
+                "disrupter": ULTIMATE_COLOR_DISRUPTER,
+            }
+            ult_category = ult.config.get("category", "aggressor")
+            category_color = _category_colors.get(ult_category, ULTIMATE_COLOR_AGGRESSOR)
+            ult_display_name = ult.config.get("name", ult.ability_type.upper().replace("_", " "))
+
             # Background bar
             pygame.draw.rect(surface, COLOR_GRAY, (HUD_MARGIN, ult_y, HUD_BAR_WIDTH, 8))
-            # Fill bar — yellow when charging, pink when ready, pulsing when active
+            # Fill bar — category color when charging, neon when ready, pulsing when active
             ratio = ult.charge_ratio
             fill_w = int(HUD_BAR_WIDTH * ratio)
             if ult.is_active:
                 pulse = int(80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.01)))
-                fill_color = (255, 100 + pulse, 200)
+                r, g, b = category_color
+                fill_color = (min(255, r + pulse), min(255, g + pulse // 2), min(255, b + pulse))
                 fill_w = HUD_BAR_WIDTH  # full bar while active
             elif ult.is_ready:
                 fill_color = COLOR_NEON_PINK
             else:
-                # Yellow → pink gradient
-                fill_color = (
-                    255,
-                    int(200 * (1 - ratio) + 100 * ratio),
-                    int(60 * (1 - ratio) + 200 * ratio),
-                )
+                fill_color = category_color
             if fill_w > 0:
                 pygame.draw.rect(surface, fill_color, (HUD_MARGIN, ult_y, fill_w, 8))
-            # Label
-            ult_text = "ULTIMATE [F]" if ult.is_ready else "ULTIMATE"
+            # Label — shows ability name from config
             if ult.is_active:
-                ult_text = f"ACTIVE {ult.active_remaining:.1f}s"
+                ult_text = f"{ult_display_name}  {ult.active_remaining:.1f}s"
+            elif ult.is_ready:
+                ult_text = f"{ult_display_name}  [F]"
+            else:
+                ult_text = ult_display_name
             ult_label = self._small_font.render(ult_text, True, fill_color)
             surface.blit(ult_label, (HUD_MARGIN + HUD_BAR_WIDTH + 6, ult_y - 2))
 

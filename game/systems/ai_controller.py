@@ -176,6 +176,9 @@ class AIController:
         # Pickup awareness (v0.20) — injected by the scene
         self._pickups_getter = None
 
+        # All-tanks getter for Lockdown/Disruptor activation (v0.33.5)
+        self._all_tanks_getter = None
+
         # Weapon cycling timer (v0.25.5) — AI switches weapons periodically
         self._weapon_cycle_timer: float = random.uniform(4.0, 8.0)
         self._pending_weapon_cycle: int = 0
@@ -206,6 +209,11 @@ class AIController:
             ctrl.set_obstacles_getter(lambda: [o for o in self._obstacles if o.is_alive])
         """
         self._obstacles_getter = getter
+
+    def set_all_tanks_getter(self, getter) -> None:
+        """Inject a zero-arg callable returning all tanks (player + AI).
+        Used by Lockdown/Disruptor activation helpers. (v0.33.5)"""
+        self._all_tanks_getter = getter
 
     # ------------------------------------------------------------------
     # Per-frame tick (called by the scene, not by Tank)
@@ -307,9 +315,10 @@ class AIController:
             )
             self._pending_weapon_cycle = 0
 
-        # AI ultimate activation (v0.28)
-        # Offensive ultimates (speed_burst, artillery_strike) activate in ATTACK.
-        # Defensive ultimates (shield_dome, cloak) activate in EVADE.
+        # AI ultimate activation (v0.28 / v0.33.5)
+        # Offensive: speed_burst, artillery_strike — activate in ATTACK.
+        # Defensive: shield_dome, cloak — activate in EVADE.
+        # Disrupter: lockdown, disruptor — context-dependent conditions.
         activate_ult = False
         if self._owner is not None and self._owner.ultimate is not None:
             ult = self._owner.ultimate
@@ -319,6 +328,12 @@ class AIController:
                     activate_ult = random.random() < 0.30
                 elif ult_type in ("shield_dome", "cloak") and self._state == AIState.EVADE:
                     activate_ult = random.random() < 0.40
+                elif ult_type == "lockdown":
+                    # Activate when 2+ enemies are close and AI HP > 50%
+                    activate_ult = self._should_activate_lockdown(ult)
+                elif ult_type == "disruptor":
+                    # Activate when enemies have active Fortress/Phantom, or 2+ nearby
+                    activate_ult = self._should_activate_disruptor(ult)
         if activate_ult:
             result = TankInput(
                 throttle=result.throttle,
@@ -496,6 +511,52 @@ class AIController:
             # Phase 2 — rolling forward in the new heading
             return TankInput(throttle=0.7, rotate=self._recovery_direction * 0.4, fire=False,
                              turret_angle=turret)
+
+    # ------------------------------------------------------------------
+    # Disrupter ultimate activation helpers (v0.33.5)
+    # ------------------------------------------------------------------
+
+    def _should_activate_lockdown(self, ult) -> bool:
+        """Activate Lockdown when 2+ enemies are within radius*1.2 and AI HP > 50%."""
+        if self._owner is None:
+            return False
+        if self._owner.health_ratio < 0.50:
+            return False  # don't waste it while desperate
+        radius = float(ult.config.get("radius", 300)) * 1.2
+        all_tanks_fn = getattr(self, '_all_tanks_getter', None)
+        if all_tanks_fn is None:
+            return False
+        enemies = [t for t in all_tanks_fn() if t is not self._owner and t.is_alive]
+        nearby = sum(
+            1 for t in enemies
+            if math.dist((self._owner.x, self._owner.y), (t.x, t.y)) <= radius
+        )
+        return nearby >= 2 and random.random() < 0.60
+
+    def _should_activate_disruptor(self, ult) -> bool:
+        """Activate Disruptor when any nearby enemy has active Fortress/Phantom, or 2+ in radius."""
+        if self._owner is None:
+            return False
+        radius = float(ult.config.get("radius", 400))
+        all_tanks_fn = getattr(self, '_all_tanks_getter', None)
+        if all_tanks_fn is None:
+            return False
+        enemies = [t for t in all_tanks_fn() if t is not self._owner and t.is_alive]
+        nearby_enemies = [
+            t for t in enemies
+            if math.dist((self._owner.x, self._owner.y), (t.x, t.y)) <= radius
+        ]
+        if not nearby_enemies:
+            return False
+        # Priority: collapse Fortress or break Phantom if active in range
+        for t in nearby_enemies:
+            if getattr(t, '_cloaked', False):
+                return True
+            ult_obj = getattr(t, 'ultimate', None)
+            if ult_obj and ult_obj.is_active and ult_obj.ability_type == "shield_dome":
+                return True
+        # Fallback: 2+ enemies within radius
+        return len(nearby_enemies) >= 2 and random.random() < 0.50
 
     # ------------------------------------------------------------------
     # Pickup awareness helper (v0.20)

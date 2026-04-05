@@ -31,6 +31,7 @@ from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController, make_nearest_enemy_getter
+from game.systems.ultimate_roller import UltimateRoller
 from game.systems.collision import (
     CollisionSystem,
     _DAMAGE_TYPE_TO_EFFECT,
@@ -129,6 +130,7 @@ from game.utils.constants import (
     SFX_CONCUSSION_HIT,
     ULTIMATES_CONFIG,
     ULTIMATE_SFX,
+    ULTIMATE_WEIGHTS_CONFIG,
     WATCH_MODE_OVERLAY_COLOR,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
@@ -350,21 +352,32 @@ class GameplayScene(BaseScene):
                 _all_tanks_getter,
                 low_hp_priority_weight=_ctrl.low_hp_priority_weight,
             )
+            # Inject all-tanks getter for Lockdown/Disruptor activation (v0.33.5)
+            _ctrl.set_all_tanks_getter(_all_tanks_getter)
 
-        # Ultimate abilities (v0.28) — assign based on tank_type
-        # ult_override lets LoadoutScene give the player a different ultimate (reroll)
-        ult_override: str | None = kwargs.get("ult_override")
+        # Ultimate abilities (v0.33.5) — randomly assigned from shared pool via UltimateRoller.
+        # LoadoutScene forwards the player's rolled ultimate via `ultimate_type` kwarg.
+        # If absent (e.g. launched from tests or debug path), the roller picks for the player too.
         self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)
         self._shield_domes: list[dict] = []
         self._artillery_warnings: list[dict] = []
         self._pending_artillery: list[dict] = []
-        for tank_ref in [self._tank] + self._ai_tanks:
-            if tank_ref is self._tank and ult_override:
-                ult_cfg = self._ultimate_configs.get(ult_override)
-            else:
-                ult_cfg = self._ultimate_configs.get(tank_ref.tank_type)
-            if ult_cfg:
-                tank_ref.ultimate = UltimateCharge(ult_cfg)
+        self._lockdown_effects: list[dict] = []   # active lockdown anchors for VFX
+        self._disruptor_effects: list[dict] = []  # active disruptor auras for VFX
+        _ult_roller = UltimateRoller(ULTIMATE_WEIGHTS_CONFIG)
+
+        # Player ultimate — use kwarg if provided, else roll from pool
+        player_ult_key: str = kwargs.get("ultimate_type") or _ult_roller.roll()
+        player_ult_cfg = self._ultimate_configs.get(player_ult_key)
+        if player_ult_cfg:
+            self._tank.set_ultimate(player_ult_cfg)
+
+        # AI ultimates — each rolls independently from the full pool
+        for ai_tank in self._ai_tanks:
+            ai_ult_key = _ult_roller.roll()
+            ai_ult_cfg = self._ultimate_configs.get(ai_ult_key)
+            if ai_ult_cfg:
+                ai_tank.set_ultimate(ai_ult_cfg)
 
         # Remaining systems
         self._physics = PhysicsSystem()
@@ -438,6 +451,8 @@ class GameplayScene(BaseScene):
         self._shield_domes = []
         self._artillery_warnings = []
         self._pending_artillery = []
+        self._lockdown_effects = []
+        self._disruptor_effects = []
 
     # ------------------------------------------------------------------
     # Update
@@ -669,6 +684,14 @@ class GameplayScene(BaseScene):
             dome["timer"] -= dt
         self._shield_domes = [d for d in self._shield_domes if d["timer"] > 0 and d["hp"] > 0]
 
+        # Tick lockdown and disruptor VFX timers (v0.33.5)
+        for eff in self._lockdown_effects:
+            eff["timer"] -= dt
+        self._lockdown_effects = [e for e in self._lockdown_effects if e["timer"] > 0]
+        for eff in self._disruptor_effects:
+            eff["timer"] -= dt
+        self._disruptor_effects = [e for e in self._disruptor_effects if e["timer"] > 0]
+
         # Shield dome bullet interception (v0.28)
         for dome in self._shield_domes:
             dtank = dome["tank"]
@@ -797,7 +820,7 @@ class GameplayScene(BaseScene):
         )
 
     def _handle_ultimate_activated(self, tank, ability_type: str, audio) -> None:
-        """Handle an ultimate ability activation (v0.28)."""
+        """Handle an ultimate ability activation (v0.28 / v0.33.5)."""
         ult = tank.ultimate
         sfx_key = ult.config.get("sfx_key", "")
         sfx_path = ULTIMATE_SFX.get(sfx_key)
@@ -814,7 +837,6 @@ class GameplayScene(BaseScene):
             })
         elif ability_type == "artillery_strike":
             cx, cy = tank.x, tank.y
-            # If player, aim at turret direction; if AI, aim at current position
             count = int(ult.config.get("explosion_count", 5))
             area = float(ult.config.get("strike_area", 250.0))
             delay_step = float(ult.config.get("stagger_delay", 0.3))
@@ -837,6 +859,81 @@ class GameplayScene(BaseScene):
                     "timer": delay_step * i + 0.15,
                     "radius": radius,
                 })
+
+        elif ability_type == "lockdown":
+            # Pull all tanks in radius toward deploying tank's position (v0.33.5)
+            center = (tank.x, tank.y)
+            radius = float(ult.config.get("radius", 300))
+            duration = float(ult.config.get("duration", 3.0))
+            pull_force = float(ult.config.get("pull_force", 800))
+            immune_owner = ult.config.get("immune_owner", True)
+            all_tanks = [self._tank] + self._ai_tanks
+            for target in all_tanks:
+                if not target.is_alive:
+                    continue
+                if target is tank and immune_owner:
+                    continue
+                dist = math.dist(center, (target.x, target.y))
+                if dist <= radius:
+                    target.apply_ult_status("lockdown", {
+                        "timer": duration,
+                        "pull_center": center,
+                        "pull_force": pull_force,
+                    })
+            # Record VFX anchor
+            self._lockdown_effects.append({
+                "center": center,
+                "radius": radius,
+                "timer": duration,
+                "color": tuple(ult.config.get("color", [180, 100, 255])),
+            })
+
+        elif ability_type == "disruptor":
+            # EMP pulse: damage + disable weapons/ultimates, collapse Fortress, break Phantom (v0.33.5)
+            center = (tank.x, tank.y)
+            radius = float(ult.config.get("radius", 400))
+            duration = float(ult.config.get("duration", 4.0))
+            flat_damage = int(ult.config.get("damage", 20))
+            disable_weapons = bool(ult.config.get("disable_weapons", True))
+            disable_ultimate = bool(ult.config.get("disable_ultimate", True))
+            collapses_fortress = bool(ult.config.get("collapses_fortress", True))
+            breaks_phantom = bool(ult.config.get("breaks_phantom", True))
+            all_tanks = [self._tank] + self._ai_tanks
+            for target in all_tanks:
+                if target is tank:
+                    continue
+                if not target.is_alive:
+                    continue
+                dist = math.dist(center, (target.x, target.y))
+                if dist <= radius:
+                    if flat_damage > 0:
+                        target.take_damage(flat_damage, DamageType.ELECTRIC)
+                    target.apply_ult_status("disruptor_disable", {
+                        "timer": duration,
+                        "disable_weapons": disable_weapons,
+                        "disable_ultimate": disable_ultimate,
+                    })
+                    # Collapse active Fortress dome belonging to this target
+                    if collapses_fortress:
+                        self._shield_domes = [
+                            d for d in self._shield_domes
+                            if d.get("tank") is not target
+                        ]
+                        if target.ultimate and target.ultimate.ability_type == "shield_dome":
+                            if target.ultimate.is_active:
+                                target.ultimate.force_deactivate()
+                    # Break active Phantom cloak belonging to this target
+                    if breaks_phantom and getattr(target, "_cloaked", False):
+                        target._cloaked = False
+                        if target.ultimate and target.ultimate.is_active:
+                            target.ultimate.force_deactivate()
+            # Record VFX pulse
+            self._disruptor_effects.append({
+                "center": center,
+                "radius": radius,
+                "timer": 0.4,  # brief flash
+                "color": tuple(ult.config.get("color", [255, 200, 50])),
+            })
 
     def _process_elemental_combo(self, combo: dict) -> None:
         """Handle an elemental combo event (v0.24)."""

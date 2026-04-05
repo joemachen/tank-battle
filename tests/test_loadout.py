@@ -980,66 +980,80 @@ class TestWeaponRerollCount:
 
 
 # ---------------------------------------------------------------------------
-# 13. Ultimate reroll (v0.33)
+# 13. Ultimate reroll (v0.33.5 — 3 rerolls, named ability keys, always pre-rolled)
 # ---------------------------------------------------------------------------
+
+_ULT_VALID_KEYS = {"overdrive", "fortress", "barrage", "phantom", "lockdown", "disruptor"}
 
 
 class TestUltimateReroll:
-    def test_default_ult_rerolls_is_one(self, monkeypatch):
+    def test_default_ult_rerolls_is_three(self, monkeypatch):
         scene = _make_scene(monkeypatch)
-        assert scene._ult_rerolls_remaining == 1
+        assert scene._ult_rerolls_remaining == 3
 
-    def test_default_rolled_ult_type_is_none(self, monkeypatch):
+    def test_default_rolled_ult_key_is_set_on_enter(self, monkeypatch):
+        """on_enter() always rolls an initial ultimate key — it is never None."""
         scene = _make_scene(monkeypatch)
-        assert scene._rolled_ult_type is None
+        assert scene._rolled_ult_key is not None
+        assert scene._rolled_ult_key in _ULT_VALID_KEYS
 
-    def test_r_in_hull_panel_sets_rolled_ult_type(self, monkeypatch):
+    def test_r_in_hull_panel_changes_rolled_ult_key(self, monkeypatch):
+        """Pressing R rolls a new ultimate key (guaranteed different from current)."""
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
         scene._panel = LOADOUT_PANEL_HULL
-        scene._ult_rerolls_remaining = 1
+        initial_key = scene._rolled_ult_key
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev)
-        assert scene._rolled_ult_type is not None
-        # Must be a different tank type
-        from game.scenes.loadout_scene import _TANK_ORDER
-        assert scene._rolled_ult_type in _TANK_ORDER
-        assert scene._rolled_ult_type != scene._selected_tank
+        assert scene._rolled_ult_key in _ULT_VALID_KEYS
+        # exclude= guarantees the new roll differs from the previous
+        assert scene._rolled_ult_key != initial_key
 
     def test_r_in_hull_decrements_ult_rerolls(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
         scene._panel = LOADOUT_PANEL_HULL
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev)
-        assert scene._ult_rerolls_remaining == 0
+        assert scene._ult_rerolls_remaining == 2  # 3 → 2
 
-    def test_second_r_in_hull_blocked(self, monkeypatch):
+    def test_r_in_hull_blocked_when_rerolls_exhausted(self, monkeypatch):
+        """After all 3 rerolls are used, a 4th R press does not change the key."""
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
         scene._panel = LOADOUT_PANEL_HULL
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
+        # Exhaust all 3 rerolls
         scene.handle_event(ev)
-        first_roll = scene._rolled_ult_type
-        # Second press is blocked — rolled type should not change
         scene.handle_event(ev)
-        assert scene._rolled_ult_type == first_roll
+        scene.handle_event(ev)
+        assert scene._ult_rerolls_remaining == 0
+        final_key = scene._rolled_ult_key
+        # 4th press must be ignored
+        scene.handle_event(ev)
+        assert scene._rolled_ult_key == final_key
         assert scene._ult_rerolls_remaining == 0
 
-    def test_tank_change_resets_rolled_ult(self, monkeypatch):
+    def test_rolled_ult_key_preserved_across_tank_change(self, monkeypatch):
+        """Changing tank hull does NOT reset the rolled ultimate key (v0.33.5)."""
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
         scene._panel = LOADOUT_PANEL_HULL
+        # Use one reroll so we know the key was deliberately chosen
         ev_r = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev_r)
-        assert scene._rolled_ult_type is not None
+        chosen_key = scene._rolled_ult_key
+        assert chosen_key in _ULT_VALID_KEYS
         # Change tank
         ev_down = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_DOWN)
         scene.handle_event(ev_down)
-        assert scene._rolled_ult_type is None
+        # Ultimate key must be unchanged
+        assert scene._rolled_ult_key == chosen_key
 
-    def test_confirm_forwards_ult_override_when_set(self, monkeypatch):
+    def test_confirm_forwards_ultimate_type_kwarg(self, monkeypatch):
+        """_confirm() passes rolled ultimate key as 'ultimate_type' to game_scene."""
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
         scene._weapons_revealed = True
-        scene._rolled_ult_type = "heavy_tank"
+        # Force a known ability key
+        scene._rolled_ult_key = "overdrive"
         scene._confirm()
-        assert scene.manager.last_kwargs.get("ult_override") == "heavy_tank"
+        assert scene.manager.last_kwargs.get("ultimate_type") == "overdrive"
 
     def test_confirm_no_ult_override_when_not_rolled(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
@@ -1052,7 +1066,7 @@ class TestUltimateReroll:
         scene = _make_scene(monkeypatch)
         scene._lock_hull_and_reveal()
         scene._ult_rerolls_remaining = 0
-        scene._rolled_ult_type = "heavy_tank"
         scene._reset_to_hull()
-        assert scene._ult_rerolls_remaining == 1
-        assert scene._rolled_ult_type is None
+        assert scene._ult_rerolls_remaining == 3
+        # After reset a fresh roll is made — key is non-None
+        assert scene._rolled_ult_key in _ULT_VALID_KEYS

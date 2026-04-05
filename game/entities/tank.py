@@ -124,6 +124,11 @@ class Tank:
         self.ultimate: "UltimateCharge | None" = None
         self._cloaked: bool = False
 
+        # Ultimate-applied statuses (v0.33.5) — keyed by effect kind
+        # "lockdown":         {"timer": float, "pull_center": tuple, "pull_force": float}
+        # "disruptor_disable":{"timer": float, "disable_weapons": bool, "disable_ultimate": bool}
+        self._ult_statuses: dict = {}
+
         # Energy system (v0.25) — for hitscan weapons (laser beam)
         self._energy: float = 0.0
         self._energy_max: float = 0.0
@@ -198,6 +203,31 @@ class Tank:
             "Tank loaded %d weapon(s): %s",
             len(configs), [c.get("type") for c in configs],
         )
+
+    def set_ultimate(self, config: dict) -> None:
+        """Assign an ultimate ability from a pre-resolved config dict (v0.33.5).
+
+        Creates a fresh UltimateCharge — any previous charge progress is lost.
+        Pass an empty dict or None to clear the ultimate slot.
+        """
+        from game.systems.ultimate import UltimateCharge
+        if config:
+            self.ultimate = UltimateCharge(config)
+        else:
+            self.ultimate = None
+
+    def apply_ult_status(self, kind: str, data: dict) -> None:
+        """Apply or refresh an ultimate-sourced status effect (v0.33.5).
+
+        Args:
+            kind: "lockdown" or "disruptor_disable"
+            data: dict containing at least "timer" plus kind-specific fields.
+        """
+        self._ult_statuses[kind] = dict(data)
+
+    def has_ult_status(self, kind: str) -> bool:
+        """True if the given ultimate status is currently active."""
+        return kind in self._ult_statuses and self._ult_statuses[kind].get("timer", 0) > 0
 
     def cycle_weapon(self, direction: int) -> None:
         """
@@ -347,6 +377,13 @@ class Tank:
         if not self.is_alive:
             return []
 
+        # Tick ultimate-applied statuses (v0.33.5)
+        expired_ult = [k for k, d in self._ult_statuses.items() if d.get("timer", 0) <= 0]
+        for k in expired_ult:
+            del self._ult_statuses[k]
+        for data in self._ult_statuses.values():
+            data["timer"] = data.get("timer", 0) - dt
+
         # Ultimate passive charge (v0.28)
         if self.ultimate is not None:
             self.ultimate.tick_passive(dt)
@@ -360,6 +397,23 @@ class Tank:
         # Weapon cycling
         if intent.cycle_weapon != 0:
             self.cycle_weapon(intent.cycle_weapon)
+
+        # Lockdown — override movement input and apply pull toward anchor (v0.33.5)
+        _lockdown = self._ult_statuses.get("lockdown")
+        if _lockdown and _lockdown.get("timer", 0) > 0:
+            # Suppress controller input for rotation and throttle
+            import dataclasses as _dc
+            intent = _dc.replace(intent, throttle=0.0, rotate=0.0, fire=False)
+            # Apply pull-force toward the lockdown center
+            _lx, _ly = _lockdown["pull_center"]
+            _dx = _lx - self.x
+            _dy = _ly - self.y
+            _dist = math.hypot(_dx, _dy)
+            if _dist > 1.0:
+                _force = _lockdown.get("pull_force", 800.0)
+                _nx, _ny = _dx / _dist, _dy / _dist
+                self._knockback_vx += _nx * _force * dt
+                self._knockback_vy += _ny * _force * dt
 
         # Hull rotation — apply combat turn multiplier (v0.23)
         effective_turn = self.turn_rate * self._combat_turn_mult()
@@ -400,6 +454,16 @@ class Tank:
         for i in range(len(self._slot_cooldowns)):
             if self._slot_cooldowns[i] > 0:
                 self._slot_cooldowns[i] -= dt
+
+        # Disruptor disable — block weapons and ultimate activation (v0.33.5)
+        _disrupt = self._ult_statuses.get("disruptor_disable")
+        _weapons_disabled = bool(_disrupt and _disrupt.get("timer", 0) > 0
+                                 and _disrupt.get("disable_weapons"))
+        _ultimate_disabled = bool(_disrupt and _disrupt.get("timer", 0) > 0
+                                  and _disrupt.get("disable_ultimate"))
+        if _weapons_disabled:
+            import dataclasses as _dc2
+            intent = _dc2.replace(intent, fire=False)
 
         # Fire — split into hitscan vs. projectile branches (v0.25)
         active_wep = self.active_weapon
@@ -446,8 +510,8 @@ class Tank:
             self._cloaked = False
             events.append(("cloak_break", self.x, self.y))
 
-        # Ultimate activation (v0.28)
-        if intent.activate_ultimate and self.ultimate is not None:
+        # Ultimate activation (v0.28) — blocked while disruptor-disabled (v0.33.5)
+        if intent.activate_ultimate and self.ultimate is not None and not _ultimate_disabled:
             if self.ultimate.activate():
                 ult_type = self.ultimate.ability_type
                 events.append(("ultimate_activated", self, ult_type))
