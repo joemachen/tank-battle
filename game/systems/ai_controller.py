@@ -70,6 +70,28 @@ _STUCK_WINDOW: float = 0.5       # rolling window for stuck detection (seconds)
 _STUCK_THRESHOLD: float = 10.0   # minimum displacement (px) to not be "stuck"
 
 
+def make_nearest_enemy_getter(owner_ref, all_tanks_getter):
+    """
+    Factory that returns a zero-arg callable targeting the nearest living enemy.
+
+    Args:
+        owner_ref:        The Tank this controller belongs to (captured by reference).
+        all_tanks_getter: Zero-arg callable returning the current list of all tanks
+                          (player + AI). Evaluated fresh on every call so dead tanks
+                          are excluded dynamically.
+
+    Returns:
+        Callable returning the nearest living non-owner Tank, or None if none exist.
+    """
+    def getter():
+        tanks = all_tanks_getter()
+        enemies = [t for t in tanks if t is not owner_ref and t.is_alive]
+        if not enemies:
+            return None
+        return min(enemies, key=lambda t: distance(owner_ref.position, t.position))
+    return getter
+
+
 class AIState(Enum):
     PATROL = auto()
     PURSUE = auto()

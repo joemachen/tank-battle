@@ -33,6 +33,10 @@ from game.utils.constants import (
     HUD_BOTTOM_MARGIN,
     HUD_MARGIN,
     MAX_WEAPON_SLOTS,
+    WATCH_MODE_OVERLAY_ALPHA,
+    WATCH_MODE_OVERLAY_COLOR,
+    WATCH_MODE_OVERLAY_PADDING,
+    WATCH_MODE_OVERLAY_Y,
 )
 from game.utils.logger import get_logger
 
@@ -185,17 +189,20 @@ class HUD:
             tanks = [t for t in ai_tanks if t is not None]
 
         # Stack AI bars from the same bar_y upward in the bottom-right corner;
-        # dead tanks are omitted.
+        # dead tanks are omitted. Label shows "AI N" where N is 1-indexed.
         ai_x = sw - HUD_MARGIN - HUD_BAR_WIDTH
         row = 0
-        for tank in tanks:
+        for i, tank in enumerate(tanks):
             if not tank.is_alive:
                 continue
             t_bar_y = bar_y - row * _AI_BAR_STRIDE
             t_label_y = t_bar_y - _LABEL_HEIGHT
             if t_label_y < 0:
                 break  # no vertical space left
-            self._draw_health_bar(surface, tank, ai_x, t_bar_y, t_label_y, right_aligned=True)
+            self._draw_health_bar(
+                surface, tank, ai_x, t_bar_y, t_label_y,
+                right_aligned=True, label=f"AI {i + 1}",
+            )
             row += 1
 
     def _draw_weapon_slots(
@@ -287,6 +294,7 @@ class HUD:
         y: int,
         label_y: int,
         right_aligned: bool = False,
+        label: str | None = None,
     ) -> None:
         """Draw a single health bar with a type label above it.
 
@@ -294,8 +302,10 @@ class HUD:
             right_aligned: When True (AI bars), the label is right-aligned to the
                            bar's right edge and HP text is placed to the LEFT of the
                            bar so neither element overflows the screen edge.
+            label:         Override text for the bar label. Defaults to tank.tank_type.
         """
-        label = self._font.render(tank.tank_type, True, COLOR_WHITE)
+        display_text = label if label is not None else tank.tank_type
+        label = self._font.render(display_text, True, COLOR_WHITE)
         if right_aligned:
             label_x = x + HUD_BAR_WIDTH - label.get_width()
         else:
@@ -317,3 +327,26 @@ class HUD:
         else:
             hp_text_x = x + HUD_BAR_WIDTH + 6
         surface.blit(hp_text, (hp_text_x, y + 1))
+
+    def draw_watch_overlay(self, surface: pygame.Surface) -> None:
+        """Draw the 'WATCHING' banner when the player has died but the match continues."""
+        self._ensure_fonts()
+        font = pygame.font.SysFont(None, 36)
+        if font is None:
+            return
+        text_surf = font.render(
+            "WATCHING \u2014 Press ENTER or ESC to continue",
+            True,
+            WATCH_MODE_OVERLAY_COLOR,
+        )
+        tw = text_surf.get_width()
+        th = text_surf.get_height()
+        pad = WATCH_MODE_OVERLAY_PADDING
+        bw = tw + pad * 2
+        bh = th + pad * 2
+        bx = (surface.get_width() - bw) // 2
+        by = WATCH_MODE_OVERLAY_Y
+        bg = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, WATCH_MODE_OVERLAY_ALPHA))
+        surface.blit(bg, (bx, by))
+        surface.blit(text_surf, (bx + pad, by + pad))

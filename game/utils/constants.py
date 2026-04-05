@@ -487,6 +487,14 @@ DEFAULT_PROFILE: dict = {
     "match_history": [],
 }
 
+# ---------------------------------------------------------------------------
+# Watch Mode overlay (v0.32)
+# ---------------------------------------------------------------------------
+WATCH_MODE_OVERLAY_COLOR: tuple = (220, 220, 80)   # amber text
+WATCH_MODE_OVERLAY_ALPHA: int = 160                  # semi-transparent background
+WATCH_MODE_OVERLAY_PADDING: int = 12                 # px padding around text
+WATCH_MODE_OVERLAY_Y: int = 60                       # px from top of screen
+
 DEFAULT_SETTINGS: dict = {
     "resolution": [SCREEN_WIDTH, SCREEN_HEIGHT],
     "master_volume": MASTER_VOLUME_DEFAULT,
