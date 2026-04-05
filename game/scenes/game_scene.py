@@ -343,7 +343,11 @@ class GameplayScene(BaseScene):
         # are excluded dynamically via the is_alive check inside the getter.
         _all_tanks_getter = lambda: [self._tank] + self._ai_tanks
         for _ctrl, _ai_tank in zip(self._ai_controllers, self._ai_tanks):
-            _ctrl._target_getter = make_nearest_enemy_getter(_ai_tank, _all_tanks_getter)
+            _ctrl._target_getter = make_nearest_enemy_getter(
+                _ai_tank,
+                _all_tanks_getter,
+                low_hp_priority_weight=_ctrl.low_hp_priority_weight,
+            )
 
         # Ultimate abilities (v0.28) — assign based on tank_type
         self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)

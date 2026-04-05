@@ -14,15 +14,18 @@ easy:
   accuracy: 0.45
   aggression: 0.25
   evasion_threshold: 0.20
+  low_hp_priority_weight: 0.0    # easy AI ignores HP — pure nearest targeting
 
 medium:
   reaction_time: 0.40
   accuracy: 0.72
   aggression: 0.55
   evasion_threshold: 0.35
+  low_hp_priority_weight: 0.5    # medium AI somewhat prefers wounded targets
 
 hard:
   reaction_time: 0.15
   accuracy: 0.92
   aggression: 0.85
   evasion_threshold: 0.55
+  low_hp_priority_weight: 1.2    # hard AI aggressively hunts low-HP targets

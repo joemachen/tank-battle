@@ -15,10 +15,11 @@ from game.systems.ai_controller import make_nearest_enemy_getter
 
 class _Tank:
     """Minimal tank stub."""
-    def __init__(self, x=0.0, y=0.0, is_alive=True):
+    def __init__(self, x=0.0, y=0.0, is_alive=True, health_ratio=1.0):
         self.x = x
         self.y = y
         self.is_alive = is_alive
+        self.health_ratio = health_ratio
 
     @property
     def position(self):
@@ -131,6 +132,72 @@ class TestNearestEnemyGetter:
         alive  = _Tank(x=50, y=0, is_alive=True)
         getter = make_nearest_enemy_getter(owner, lambda: [owner, dead1, dead2, alive])
         assert getter() is alive
+
+
+# ---------------------------------------------------------------------------
+# TestLowHpPriority
+# ---------------------------------------------------------------------------
+
+class TestLowHpPriority:
+
+    def test_low_hp_target_preferred_over_closer_healthy_target(self):
+        """High weight causes a far but near-dead tank to beat a closer healthy one."""
+        owner  = _Tank(x=0, y=0)
+        a      = _Tank(x=200, y=0, health_ratio=1.0)   # closer, full HP
+        b      = _Tank(x=400, y=0, health_ratio=0.1)   # farther, near-dead
+        getter = make_nearest_enemy_getter(owner, lambda: [owner, a, b], low_hp_priority_weight=1.2)
+        assert getter() is b
+
+    def test_zero_weight_returns_nearest_regardless_of_hp(self):
+        """weight=0.0 disables HP discount — pure distance selection."""
+        owner  = _Tank(x=0, y=0)
+        a      = _Tank(x=200, y=0, health_ratio=1.0)
+        b      = _Tank(x=400, y=0, health_ratio=0.1)
+        getter = make_nearest_enemy_getter(owner, lambda: [owner, a, b], low_hp_priority_weight=0.0)
+        assert getter() is a
+
+    def test_sticky_target_not_dropped_while_low_hp(self):
+        """Once a target is below 40% HP it is locked in even if a closer tank appears."""
+        owner  = _Tank(x=0, y=0)
+        b      = _Tank(x=400, y=0, health_ratio=0.1)
+        roster = [owner, b]
+        getter = make_nearest_enemy_getter(owner, lambda: roster, low_hp_priority_weight=1.2)
+
+        # First call: selects b
+        assert getter() is b
+
+        # Add a closer full-HP tank — stickiness should keep b
+        c = _Tank(x=50, y=0, health_ratio=1.0)
+        roster.append(c)
+        assert getter() is b
+
+    def test_sticky_target_released_when_dead(self):
+        """Cached low-HP target dying causes re-evaluation on next call."""
+        owner  = _Tank(x=0, y=0)
+        near   = _Tank(x=100, y=0, health_ratio=1.0)
+        dying  = _Tank(x=400, y=0, health_ratio=0.1)
+        roster = [owner, near, dying]
+        getter = make_nearest_enemy_getter(owner, lambda: roster, low_hp_priority_weight=1.2)
+
+        assert getter() is dying   # dying is selected and cached
+
+        dying.is_alive = False     # it dies
+        result = getter()
+        assert result is near      # re-evaluates to nearest living enemy
+
+    def test_sticky_target_released_when_hp_recovers_above_threshold(self):
+        """Cached target healing above 40% HP releases the sticky lock."""
+        owner  = _Tank(x=0, y=0)
+        near   = _Tank(x=100, y=0, health_ratio=1.0)
+        target = _Tank(x=400, y=0, health_ratio=0.1)
+        roster = [owner, near, target]
+        getter = make_nearest_enemy_getter(owner, lambda: roster, low_hp_priority_weight=1.2)
+
+        assert getter() is target  # locked onto target
+
+        target.health_ratio = 0.80  # healed above threshold
+        result = getter()
+        assert result is near       # re-evaluates; near wins on distance
 
 
 # ---------------------------------------------------------------------------

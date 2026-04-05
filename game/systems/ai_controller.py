@@ -70,26 +70,55 @@ _STUCK_WINDOW: float = 0.5       # rolling window for stuck detection (seconds)
 _STUCK_THRESHOLD: float = 10.0   # minimum displacement (px) to not be "stuck"
 
 
-def make_nearest_enemy_getter(owner_ref, all_tanks_getter):
+def make_nearest_enemy_getter(owner_ref, all_tanks_getter, low_hp_priority_weight: float = 0.5):
     """
-    Factory that returns a zero-arg callable targeting the nearest living enemy.
+    Factory that returns a zero-arg callable targeting the best living enemy.
+
+    Target selection uses a weighted score:
+        effective_dist = real_dist * max(0.1, 1.0 - weight * (1.0 - hp_ratio))
+
+    A weight of 0.0 degrades to pure nearest-distance targeting.
+    A weight of 1.2 causes near-dead targets to be strongly preferred
+    over healthy targets at any distance.
+
+    Target stickiness: once a target's HP drops below 40%, the getter
+    locks onto them until they die or recover above the threshold,
+    preventing wounded tanks from escaping by being momentarily out-ranged.
 
     Args:
-        owner_ref:        The Tank this controller belongs to (captured by reference).
-        all_tanks_getter: Zero-arg callable returning the current list of all tanks
-                          (player + AI). Evaluated fresh on every call so dead tanks
-                          are excluded dynamically.
+        owner_ref:              The Tank this controller belongs to.
+        all_tanks_getter:       Zero-arg callable returning current list of all tanks.
+        low_hp_priority_weight: Distance discount multiplier for low-HP targets.
 
     Returns:
-        Callable returning the nearest living non-owner Tank, or None if none exist.
+        Callable returning the best living non-owner Tank, or None if none exist.
     """
-    def getter():
-        tanks = all_tanks_getter()
-        enemies = [t for t in tanks if t is not owner_ref and t.is_alive]
+    _cached_target = [None]   # list cell for mutation inside closure
+
+    def _getter():
+        all_tanks = all_tanks_getter()
+        enemies = [t for t in all_tanks if t is not owner_ref and t.is_alive]
         if not enemies:
+            _cached_target[0] = None
             return None
-        return min(enemies, key=lambda t: distance(owner_ref.position, t.position))
-    return getter
+
+        # Stick with current target while it is still alive and critically low on HP
+        current = _cached_target[0]
+        if (current is not None
+                and current.is_alive
+                and getattr(current, "health_ratio", 1.0) < 0.40):
+            return current
+
+        def _score(t) -> float:
+            dist = math.dist(owner_ref.position, t.position)
+            hp_ratio = getattr(t, "health_ratio", 1.0)
+            hp_discount = max(0.1, 1.0 - (low_hp_priority_weight * (1.0 - hp_ratio)))
+            return dist * hp_discount
+
+        _cached_target[0] = min(enemies, key=_score)
+        return _cached_target[0]
+
+    return _getter
 
 
 class AIState(Enum):
@@ -118,6 +147,7 @@ class AIController:
         self.accuracy: float = float(config.get("accuracy", 0.72))
         self.aggression: float = float(config.get("aggression", 0.6))
         self.evasion_threshold: float = float(config.get("evasion_threshold", 0.40))
+        self.low_hp_priority_weight: float = float(config.get("low_hp_priority_weight", 0.5))
 
         # Internal state
         self._reaction_timer: float = 0.0

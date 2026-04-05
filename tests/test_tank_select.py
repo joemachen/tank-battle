@@ -322,6 +322,7 @@ class TestGameplaySceneTankType:
         class _FakeInput: pass
 
         class _FakeAI:
+            low_hp_priority_weight = 0.5
             def set_owner(self, t): pass
             def set_obstacles_getter(self, g): pass
             def set_pickups_getter(self, g): pass
