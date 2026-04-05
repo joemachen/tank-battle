@@ -88,6 +88,7 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _TANK_ORDER: list[str] = ["light_tank", "medium_tank", "heavy_tank", "scout_tank"]
+_OPPONENT_COUNTS: list[int] = [1, 2, 3]
 _WEAPON_ORDER: list[str] = [
     "standard_shell",
     "spread_shot",
@@ -245,6 +246,8 @@ class LoadoutScene(BaseScene):
 
         # Hull panel state
         self._tank_cursor: int = 0          # index into unlocked tank list
+        self._hull_row: int = 0             # 0 = tank selection, 1 = opponent count
+        self._opponent_idx: int = 0         # index into _OPPONENT_COUNTS
         self._unlocked_tanks: list[str] = []
         self._tank_configs: dict = {}        # type → config dict
 
@@ -325,6 +328,8 @@ class LoadoutScene(BaseScene):
         self._panel = LOADOUT_PANEL_HULL
         self._map_cursor = 0
         self._slot_focus = 0
+        self._hull_row = 0
+        self._opponent_idx = 0
 
         # Default tank cursor: first unlocked tank
         self._tank_cursor = 0
@@ -406,24 +411,45 @@ class LoadoutScene(BaseScene):
         unlocked = [t for t in _TANK_ORDER if t in self._unlocked_tanks]
         if not unlocked:
             return
+
+        # Resolve current unlocked index
+        cur = _TANK_ORDER[self._tank_cursor] if self._tank_cursor < len(_TANK_ORDER) else unlocked[0]
+        try:
+            ui = unlocked.index(cur)
+        except ValueError:
+            ui = 0
+
         if key in (pygame.K_UP, pygame.K_w):
-            # Move to previous unlocked tank
-            cur = _TANK_ORDER[self._tank_cursor] if self._tank_cursor < len(_TANK_ORDER) else unlocked[0]
-            try:
-                ui = unlocked.index(cur)
-            except ValueError:
-                ui = 0
-            ui = (ui - 1) % len(unlocked)
-            self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            if self._hull_row == 1:
+                # Move from opponent row back to last tank
+                self._hull_row = 0
+            elif ui == 0:
+                # Wrap from first tank up to opponent count row
+                self._hull_row = 1
+            else:
+                # Normal upward navigation within tank list
+                ui -= 1
+                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
-            cur = _TANK_ORDER[self._tank_cursor] if self._tank_cursor < len(_TANK_ORDER) else unlocked[0]
-            try:
-                ui = unlocked.index(cur)
-            except ValueError:
+            if self._hull_row == 1:
+                # Wrap from opponent row down to first tank
+                self._hull_row = 0
                 ui = 0
-            ui = (ui + 1) % len(unlocked)
-            self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            elif ui == len(unlocked) - 1:
+                # Move from last tank down to opponent count row
+                self._hull_row = 1
+            else:
+                # Normal downward navigation within tank list
+                ui += 1
+                self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_LEFT, pygame.K_a) and self._hull_row == 1:
+            self._opponent_idx = (self._opponent_idx - 1) % len(_OPPONENT_COUNTS)
+            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_RIGHT, pygame.K_d) and self._hull_row == 1:
+            self._opponent_idx = (self._opponent_idx + 1) % len(_OPPONENT_COUNTS)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     def _handle_weapons(self, key: int) -> None:
@@ -576,10 +602,10 @@ class LoadoutScene(BaseScene):
         # Ultimate ability description below stat bars (v0.28)
         ult_cfg = self._ultimate_configs.get(self._selected_tank, {})
         ult_desc = ult_cfg.get("description", "")
+        tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
         if ult_desc:
             tip_font = pygame.font.SysFont(None, 18)
             tip_max_w = _PANEL_W - 24
-            tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
             ult_color = tuple(ult_cfg.get("color", [200, 180, 60]))
             label_surf = tip_font.render("[F] Ultimate:", True, ult_color)
             surface.blit(label_surf, (cx + 12, tip_y))
@@ -588,6 +614,19 @@ class LoadoutScene(BaseScene):
                 tip_surf = tip_font.render(line, True, (160, 160, 165))
                 surface.blit(tip_surf, (cx + 12, tip_y))
                 tip_y += tip_surf.get_height() + 2
+
+        # Opponent count selector row
+        opp_focused = focused and self._hull_row == 1
+        opp_row_y = tip_y + 8
+        opp_font = pygame.font.SysFont(None, 22)
+        if opp_focused:
+            opp_hl = pygame.Rect(cx + 6, opp_row_y - 2, _PANEL_W - 12, 26)
+            pygame.draw.rect(surface, (50, 50, 55), opp_hl, border_radius=4)
+            pygame.draw.rect(surface, COLOR_NEON_PINK, opp_hl, 1, border_radius=4)
+        count_val = _OPPONENT_COUNTS[self._opponent_idx]
+        label_color = COLOR_NEON_PINK if opp_focused else (160, 160, 165)
+        opp_label = opp_font.render(f"Opponents:  < {count_val} >", True, label_color)
+        surface.blit(opp_label, (cx + 12, opp_row_y))
 
     def _draw_weapons_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
         focused = self._panel == LOADOUT_PANEL_WEAPONS
@@ -932,6 +971,7 @@ class LoadoutScene(BaseScene):
         self._has_rerolled = False
         self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
         self._roll_anim_timer = 0.0
+        self._hull_row = 0
         self._panel = LOADOUT_PANEL_HULL
 
     # ------------------------------------------------------------------
@@ -977,6 +1017,7 @@ class LoadoutScene(BaseScene):
             tank_type=tank_type,
             weapon_types=weapon_types,
             map_name=map_name,
+            ai_count=_OPPONENT_COUNTS[self._opponent_idx],
         )
 
     # ------------------------------------------------------------------
