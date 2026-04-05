@@ -106,6 +106,7 @@ _WEAPON_ORDER: list[str] = [
     "concussion_blast",
 ]
 _MAP_NAMES: list[str] = ["map_01", "map_02", "map_03"]
+_MAP_LIST: list[str] = ["random"] + _MAP_NAMES   # index 0 = random sentinel
 
 _TANK_STATS: list[tuple[str, str]] = [
     ("Speed",    "speed"),
@@ -474,10 +475,10 @@ class LoadoutScene(BaseScene):
 
     def _handle_map(self, key: int) -> None:
         if key in (pygame.K_UP, pygame.K_w):
-            self._map_cursor = (self._map_cursor - 1) % len(_MAP_NAMES)
+            self._map_cursor = (self._map_cursor - 1) % len(_MAP_LIST)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
-            self._map_cursor = (self._map_cursor + 1) % len(_MAP_NAMES)
+            self._map_cursor = (self._map_cursor + 1) % len(_MAP_LIST)
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
 
     # ------------------------------------------------------------------
@@ -770,8 +771,25 @@ class LoadoutScene(BaseScene):
         row_y = cy + 40
         row_h = 38
 
+        # Random entry (index 0)
+        is_random_sel = (self._map_cursor == 0)
+        if is_random_sel and focused:
+            hl = pygame.Rect(cx + 6, row_y - 2, _PANEL_W - 12, row_h)
+            pygame.draw.rect(surface, (50, 50, 55), hl, border_radius=4)
+            pygame.draw.rect(surface, COLOR_NEON_PINK, hl, 1, border_radius=4)
+        elif is_random_sel:
+            hl = pygame.Rect(cx + 6, row_y - 2, _PANEL_W - 12, row_h)
+            pygame.draw.rect(surface, (40, 40, 44), hl, border_radius=4)
+        col = COLOR_WHITE if is_random_sel else (150, 150, 155)
+        n_surf = font_name.render("RANDOM", True, col)
+        surface.blit(n_surf, (cx + 16, row_y + (row_h - n_surf.get_height()) // 2))
+        dot_col = COLOR_NEON_PINK if is_random_sel else (80, 80, 90)
+        pygame.draw.circle(surface, dot_col, (cx + _PANEL_W - 18, row_y + row_h // 2), 5)
+        row_y += row_h
+
         for i, (map_name, map_data) in enumerate(zip(_MAP_NAMES, self._map_data)):
-            is_sel = (i == self._map_cursor)
+            list_idx = i + 1   # offset by 1 for the random entry
+            is_sel = (list_idx == self._map_cursor)
             disp = map_data.get("name", map_name)
 
             if is_sel and focused:
@@ -794,22 +812,35 @@ class LoadoutScene(BaseScene):
 
             row_y += row_h
 
-        # Thumbnail for selected map
+        # Thumbnail / placeholder for selected map
         thumb_x = cx + (_PANEL_W - _PREVIEW_W) // 2
         thumb_y = row_y + 6
-        if self._map_previews and self._map_cursor < len(self._map_previews):
-            surface.blit(self._map_previews[self._map_cursor], (thumb_x, thumb_y))
-
-        # Theme label below thumbnail
         label_y = thumb_y + _PREVIEW_H + 6
-        if self._map_cursor < len(self._map_data):
-            theme = self._map_data[self._map_cursor].get("theme", {})
-            theme_name = theme.get("name", "")
-            ambient = theme.get("ambient_label", "")
-            theme_line = f"{theme_name}  ·  {ambient}" if ambient else theme_name
-            accent = tuple(theme.get("border_color", [60, 80, 60]))
-            t_surf = font_small.render(theme_line, True, accent if not focused else COLOR_NEON_PINK)
-            surface.blit(t_surf, (cx + (_PANEL_W - t_surf.get_width()) // 2, label_y))
+        if self._map_cursor == 0:
+            # Random: show question mark instead of thumbnail
+            preview_rect = pygame.Rect(thumb_x, thumb_y, _PREVIEW_W, _PREVIEW_H)
+            pygame.draw.rect(surface, (30, 30, 35), preview_rect)
+            pygame.draw.rect(surface, (60, 60, 70), preview_rect, 1)
+            q_font = pygame.font.SysFont(None, 80)
+            q_surf = q_font.render("?", True, (120, 120, 130))
+            surface.blit(q_surf, (
+                thumb_x + (_PREVIEW_W - q_surf.get_width()) // 2,
+                thumb_y + (_PREVIEW_H - q_surf.get_height()) // 2,
+            ))
+            sub_surf = font_small.render("Map chosen at match start", True, (120, 120, 130))
+            surface.blit(sub_surf, (cx + (_PANEL_W - sub_surf.get_width()) // 2, label_y))
+        else:
+            map_idx = self._map_cursor - 1   # offset back from _MAP_LIST to _map_previews
+            if self._map_previews and map_idx < len(self._map_previews):
+                surface.blit(self._map_previews[map_idx], (thumb_x, thumb_y))
+            if map_idx < len(self._map_data):
+                theme = self._map_data[map_idx].get("theme", {})
+                theme_name = theme.get("name", "")
+                ambient = theme.get("ambient_label", "")
+                theme_line = f"{theme_name}  ·  {ambient}" if ambient else theme_name
+                accent = tuple(theme.get("border_color", [60, 80, 60]))
+                t_surf = font_small.render(theme_line, True, accent if not focused else COLOR_NEON_PINK)
+                surface.blit(t_surf, (cx + (_PANEL_W - t_surf.get_width()) // 2, label_y))
 
     # ------------------------------------------------------------------
     # XP bar + confirm button
@@ -1005,7 +1036,8 @@ class LoadoutScene(BaseScene):
             log.debug("LoadoutScene: slot 0 empty — cannot confirm.")
             return
         weapon_types = [w for w in self._slot_selections if w is not None]
-        map_name = _MAP_NAMES[self._map_cursor]
+        selected = _MAP_LIST[self._map_cursor]
+        map_name = random.choice(_MAP_NAMES) if selected == "random" else selected
         tank_type = self._selected_tank
         log.info(
             "LoadoutScene: confirmed tank=%s  weapons=%s  map=%s",

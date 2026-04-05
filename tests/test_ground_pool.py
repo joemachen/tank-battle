@@ -290,7 +290,7 @@ class TestBulletPoolFields(unittest.TestCase):
     def test_concussion_bullet_has_knockback(self):
         cfg = _weapon_cfg("concussion_blast")
         bullet = Bullet(0, 0, 0, None, cfg)
-        self.assertEqual(bullet.knockback_force, 400.0)
+        self.assertEqual(bullet.knockback_force, 1600.0)
         self.assertFalse(bullet.spawns_pool)
 
     def test_standard_bullet_no_knockback(self):
@@ -376,7 +376,7 @@ class TestWeaponConfigs(unittest.TestCase):
 
     def test_concussion_blast_config(self):
         cfg = _weapon_cfg("concussion_blast")
-        self.assertEqual(cfg["knockback_force"], 400.0)
+        self.assertEqual(cfg["knockback_force"], 1600.0)
         self.assertEqual(cfg["damage_type"], "standard")
         self.assertNotIn("pool_type", cfg)
 

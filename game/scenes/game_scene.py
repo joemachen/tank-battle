@@ -83,6 +83,7 @@ from game.utils.constants import (
     DAMAGE_CRACK_DARKEN,
     DEBRIS_COUNT,
     DEBRIS_COUNT_DEFAULT,
+    AI_DIFFICULTY_COLORS,
     COLOR_RED,
     COLOR_WHITE,
     DEFAULT_MAP,
@@ -336,7 +337,8 @@ class GameplayScene(BaseScene):
             ai_tank.load_weapons(ai_weapon_cfgs)
             self._ai_tanks.append(ai_tank)
             self._ai_controllers.append(controller)
-            self._ai_surfs.append(_build_tank_surface(COLOR_RED))
+            ai_color = AI_DIFFICULTY_COLORS.get(ai_difficulty_key, COLOR_RED)
+            self._ai_surfs.append(_build_tank_surface(ai_color))
 
         # Wire nearest-enemy targeting now that all tanks exist (v0.32)
         # The lambda captures self._ai_tanks by reference so newly-dead tanks

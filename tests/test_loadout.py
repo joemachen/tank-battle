@@ -628,20 +628,37 @@ class TestMapSelection:
         assert scene._map_cursor == 1
 
     def test_map_cursor_wraps_at_end(self, monkeypatch):
+        from game.scenes.loadout_scene import _MAP_LIST
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_MAP
-        scene._map_cursor = 2  # last map (map_03)
+        scene._map_cursor = len(_MAP_LIST) - 1  # last entry
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_DOWN)
         scene.handle_event(ev)
         assert scene._map_cursor == 0
 
     def test_up_wraps_from_zero_to_last(self, monkeypatch):
+        from game.scenes.loadout_scene import _MAP_LIST
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_MAP
         scene._map_cursor = 0
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_UP)
         scene.handle_event(ev)
-        assert scene._map_cursor == 2  # len(_MAP_NAMES) - 1
+        assert scene._map_cursor == len(_MAP_LIST) - 1
+
+    def test_random_map_resolves_to_valid_map_on_confirm(self, monkeypatch):
+        from game.scenes.loadout_scene import _MAP_NAMES
+        scene = _make_scene(monkeypatch)
+        scene._weapons_revealed = True
+        scene._map_cursor = 0   # "random" entry
+        scene._confirm()
+        assert scene.manager.last_kwargs["map_name"] in _MAP_NAMES
+
+    def test_random_map_not_forwarded_as_literal_string(self, monkeypatch):
+        scene = _make_scene(monkeypatch)
+        scene._weapons_revealed = True
+        scene._map_cursor = 0   # "random" entry
+        scene._confirm()
+        assert scene.manager.last_kwargs["map_name"] != "random"
 
 
 # ---------------------------------------------------------------------------
@@ -699,7 +716,7 @@ class TestConfirmKwargs:
         scene = _make_scene(monkeypatch)
         scene._weapons_revealed = True
         scene._hull_locked = True
-        scene._map_cursor = 1  # map_02
+        scene._map_cursor = 2  # map_02 (index 1 in _MAP_LIST, after "random")
         scene._confirm()
         assert scene.manager.last_kwargs["map_name"] == "map_02"
 
@@ -730,10 +747,11 @@ class TestDefaultsOnEnter:
         scene = _make_scene(monkeypatch)
         assert scene._panel == LOADOUT_PANEL_HULL
 
-    def test_default_map_is_map_01(self, monkeypatch):
+    def test_default_map_is_random(self, monkeypatch):
+        """Default cursor is 0 = the 'random' entry."""
         scene = _make_scene(monkeypatch)
-        from game.scenes.loadout_scene import _MAP_NAMES
-        assert _MAP_NAMES[scene._map_cursor] == "map_01"
+        from game.scenes.loadout_scene import _MAP_LIST
+        assert _MAP_LIST[scene._map_cursor] == "random"
 
     def test_default_slot_focus_is_zero(self, monkeypatch):
         scene = _make_scene(monkeypatch)

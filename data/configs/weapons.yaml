@@ -190,6 +190,6 @@ concussion_blast:
   max_bounces: 0
   max_range: 900
   damage_type: standard
-  knockback_force: 400.0
+  knockback_force: 1600.0
   description: "Concussive round that pushes targets backward on hit."
   tips: "Moderate damage + strong knockback. Disrupts aim and positioning. Push tanks into hazards."
