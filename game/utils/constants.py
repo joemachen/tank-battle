@@ -183,6 +183,16 @@ STATUS_EFFECTS_CONFIG: str = "data/configs/status_effects.yaml"
 ELEMENTAL_INTERACTIONS_CONFIG: str = "data/configs/elemental_interactions.yaml"
 WEAPON_WEIGHTS_CONFIG: str = "data/configs/weapon_weights.yaml"
 ULTIMATES_CONFIG: str = "data/configs/ultimates.yaml"
+ULTIMATE_WEIGHTS_CONFIG: str = "data/configs/ultimate_weights.yaml"
+
+# Ultimate roll / reroll counts (v0.33.5)
+ULTIMATE_REROLLS_DEFAULT: int = 3
+WEAPON_REROLLS_DEFAULT: int = 3
+
+# Ultimate category colors — used in HUD charge bar and LoadoutScene (v0.33.5)
+ULTIMATE_COLOR_AGGRESSOR: tuple = (220, 80, 80)    # red
+ULTIMATE_COLOR_MITIGATOR: tuple = (80, 180, 220)   # blue
+ULTIMATE_COLOR_DISRUPTER: tuple = (180, 100, 255)  # purple
 
 # Pickup spawner
 PICKUP_SPAWN_INTERVAL: float = 8.0
@@ -283,6 +293,9 @@ ULTIMATE_SFX: dict = {
     "ult_shield_dome": _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_shield_dome.wav"),
     "ult_artillery":   _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_artillery.wav"),
     "ult_cloak":       _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_cloak.wav"),
+    # v0.33.5 — new ultimates reuse existing SFX until v0.47 polish pass
+    "ult_lockdown":    _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_shield_dome.wav"),
+    "ult_disruptor":   _os.path.join(_ASSET_ROOT, "sounds", "sfx_ult_artillery.wav"),
 }
 
 # Combat status effect SFX (v0.23)

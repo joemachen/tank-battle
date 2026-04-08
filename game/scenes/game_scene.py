@@ -31,6 +31,7 @@ from game.entities.obstacle import Obstacle
 from game.entities.tank import Tank, TankInput
 from game.scenes.base_scene import BaseScene
 from game.systems.ai_controller import AIController, make_nearest_enemy_getter
+from game.systems.ultimate_roller import UltimateRoller
 from game.systems.collision import (
     CollisionSystem,
     _DAMAGE_TYPE_TO_EFFECT,
@@ -129,6 +130,7 @@ from game.utils.constants import (
     SFX_CONCUSSION_HIT,
     ULTIMATES_CONFIG,
     ULTIMATE_SFX,
+    ULTIMATE_WEIGHTS_CONFIG,
     WATCH_MODE_OVERLAY_COLOR,
     TANK_BARREL_COLOR,
     TANK_BARREL_LENGTH,
@@ -350,21 +352,33 @@ class GameplayScene(BaseScene):
                 _all_tanks_getter,
                 low_hp_priority_weight=_ctrl.low_hp_priority_weight,
             )
+            # Inject all-tanks getter for Lockdown/Disruptor activation (v0.33.5)
+            _ctrl.set_all_tanks_getter(_all_tanks_getter)
 
-        # Ultimate abilities (v0.28) — assign based on tank_type
-        # ult_override lets LoadoutScene give the player a different ultimate (reroll)
-        ult_override: str | None = kwargs.get("ult_override")
+        # Ultimate abilities (v0.33.5) — randomly assigned from shared pool via UltimateRoller.
+        # LoadoutScene forwards the player's rolled ultimate via `ultimate_type` kwarg.
+        # If absent (e.g. launched from tests or debug path), the roller picks for the player too.
         self._ultimate_configs = load_yaml(ULTIMATES_CONFIG)
         self._shield_domes: list[dict] = []
         self._artillery_warnings: list[dict] = []
         self._pending_artillery: list[dict] = []
-        for tank_ref in [self._tank] + self._ai_tanks:
-            if tank_ref is self._tank and ult_override:
-                ult_cfg = self._ultimate_configs.get(ult_override)
-            else:
-                ult_cfg = self._ultimate_configs.get(tank_ref.tank_type)
-            if ult_cfg:
-                tank_ref.ultimate = UltimateCharge(ult_cfg)
+        self._lockdown_effects: list[dict] = []   # active lockdown anchors for VFX
+        self._pending_lockdowns: list[dict] = []
+        self._disruptor_effects: list[dict] = []  # active disruptor auras for VFX
+        _ult_roller = UltimateRoller(ULTIMATE_WEIGHTS_CONFIG)
+
+        # Player ultimate — use kwarg if provided, else roll from pool
+        player_ult_key: str = kwargs.get("ultimate_type") or _ult_roller.roll()
+        player_ult_cfg = self._ultimate_configs.get(player_ult_key)
+        if player_ult_cfg:
+            self._tank.set_ultimate(player_ult_cfg)
+
+        # AI ultimates — each rolls independently from the full pool
+        for ai_tank in self._ai_tanks:
+            ai_ult_key = _ult_roller.roll()
+            ai_ult_cfg = self._ultimate_configs.get(ai_ult_key)
+            if ai_ult_cfg:
+                ai_tank.set_ultimate(ai_ult_cfg)
 
         # Remaining systems
         self._physics = PhysicsSystem()
@@ -438,6 +452,9 @@ class GameplayScene(BaseScene):
         self._shield_domes = []
         self._artillery_warnings = []
         self._pending_artillery = []
+        self._lockdown_effects = []
+        self._pending_lockdowns = []
+        self._disruptor_effects = []
 
     # ------------------------------------------------------------------
     # Update
@@ -669,6 +686,41 @@ class GameplayScene(BaseScene):
             dome["timer"] -= dt
         self._shield_domes = [d for d in self._shield_domes if d["timer"] > 0 and d["hp"] > 0]
 
+        # Tick pending lockdown windup (v0.33.5)
+        _all_tanks_now = [self._tank] + self._ai_tanks
+        _newly_active_lockdowns = []
+        for pl in self._pending_lockdowns:
+            pl["windup_timer"] -= dt
+            if pl["windup_timer"] <= 0:
+                # Windup complete — apply pull status to tanks in radius
+                for _target in _all_tanks_now:
+                    if not _target.is_alive:
+                        continue
+                    if _target is pl["immune_tank"]:
+                        continue
+                    if math.dist(pl["center"], (_target.x, _target.y)) <= pl["radius"]:
+                        _target.apply_ult_status("lockdown", {
+                            "timer": pl["duration"],
+                            "pull_center": pl["center"],
+                            "pull_force": pl["pull_force"],
+                        })
+                _newly_active_lockdowns.append({
+                    "center": pl["center"],
+                    "radius": pl["radius"],
+                    "timer": pl["duration"],
+                    "color": pl["color"],
+                })
+        self._pending_lockdowns = [pl for pl in self._pending_lockdowns if pl["windup_timer"] > 0]
+        self._lockdown_effects.extend(_newly_active_lockdowns)
+
+        # Tick lockdown and disruptor VFX timers (v0.33.5)
+        for eff in self._lockdown_effects:
+            eff["timer"] -= dt
+        self._lockdown_effects = [e for e in self._lockdown_effects if e["timer"] > 0]
+        for eff in self._disruptor_effects:
+            eff["timer"] -= dt
+        self._disruptor_effects = [e for e in self._disruptor_effects if e["timer"] > 0]
+
         # Shield dome bullet interception (v0.28)
         for dome in self._shield_domes:
             dtank = dome["tank"]
@@ -797,7 +849,7 @@ class GameplayScene(BaseScene):
         )
 
     def _handle_ultimate_activated(self, tank, ability_type: str, audio) -> None:
-        """Handle an ultimate ability activation (v0.28)."""
+        """Handle an ultimate ability activation (v0.28 / v0.33.5)."""
         ult = tank.ultimate
         sfx_key = ult.config.get("sfx_key", "")
         sfx_path = ULTIMATE_SFX.get(sfx_key)
@@ -814,7 +866,6 @@ class GameplayScene(BaseScene):
             })
         elif ability_type == "artillery_strike":
             cx, cy = tank.x, tank.y
-            # If player, aim at turret direction; if AI, aim at current position
             count = int(ult.config.get("explosion_count", 5))
             area = float(ult.config.get("strike_area", 250.0))
             delay_step = float(ult.config.get("stagger_delay", 0.3))
@@ -837,6 +888,72 @@ class GameplayScene(BaseScene):
                     "timer": delay_step * i + 0.15,
                     "radius": radius,
                 })
+
+        elif ability_type == "lockdown":
+            # Lockdown: 0.5s windup warning, then pull and freeze (v0.33.5)
+            center = (tank.x, tank.y)
+            radius = float(ult.config.get("radius", 300))
+            duration = float(ult.config.get("duration", 3.0))
+            pull_force = float(ult.config.get("pull_force", 800))
+            immune_owner = ult.config.get("immune_owner", True)
+            color = tuple(ult.config.get("color", [180, 100, 255]))
+            # Queue windup — status applied after LOCKDOWN_WINDUP seconds
+            self._pending_lockdowns.append({
+                "center": center,
+                "radius": radius,
+                "duration": duration,
+                "pull_force": pull_force,
+                "immune_tank": tank if immune_owner else None,
+                "windup_timer": 0.5,
+                "color": color,
+            })
+
+        elif ability_type == "disruptor":
+            # EMP pulse: damage + disable weapons/ultimates, collapse Fortress, break Phantom (v0.33.5)
+            center = (tank.x, tank.y)
+            radius = float(ult.config.get("radius", 400))
+            duration = float(ult.config.get("duration", 4.0))
+            flat_damage = int(ult.config.get("damage", 20))
+            disable_weapons = bool(ult.config.get("disable_weapons", True))
+            disable_ultimate = bool(ult.config.get("disable_ultimate", True))
+            collapses_fortress = bool(ult.config.get("collapses_fortress", True))
+            breaks_phantom = bool(ult.config.get("breaks_phantom", True))
+            all_tanks = [self._tank] + self._ai_tanks
+            for target in all_tanks:
+                if target is tank:
+                    continue
+                if not target.is_alive:
+                    continue
+                dist = math.dist(center, (target.x, target.y))
+                if dist <= radius:
+                    if flat_damage > 0:
+                        target.take_damage(flat_damage, DamageType.ELECTRIC)
+                    target.apply_ult_status("disruptor_disable", {
+                        "timer": duration,
+                        "disable_weapons": disable_weapons,
+                        "disable_ultimate": disable_ultimate,
+                    })
+                    # Collapse active Fortress dome belonging to this target
+                    if collapses_fortress:
+                        self._shield_domes = [
+                            d for d in self._shield_domes
+                            if d.get("tank") is not target
+                        ]
+                        if target.ultimate and target.ultimate.ability_type == "shield_dome":
+                            if target.ultimate.is_active:
+                                target.ultimate.force_deactivate()
+                    # Break active Phantom cloak belonging to this target
+                    if breaks_phantom and getattr(target, "_cloaked", False):
+                        target._cloaked = False
+                        if target.ultimate and target.ultimate.is_active:
+                            target.ultimate.force_deactivate()
+            # Record VFX pulse
+            self._disruptor_effects.append({
+                "center": center,
+                "radius": radius,
+                "timer": 0.4,  # brief flash
+                "color": tuple(ult.config.get("color", [255, 200, 50])),
+            })
 
     def _process_elemental_combo(self, combo: dict) -> None:
         """Handle an elemental combo event (v0.24)."""
@@ -1022,6 +1139,83 @@ class GameplayScene(BaseScene):
             pygame.draw.circle(warn_surf, (255, 80, 40, pulse), (wr, wr), wr)
             pygame.draw.circle(warn_surf, (255, 80, 40, min(255, pulse + 80)), (wr, wr), wr, 2)
             surface.blit(warn_surf, (int(wsx) - wr, int(wsy) - wr))
+
+        # Lockdown windup warning rings (v0.33.5)
+        for pl in self._pending_lockdowns:
+            wt = pl["windup_timer"]   # counts down 0.5 → 0
+            progress = 1.0 - wt / 0.5  # 0.0 → 1.0 as windup progresses
+            cx_s, cy_s = self._camera.world_to_screen(*pl["center"])
+            r = int(pl["radius"])
+            col = pl["color"]
+            # Pulsing outer ring (warn)
+            pulse = int(60 + 80 * math.sin(progress * math.pi * 8))
+            warn_surf = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(warn_surf, (*col, min(255, pulse + 80)),
+                               (r + 2, r + 2), r, 3)
+            surface.blit(warn_surf, (int(cx_s) - r - 2, int(cy_s) - r - 2))
+            # Three contracting rings that collapse inward over the windup
+            for i in range(3):
+                frac = (progress + i / 3.0) % 1.0   # staggered phases
+                ring_r = max(4, int(r * (1.0 - frac)))
+                ring_alpha = int(180 * (1.0 - frac))
+                if ring_r > 0:
+                    rsurf = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+                    pygame.draw.circle(rsurf, (*col, ring_alpha),
+                                       (ring_r + 2, ring_r + 2), ring_r, 2)
+                    surface.blit(rsurf, (int(cx_s) - ring_r - 2, int(cy_s) - ring_r - 2))
+            # "!" flash label at center
+            if int(progress * 8) % 2 == 0:
+                if not hasattr(self, '_ld_warn_font'):
+                    self._ld_warn_font = pygame.font.SysFont(None, 28)
+                warn_text = self._ld_warn_font.render("LOCKDOWN!", True, col)
+                tw = warn_text.get_width()
+                surface.blit(warn_text, (int(cx_s) - tw // 2, int(cy_s) - 10))
+
+        # Active lockdown gravity field (v0.33.5)
+        for eff in self._lockdown_effects:
+            ecx_s, ecy_s = self._camera.world_to_screen(*eff["center"])
+            er = int(eff["radius"])
+            col = eff["color"]
+            elapsed = eff.get("_elapsed", 0.0)
+            eff["_elapsed"] = elapsed + 0.016   # approx frame dt for spin
+            # Fading boundary ring
+            boundary_alpha = max(20, int(80 * (eff["timer"] / 3.0)))
+            bsurf = pygame.Surface((er * 2 + 4, er * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(bsurf, (*col, boundary_alpha),
+                               (er + 2, er + 2), er, 2)
+            surface.blit(bsurf, (int(ecx_s) - er - 2, int(ecy_s) - er - 2))
+            # Spinning inner spokes (gravity vortex)
+            spin_angle = elapsed * 180.0  # degrees per second
+            for spoke in range(6):
+                angle_rad = math.radians(spin_angle + spoke * 60)
+                sx = ecx_s + math.cos(angle_rad) * er * 0.6
+                sy = ecy_s + math.sin(angle_rad) * er * 0.6
+                spoke_surf = pygame.Surface((4, 4), pygame.SRCALPHA)
+                pygame.draw.circle(spoke_surf, (*col, 160), (2, 2), 2)
+                surface.blit(spoke_surf, (int(sx) - 2, int(sy) - 2))
+            # Tether lines to each locked-down tank
+            for _lt in [self._tank] + self._ai_tanks:
+                if not _lt.is_alive:
+                    continue
+                if not _lt.has_ult_status("lockdown"):
+                    continue
+                lx_s, ly_s = self._camera.world_to_screen(_lt.x, _lt.y)
+                tether_alpha = int(100 + 60 * math.sin(elapsed * 6))
+                pygame.draw.line(surface, (*col, tether_alpha),
+                                 (int(ecx_s), int(ecy_s)), (int(lx_s), int(ly_s)), 1)
+
+        # Disruptor EMP ring (v0.33.5)
+        for eff in self._disruptor_effects:
+            dcx_s, dcy_s = self._camera.world_to_screen(*eff["center"])
+            # Expanding ring: starts small, expands to full radius over 0.4s
+            frac = 1.0 - eff["timer"] / 0.4
+            dr = int(eff["radius"] * frac)
+            d_alpha = max(0, int(220 * (1.0 - frac)))
+            if dr > 0:
+                d_col = eff.get("color", (255, 200, 50))
+                dsurf = pygame.Surface((dr * 2 + 4, dr * 2 + 4), pygame.SRCALPHA)
+                pygame.draw.circle(dsurf, (*d_col, d_alpha), (dr + 2, dr + 2), dr, 3)
+                surface.blit(dsurf, (int(dcx_s) - dr - 2, int(dcy_s) - dr - 2))
 
         _draw_bullets(surface, self._bullets, self._camera)
         _draw_beams(surface, self._active_beams, self._camera)

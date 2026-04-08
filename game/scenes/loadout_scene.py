@@ -36,6 +36,7 @@ import random
 from game.scenes.base_scene import BaseScene
 from game.systems.progression_manager import ProgressionManager
 from game.systems.weapon_roller import WeaponRoller
+from game.systems.ultimate_roller import UltimateRoller
 from game.ui.audio_manager import get_audio_manager
 from game.utils.config_loader import load_yaml
 from game.utils.constants import (
@@ -70,6 +71,11 @@ from game.utils.constants import (
     TANK_SELECT_COLORS,
     TANKS_CONFIG,
     TANK_STAT_MAX,
+    ULTIMATE_COLOR_AGGRESSOR,
+    ULTIMATE_COLOR_DISRUPTER,
+    ULTIMATE_COLOR_MITIGATOR,
+    ULTIMATE_REROLLS_DEFAULT,
+    ULTIMATE_WEIGHTS_CONFIG,
     ULTIMATES_CONFIG,
     WEAPON_CARD_COLORS,
     WEAPON_STAT_MAX,
@@ -248,8 +254,9 @@ class LoadoutScene(BaseScene):
         # Hull panel state
         self._tank_cursor: int = 0          # index into unlocked tank list
         self._opponent_idx: int = 0         # index into _OPPONENT_COUNTS (controlled from map panel)
-        self._ult_rerolls_remaining: int = 1  # ultimate rerolls available (v0.33)
-        self._rolled_ult_type: str | None = None  # overridden ultimate tank type (None = own)
+        self._ult_rerolls_remaining: int = ULTIMATE_REROLLS_DEFAULT  # (v0.33.5)
+        self._rolled_ult_key: str | None = None   # named ability key from UltimateRoller (None = auto)
+        self._ult_roller: UltimateRoller | None = None
         self._unlocked_tanks: list[str] = []
         self._tank_configs: dict = {}        # type → config dict
 
@@ -331,8 +338,11 @@ class LoadoutScene(BaseScene):
         self._map_cursor = 0
         self._slot_focus = 0
         self._opponent_idx = 0
-        self._ult_rerolls_remaining = 1
-        self._rolled_ult_type = None
+        self._ult_rerolls_remaining = ULTIMATE_REROLLS_DEFAULT
+        self._rolled_ult_key = None
+        self._ult_roller = UltimateRoller(ULTIMATE_WEIGHTS_CONFIG)
+        # Roll an initial ultimate for the player
+        self._rolled_ult_key = self._ult_roller.roll()
 
         # Default tank cursor: first unlocked tank
         self._tank_cursor = 0
@@ -425,17 +435,14 @@ class LoadoutScene(BaseScene):
         if key in (pygame.K_UP, pygame.K_w):
             ui = (ui - 1) % len(unlocked)
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
-            self._rolled_ult_type = None  # reset ult override on tank change
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
             ui = (ui + 1) % len(unlocked)
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
-            self._rolled_ult_type = None  # reset ult override on tank change
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key == pygame.K_r and self._ult_rerolls_remaining > 0:
-            # Reroll ultimate — pick a random tank type's ultimate (excluding current)
-            other_types = [t for t in _TANK_ORDER if t != self._selected_tank]
-            self._rolled_ult_type = random.choice(other_types)
+        elif key == pygame.K_r and self._ult_rerolls_remaining > 0 and self._ult_roller:
+            # Reroll ultimate — draw from pool, exclude current to guarantee change
+            self._rolled_ult_key = self._ult_roller.roll(exclude=self._rolled_ult_key)
             self._ult_rerolls_remaining -= 1
             get_audio_manager().play_sfx(SFX_REROLL)
 
@@ -594,28 +601,34 @@ class LoadoutScene(BaseScene):
         stat_y = div_y + 10
         self._draw_stat_bars(surface, cx + 12, stat_y, sel_cfg, _TANK_STATS, _norm_tank, bar_color)
 
-        # Ultimate ability description below stat bars (v0.28)
-        # If player rerolled, show the overridden ultimate; otherwise own tank's
-        ult_source = self._rolled_ult_type if self._rolled_ult_type else self._selected_tank
-        ult_cfg = self._ultimate_configs.get(ult_source, {})
+        # Ultimate ability display (v0.33.5) — shows current rolled ultimate with category color
+        # Source: _rolled_ult_key (named ability key from UltimateRoller)
+        ult_key = self._rolled_ult_key
+        ult_cfg = self._ultimate_configs.get(ult_key, {}) if ult_key else {}
         ult_desc = ult_cfg.get("description", "")
+        ult_name = ult_cfg.get("name", ult_key or "—")
+        ult_category = ult_cfg.get("category", "aggressor")
+        _CATEGORY_COLORS = {
+            "aggressor": ULTIMATE_COLOR_AGGRESSOR,
+            "mitigator": ULTIMATE_COLOR_MITIGATOR,
+            "disrupter": ULTIMATE_COLOR_DISRUPTER,
+        }
+        ult_color = _CATEGORY_COLORS.get(ult_category, (200, 180, 60))
         tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
         tip_font = pygame.font.SysFont(None, 18)
         tip_max_w = _PANEL_W - 24
+        # Header row: "[F] BARRAGE" in category color, with reroll arrows
+        ult_header = f"[F]  {ult_name}"
+        label_surf = tip_font.render(ult_header, True, ult_color)
+        surface.blit(label_surf, (cx + 12, tip_y))
+        tip_y += label_surf.get_height() + 2
         if ult_desc:
-            ult_color = tuple(ult_cfg.get("color", [200, 180, 60]))
-            ult_header = "[F] Ultimate:"
-            if self._rolled_ult_type:
-                ult_header += f" [{ult_source.replace('_', ' ').title()}]"
-            label_surf = tip_font.render(ult_header, True, ult_color)
-            surface.blit(label_surf, (cx + 12, tip_y))
-            tip_y += label_surf.get_height() + 2
             for line in _wrap_text(ult_desc, tip_font, tip_max_w):
                 tip_surf = tip_font.render(line, True, (160, 160, 165))
                 surface.blit(tip_surf, (cx + 12, tip_y))
                 tip_y += tip_surf.get_height() + 2
 
-        # Ultimate reroll hint (v0.33)
+        # Ultimate reroll hint (v0.33.5)
         ult_reroll_y = tip_y + 4
         if not self._hull_locked:
             if self._ult_rerolls_remaining > 0:
@@ -624,7 +637,7 @@ class LoadoutScene(BaseScene):
                     f"R — Reroll Ultimate  ({self._ult_rerolls_remaining} left)", True, hint_col
                 )
             else:
-                reroll_hint = tip_font.render("Ult Reroll Used", True, _COLOR_DIM)
+                reroll_hint = tip_font.render("Ult Rerolls Used", True, _COLOR_DIM)
             surface.blit(reroll_hint, (cx + 12, ult_reroll_y))
 
     def _draw_weapons_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
@@ -1008,8 +1021,8 @@ class LoadoutScene(BaseScene):
         self._hull_locked = False
         self._weapons_revealed = False
         self._rerolls_remaining = 3
-        self._ult_rerolls_remaining = 1
-        self._rolled_ult_type = None
+        self._ult_rerolls_remaining = ULTIMATE_REROLLS_DEFAULT
+        self._rolled_ult_key = self._ult_roller.roll() if self._ult_roller else None
         self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
         self._roll_anim_timer = 0.0
         self._panel = LOADOUT_PANEL_HULL
@@ -1059,8 +1072,8 @@ class LoadoutScene(BaseScene):
             "map_name": map_name,
             "ai_count": _OPPONENT_COUNTS[self._opponent_idx],
         }
-        if self._rolled_ult_type:
-            switch_kwargs["ult_override"] = self._rolled_ult_type
+        if self._rolled_ult_key:
+            switch_kwargs["ultimate_type"] = self._rolled_ult_key
         self.manager.switch_to(SCENE_GAME, **switch_kwargs)
 
     # ------------------------------------------------------------------

@@ -1,20 +1,43 @@
-# Ultimate abilities per tank type (v0.28)
+# Ultimate abilities (v0.28 / v0.33.5)
 #
-# charge_max:          total charge needed to activate
-# charge_per_damage:   charge gained per 1 HP of damage dealt
-# charge_per_hit:      charge gained per 1 HP of damage received
-# charge_passive_rate: charge gained per second (passive)
-# ability_type:        speed_burst | shield_dome | artillery_strike | cloak
-# duration:            seconds active (0 = instant)
-# color:               flash color [R, G, B]
-# sfx_key:             key into ULTIMATE_SFX dict
-# (type-specific fields below)
+# Layout:
+#   Tank-type keys  (light_tank / medium_tank / heavy_tank / scout_tank)
+#     — used as fallback when no ultimate_type kwarg is provided at match start.
+#   Named ability keys  (overdrive / fortress / barrage / phantom / lockdown / disruptor)
+#     — used by UltimateRoller and forwarded via ultimate_type kwarg.
+#     — lockdown and disruptor are new in v0.33.5.
+#
+# Charge rate notes (v0.33.5):
+#   passive_charge_rate  reduced to ~60% of original values
+#   charge_per_damage    reduced to ~75% of original values
+#   charge_per_hit       unchanged — getting hit still feels meaningful
+#   Target: first ultimate at ~90–120s of active combat.
+#
+# Fields common to all entries:
+#   charge_max          total charge required to activate
+#   charge_per_damage   charge per 1 HP of damage dealt
+#   charge_per_hit      charge per 1 HP of damage received
+#   charge_passive_rate charge gained per second (passive)
+#   ability_type        speed_burst | shield_dome | artillery_strike | cloak | lockdown | disruptor
+#   duration            seconds active (0 = instant)
+#   name                display name (used in HUD and LoadoutScene)
+#   category            aggressor | mitigator | disrupter
+#   color               flash / bar color [R, G, B]
+#   sfx_key             key into ULTIMATE_SFX dict
+#   collapses_fortress  whether this ability collapses active Fortress domes (bool)
+#   breaks_phantom      whether this ability reveals active Phantom cloaks (bool)
+
+# ---------------------------------------------------------------------------
+# Tank-type keys (backward compat — game scene fallback when no override)
+# ---------------------------------------------------------------------------
 
 light_tank:
+  name: "Overdrive"
+  category: aggressor
   charge_max: 100.0
-  charge_per_damage: 0.8
+  charge_per_damage: 0.60
   charge_per_hit: 0.5
-  charge_passive_rate: 2.0
+  charge_passive_rate: 1.2
   ability_type: speed_burst
   duration: 4.0
   speed_multiplier: 2.5
@@ -22,12 +45,16 @@ light_tank:
   color: [255, 200, 60]
   description: "Overdrive — 2.5x speed, 2x fire rate for 4s"
   sfx_key: ult_speed_burst
+  collapses_fortress: false
+  breaks_phantom: false
 
 medium_tank:
+  name: "Fortress"
+  category: mitigator
   charge_max: 100.0
-  charge_per_damage: 0.6
+  charge_per_damage: 0.45
   charge_per_hit: 0.7
-  charge_passive_rate: 1.8
+  charge_passive_rate: 1.1
   ability_type: shield_dome
   duration: 5.0
   dome_radius: 120.0
@@ -35,12 +62,16 @@ medium_tank:
   color: [100, 180, 255]
   description: "Fortress — 120px shield dome, 200 HP, 5s"
   sfx_key: ult_shield_dome
+  collapses_fortress: false
+  breaks_phantom: false
 
 heavy_tank:
+  name: "Barrage"
+  category: aggressor
   charge_max: 100.0
-  charge_per_damage: 0.7
+  charge_per_damage: 0.525
   charge_per_hit: 0.4
-  charge_passive_rate: 1.5
+  charge_passive_rate: 0.9
   ability_type: artillery_strike
   duration: 0
   explosion_count: 5
@@ -51,15 +82,132 @@ heavy_tank:
   color: [255, 80, 40]
   description: "Barrage — 5 explosions in 250px area, 80 dmg each"
   sfx_key: ult_artillery
+  collapses_fortress: false
+  breaks_phantom: false
 
 scout_tank:
+  name: "Phantom"
+  category: mitigator
   charge_max: 100.0
-  charge_per_damage: 0.9
+  charge_per_damage: 0.675
   charge_per_hit: 0.6
-  charge_passive_rate: 2.2
+  charge_passive_rate: 1.3
   ability_type: cloak
   duration: 5.0
   speed_multiplier: 1.3
   color: [160, 100, 220]
   description: "Phantom — invisible for 5s, 1.3x speed, firing breaks cloak"
   sfx_key: ult_cloak
+  collapses_fortress: false
+  breaks_phantom: false
+
+# ---------------------------------------------------------------------------
+# Named ability keys — used by UltimateRoller
+# ---------------------------------------------------------------------------
+
+overdrive:
+  name: "Overdrive"
+  category: aggressor
+  charge_max: 100.0
+  charge_per_damage: 0.60
+  charge_per_hit: 0.5
+  charge_passive_rate: 1.2
+  ability_type: speed_burst
+  duration: 4.0
+  speed_multiplier: 2.5
+  fire_rate_multiplier: 2.0
+  color: [255, 200, 60]
+  description: "Overdrive — 2.5x speed, 2x fire rate for 4s"
+  sfx_key: ult_speed_burst
+  collapses_fortress: false
+  breaks_phantom: false
+
+fortress:
+  name: "Fortress"
+  category: mitigator
+  charge_max: 100.0
+  charge_per_damage: 0.45
+  charge_per_hit: 0.7
+  charge_passive_rate: 1.1
+  ability_type: shield_dome
+  duration: 5.0
+  dome_radius: 120.0
+  dome_hp: 200.0
+  color: [100, 180, 255]
+  description: "Fortress — 120px shield dome, 200 HP, 5s"
+  sfx_key: ult_shield_dome
+  collapses_fortress: false
+  breaks_phantom: false
+
+barrage:
+  name: "Barrage"
+  category: aggressor
+  charge_max: 100.0
+  charge_per_damage: 0.525
+  charge_per_hit: 0.4
+  charge_passive_rate: 0.9
+  ability_type: artillery_strike
+  duration: 0
+  explosion_count: 5
+  explosion_radius: 80.0
+  explosion_damage: 80
+  strike_area: 250.0
+  stagger_delay: 0.3
+  color: [255, 80, 40]
+  description: "Barrage — 5 explosions in 250px area, 80 dmg each"
+  sfx_key: ult_artillery
+  collapses_fortress: false
+  breaks_phantom: false
+
+phantom:
+  name: "Phantom"
+  category: mitigator
+  charge_max: 100.0
+  charge_per_damage: 0.675
+  charge_per_hit: 0.6
+  charge_passive_rate: 1.3
+  ability_type: cloak
+  duration: 5.0
+  speed_multiplier: 1.3
+  color: [160, 100, 220]
+  description: "Phantom — invisible for 5s, 1.3x speed, firing breaks cloak"
+  sfx_key: ult_cloak
+  collapses_fortress: false
+  breaks_phantom: false
+
+lockdown:
+  name: "Lockdown"
+  category: disrupter
+  charge_max: 100.0
+  charge_per_damage: 0.60
+  charge_per_hit: 0.5
+  charge_passive_rate: 1.0
+  ability_type: lockdown
+  duration: 3.0
+  radius: 300
+  pull_force: 800
+  immune_owner: true
+  color: [180, 100, 255]
+  description: "Gravity anchor pulls all nearby tanks to a point and holds them for 3s."
+  sfx_key: ult_lockdown
+  collapses_fortress: false
+  breaks_phantom: false
+
+disruptor:
+  name: "Disruptor"
+  category: disrupter
+  charge_max: 100.0
+  charge_per_damage: 0.525
+  charge_per_hit: 0.5
+  charge_passive_rate: 1.0
+  ability_type: disruptor
+  duration: 4.0
+  radius: 400
+  damage: 20
+  collapses_fortress: true
+  breaks_phantom: true
+  disable_weapons: true
+  disable_ultimate: true
+  color: [255, 200, 50]
+  description: "EMP pulse disables weapons and ultimates in radius for 4s. Collapses Fortress, breaks Phantom."
+  sfx_key: ult_disruptor

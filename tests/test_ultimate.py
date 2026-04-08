@@ -441,7 +441,10 @@ class TestUltimatesConfig:
 
     def test_all_ability_types_valid(self):
         cfg = load_yaml(ULTIMATES_CONFIG)
-        valid = {"speed_burst", "shield_dome", "artillery_strike", "cloak"}
+        valid = {
+            "speed_burst", "shield_dome", "artillery_strike", "cloak",
+            "lockdown", "disruptor",   # v0.33.5 additions
+        }
         for tank_type, data in cfg.items():
             assert data["ability_type"] in valid, f"{tank_type} has invalid ability type"
 
