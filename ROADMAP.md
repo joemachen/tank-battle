@@ -35,6 +35,7 @@ are completed or plans change.
 | v0.28.0 | Ultimate system — UltimateCharge class, 4 abilities (Overdrive/Fortress/Barrage/Phantom), charge from damage/hits/passive, F key activation, AI ultimate usage, shield dome, artillery strike, cloak + homing exclusion, HUD charge bar, 4 SFX; also: HP doubling, passive regen, health float accumulator, ground pool self-damage, laser nerf/audio fix, boundary detonations, DPS weapon guarantee |
 | v0.32.0 | AI-vs-AI targeting + Watch Mode | make_nearest_enemy_getter factory, free-for-all targeting, Watch Mode on player death, opponent count selector, low-HP priority + target stickiness, center-seeking patrol, detection range 800px |
 | v0.33.0 | Loadout polish — 3× weapon rerolls, 1× ultimate reroll with UI, opponent count moved to map panel, AI hull colors by tank type |
+| v0.33.5 | Ultimate expansion — 6-ability pool (overdrive/fortress/barrage/phantom/lockdown/disruptor), UltimateRoller, 3× ult rerolls, category colors, AI conditions, Lockdown VFX windup + gravity field, Disruptor EMP ring |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                |
