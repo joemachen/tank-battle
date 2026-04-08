@@ -220,12 +220,21 @@ class TestAIRandomLoadout(unittest.TestCase):
         from game.systems.ai_controller import AIController
         target = MagicMock()
         target.is_alive = True
+        target.position = (450.0, 100.0)   # far from owner → railgun preferred
         ai = AIController(config={"reaction_time": 0.4, "accuracy": 0.7, "aggression": 0.5}, target_getter=lambda: target)
         owner = MagicMock()
         owner.x = 100.0
         owner.y = 100.0
         owner.position = (100.0, 100.0)
         owner.health_ratio = 1.0
+        # Two-slot loadout: flamethrower (close) active, railgun (far) in slot 1
+        # At dist≈350 the railgun scores higher → switching should be queued
+        owner.weapon_slots = [
+            {"type": "flamethrower", "speed": 200, "fire_rate": 6.0},
+            {"type": "railgun", "speed": 600, "fire_rate": 0.2},
+        ]
+        owner.active_slot = 0
+        owner.slot_cooldowns = [0.0, 0.0]
         ai.set_owner(owner)
 
         # Force timer to expire
