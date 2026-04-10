@@ -1,93 +1,105 @@
 """
 game/systems/weapon_roller.py
 
-WeaponRoller — randomly assigns weapons to slots 2 and 3 from
-the player's unlocked pool using weighted probability.
+WeaponRoller — assigns one weapon per category to produce a 4-slot loadout:
+  Slot 0: Basic
+  Slot 1: Elemental
+  Slot 2: Heavy
+  Slot 3: Tactical
 
-Slot 1 is always standard_shell. Slots 2-3 are independent random
-draws (no duplicates within a single loadout).
+Each slot draws one weapon from its category pool using weighted probability.
+No duplicates are possible by design (each weapon has exactly one category).
+
+v0.35 — replaces the 3-slot random system with a 4-slot category-guaranteed
+         loadout for both player and AI.
 """
 
 import random
 
 from game.utils.config_loader import load_yaml
-from game.utils.constants import WEAPON_WEIGHTS_CONFIG
+from game.utils.constants import WEAPON_CATEGORIES, WEAPON_WEIGHTS_CONFIG
 from game.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# Weapons whose primary purpose is dealing damage (not pure utility/CC)
-_DPS_WEAPONS: set = {
-    "standard_shell", "spread_shot", "bouncing_round", "homing_missile",
-    "grenade_launcher", "flamethrower", "poison_shell", "railgun", "laser_beam",
-    "lava_gun",
+# Fallback weapon when a category pool is empty (should only happen in edge-case
+# test environments where most weapons are locked).
+_CATEGORY_FALLBACKS: dict[str, str] = {
+    "basic":     "standard_shell",
+    "elemental": "cryo_round",
+    "heavy":     "homing_missile",
+    "tactical":  "emp_blast",
 }
 
 
 class WeaponRoller:
     """
-    Generates random weapon loadouts from the unlocked pool.
+    Generates random 4-slot weapon loadouts with one weapon per category.
 
     Usage:
-        roller = WeaponRoller(unlocked_weapons=["spread_shot", "bouncing_round", ...])
+        roller = WeaponRoller(
+            unlocked_weapons=["standard_shell", "spread_shot", ...],
+            weapon_configs=all_weapon_data,    # dict from weapons.yaml
+        )
         loadout = roller.roll()
-        # loadout = ["standard_shell", "bouncing_round", "cryo_round"]
+        # loadout = ["spread_shot", "cryo_round", "railgun", "glue_gun"]
     """
 
-    def __init__(self, unlocked_weapons: list[str]) -> None:
+    def __init__(
+        self,
+        unlocked_weapons: list[str],
+        weapon_configs: dict | None = None,
+    ) -> None:
         """
         Args:
-            unlocked_weapons: list of weapon type strings the player has unlocked.
-                              "standard_shell" is filtered out — it's always slot 1.
+            unlocked_weapons: list of weapon type strings the player/AI has unlocked.
+            weapon_configs:   full dict loaded from weapons.yaml (used to read category).
+                              Falls back to loading WEAPONS_CONFIG itself if not provided
+                              (backwards-compat for callers that predate v0.35).
         """
         self._weights: dict[str, int] = load_yaml(WEAPON_WEIGHTS_CONFIG) or {}
 
-        # Filter to only weapons the player has unlocked AND that have weights defined
-        # Exclude standard_shell — it's always slot 1
-        self._pool: list[str] = [
-            w for w in unlocked_weapons
-            if w != "standard_shell" and w in self._weights
-        ]
+        # Load weapon_configs if not passed (backwards-compat shim)
+        if weapon_configs is None:
+            from game.utils.constants import WEAPONS_CONFIG
+            weapon_configs = load_yaml(WEAPONS_CONFIG) or {}
+
+        # Build category → [weapon] pools from unlocked weapons
+        self._pools: dict[str, list[str]] = {cat: [] for cat in WEAPON_CATEGORIES}
+        for wtype in unlocked_weapons:
+            cfg = weapon_configs.get(wtype, {})
+            cat = cfg.get("category", "")
+            if cat in self._pools:
+                self._pools[cat].append(wtype)
 
         log.debug(
-            "WeaponRoller initialized. Pool: %s (%d weapons)",
-            self._pool, len(self._pool),
+            "WeaponRoller initialized. Pool sizes: %s",
+            {cat: len(pool) for cat, pool in self._pools.items()},
         )
 
-    def roll(self) -> list[str | None]:
+    def roll(self) -> list[str]:
         """
-        Generate a 3-slot loadout.
+        Generate a 4-slot category-guaranteed loadout.
 
         Returns:
-            list of 3 weapon type strings:
-            - Slot 0: always "standard_shell"
-            - Slot 1: random from pool (weighted)
-            - Slot 2: random from pool (weighted, no duplicate with slot 1)
+            list of 4 weapon type strings in WEAPON_CATEGORIES order:
+            [basic, elemental, heavy, tactical]
 
-            If pool has 0 weapons: ["standard_shell", None, None]
-            If pool has 1 weapon:  ["standard_shell", <weapon>, None]
+            If a category pool is empty, the fallback weapon for that category
+            is used and a warning is logged.
         """
-        loadout: list[str | None] = ["standard_shell", None, None]
-
-        if not self._pool:
-            return loadout
-
-        # Slot 1 — weighted random
-        slot1 = self._weighted_pick(self._pool)
-        loadout[1] = slot1
-
-        # Slot 2 — weighted random, excluding slot 1's weapon
-        remaining = [w for w in self._pool if w != slot1]
-        if remaining:
-            loadout[2] = self._weighted_pick(remaining)
-
-        # Soft guarantee: at least one DPS weapon in random slots (1-2)
-        random_weapons = [w for w in loadout[1:] if w is not None]
-        has_dps = any(w in _DPS_WEAPONS for w in random_weapons)
-        if not has_dps and random_weapons:
-            dps_candidates = [w for w in self._pool if w in _DPS_WEAPONS]
-            if dps_candidates:
-                loadout[1] = self._weighted_pick(dps_candidates)
+        loadout: list[str] = []
+        for cat in WEAPON_CATEGORIES:
+            pool = self._pools[cat]
+            if pool:
+                loadout.append(self._weighted_pick(pool))
+            else:
+                fallback = _CATEGORY_FALLBACKS.get(cat, "standard_shell")
+                log.warning(
+                    "WeaponRoller: no weapons in '%s' pool — using fallback '%s'",
+                    cat, fallback,
+                )
+                loadout.append(fallback)
 
         log.info("Weapon roll: %s", loadout)
         return loadout
@@ -97,7 +109,16 @@ class WeaponRoller:
         weights = [self._weights.get(w, 1) for w in candidates]
         return random.choices(candidates, weights=weights, k=1)[0]
 
+    def category_pool(self, category: str) -> list[str]:
+        """Return the list of unlocked weapons in the given category."""
+        return list(self._pools.get(category, []))
+
+    @property
+    def pool_sizes(self) -> dict[str, int]:
+        """Number of weapons available per category."""
+        return {cat: len(pool) for cat, pool in self._pools.items()}
+
     @property
     def pool_size(self) -> int:
-        """Number of weapons available for random assignment."""
-        return len(self._pool)
+        """Total weapons across all category pools. Deprecated — use pool_sizes."""
+        return sum(len(p) for p in self._pools.values())

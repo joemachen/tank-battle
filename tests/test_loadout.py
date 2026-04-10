@@ -126,6 +126,7 @@ from game.utils.constants import (
     LOADOUT_PANEL_HULL,
     LOADOUT_PANEL_MAP,
     LOADOUT_PANEL_WEAPONS,
+    MAX_WEAPON_SLOTS,
     SCENE_GAME,
     SCENE_MENU,
     TANK_STAT_MAX,
@@ -168,10 +169,19 @@ _FAKE_TANK_CONFIGS = {
 }
 
 _FAKE_WEAPON_CONFIGS = {
-    "standard_shell": {"damage": 25.0, "speed": 420.0, "fire_rate": 1.0, "max_range": 1400.0},
-    "spread_shot":    {"damage": 15.0, "speed": 300.0, "fire_rate": 0.8, "max_range": 800.0},
-    "bouncing_round": {"damage": 20.0, "speed": 350.0, "fire_rate": 0.6, "max_range": 2400.0},
-    "homing_missile": {"damage": 50.0, "speed": 250.0, "fire_rate": 0.4, "max_range": 1800.0},
+    "standard_shell": {"damage": 25.0, "speed": 420.0, "fire_rate": 1.0, "max_range": 1400.0,
+                       "category": "basic"},
+    "spread_shot":    {"damage": 15.0, "speed": 300.0, "fire_rate": 0.8, "max_range": 800.0,
+                       "category": "basic"},
+    "bouncing_round": {"damage": 20.0, "speed": 350.0, "fire_rate": 0.6, "max_range": 2400.0,
+                       "category": "basic"},
+    "homing_missile": {"damage": 50.0, "speed": 250.0, "fire_rate": 0.4, "max_range": 1800.0,
+                       "category": "heavy"},
+    # Elemental and tactical stubs for category coverage
+    "cryo_round":     {"damage": 20.0, "speed": 360.0, "fire_rate": 0.7, "max_range": 1200.0,
+                       "category": "elemental"},
+    "emp_blast":      {"damage": 30.0, "speed": 300.0, "fire_rate": 0.3, "max_range": 500.0,
+                       "category": "tactical"},
 }
 
 
@@ -245,6 +255,11 @@ def _make_scene(
 class _FakeAudioManager:
     def play_music(self, *a, **kw): pass
     def play_sfx(self, *a, **kw): pass
+
+
+# Shared weapon list covering all 4 categories (used by multiple test classes)
+_ALL_FAKE_WEAPONS = ["standard_shell", "spread_shot", "bouncing_round",
+                     "homing_missile", "cryo_round", "emp_blast"]
 
 
 # ---------------------------------------------------------------------------
@@ -351,15 +366,14 @@ class TestPanelNavigation:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
+        scene._lock_hull_and_reveal()
         scene._panel = LOADOUT_PANEL_WEAPONS
-        scene._weapons_revealed = True
-        scene._hull_locked = True
         scene._slot_focus = 0
-        assert scene._slot_selections[0] == "standard_shell"
+        before = scene._slot_selections[0]
         ev_right = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
         scene.handle_event(ev_right)
         assert scene._panel == LOADOUT_PANEL_WEAPONS
-        assert scene._slot_selections[0] != "standard_shell"
+        assert scene._slot_selections[0] != before
 
 
 # ---------------------------------------------------------------------------
@@ -424,19 +438,20 @@ class TestHullSelection:
 
 
 class TestWeaponSlots:
-    def test_slot_0_is_never_none_after_enter(self, monkeypatch):
+    def test_slot_0_is_never_none_after_reveal(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
+        scene._lock_hull_and_reveal()
         assert scene._slot_selections[0] is not None
 
     def test_slot_0_defaults_to_standard_shell(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
+        scene._lock_hull_and_reveal()
         assert scene._slot_selections[0] == "standard_shell"
 
-    def test_slot_1_can_be_none(self, monkeypatch):
+    def test_slots_all_none_before_reveal(self, monkeypatch):
+        """Before hull is locked, all slots are None."""
         scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
-        # With only one weapon, slots 1 and 2 should be None
-        assert scene._slot_selections[1] is None
-        assert scene._slot_selections[2] is None
+        assert all(s is None for s in scene._slot_selections)
 
     def test_locked_weapon_not_in_slot(self, monkeypatch):
         scene = _make_scene(
@@ -444,20 +459,24 @@ class TestWeaponSlots:
             unlocked_tanks=["medium_tank"],
             unlocked_weapons=["standard_shell"],
         )
-        # medium_tank default_weapons includes spread_shot, but it's locked
-        assert scene._slot_selections[1] is None
+        scene._lock_hull_and_reveal()
+        # spread_shot is locked — it must not appear in any slot
+        assert "spread_shot" not in scene._slot_selections
 
     def test_slot0_defaults_to_standard_shell(self, monkeypatch):
-        """Slot 0 starts as standard_shell but can be changed by the player."""
+        """Slot 0 starts as standard_shell (only basic weapon) after reveal."""
         scene = _make_scene(
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot"],
         )
-        assert scene._slot_selections[0] == "standard_shell"
+        scene._lock_hull_and_reveal()
+        # Slot 0 is basic category; standard_shell and spread_shot are both basic
+        assert scene._slot_selections[0] in ("standard_shell", "spread_shot")
 
     def test_slot0_never_none(self, monkeypatch):
         scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
-        assert scene._slot_selections[0] == "standard_shell"
+        scene._lock_hull_and_reveal()
+        assert scene._slot_selections[0] is not None
 
     def test_slot_focus_moves_down(self, monkeypatch):
         scene = _make_scene(monkeypatch)
@@ -472,7 +491,7 @@ class TestWeaponSlots:
         scene = _make_scene(monkeypatch)
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._weapons_revealed = True
-        scene._slot_focus = 2
+        scene._slot_focus = MAX_WEAPON_SLOTS  # ultimate row (index 4) — next DOWN wraps to 0
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_DOWN)
         scene.handle_event(ev)
         assert scene._slot_focus == 0
@@ -497,15 +516,14 @@ class TestWeaponSlots:
 class TestSlot0PlayerChoice:
     """Slot 0 is player-chosen via LEFT/RIGHT cycling."""
 
-    def test_slot0_starts_as_standard_shell(self, monkeypatch):
-        """After reveal, slot 0 defaults to standard_shell."""
+    def test_slot0_starts_as_basic_weapon(self, monkeypatch):
+        """After reveal, slot 0 is always a basic-category weapon."""
         scene = _make_scene(
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
-        assert scene._slot_selections[0] == "standard_shell"
+        scene._lock_hull_and_reveal()
+        assert scene._slot_selections[0] in ("standard_shell", "spread_shot", "bouncing_round")
 
     def test_cycle_slot0_right(self, monkeypatch):
         """RIGHT on slot 0 advances to next unlocked weapon."""
@@ -513,8 +531,8 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
+        scene._slot_selections[0] = "standard_shell"  # pin to known start
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 0
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
@@ -527,8 +545,8 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
+        scene._slot_selections[0] = "standard_shell"  # pin to known start
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 0
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_LEFT)
@@ -542,8 +560,8 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
+        scene._slot_selections[0] = "standard_shell"  # pin to known start
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 0
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
@@ -560,11 +578,11 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
+        scene._slot_selections[0] = "standard_shell"  # pin to known start
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 0
-        # Force slots 1-2 to specific weapons
+        # Force slot 1 to spread_shot so it gets skipped
         scene._slot_selections[1] = "spread_shot"
         scene._slot_selections[2] = None
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_RIGHT)
@@ -578,8 +596,7 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round"],
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 1
         before = scene._slot_selections[0]
@@ -594,11 +611,11 @@ class TestSlot0PlayerChoice:
             monkeypatch,
             unlocked_weapons=weapons,
         )
-        scene._hull_locked = True
-        scene._weapons_revealed = True
+        scene._lock_hull_and_reveal()
+        scene._slot_selections[0] = "standard_shell"  # pin to known start
         scene._panel = LOADOUT_PANEL_WEAPONS
         scene._slot_focus = 0
-        # Ensure slots 1-2 don't block anything
+        # Ensure slots 1-2 don't block cycling
         scene._slot_selections[1] = None
         scene._slot_selections[2] = None
         visited = {scene._slot_selections[0]}
@@ -646,15 +663,15 @@ class TestMapSelection:
 
     def test_random_map_resolves_to_valid_map_on_confirm(self, monkeypatch):
         from game.scenes.loadout_scene import _MAP_NAMES
-        scene = _make_scene(monkeypatch)
-        scene._weapons_revealed = True
+        scene = _make_scene(monkeypatch, unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._map_cursor = 0   # "random" entry
         scene._confirm()
         assert scene.manager.last_kwargs["map_name"] in _MAP_NAMES
 
     def test_random_map_not_forwarded_as_literal_string(self, monkeypatch):
-        scene = _make_scene(monkeypatch)
-        scene._weapons_revealed = True
+        scene = _make_scene(monkeypatch, unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._map_cursor = 0   # "random" entry
         scene._confirm()
         assert scene.manager.last_kwargs["map_name"] != "random"
@@ -688,41 +705,49 @@ class TestHullChangeUpdatesWeapons:
 
 class TestConfirmKwargs:
     def test_confirm_sends_correct_tank_type(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
-        scene._weapons_revealed = True
-        scene._hull_locked = True
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._confirm()
         assert scene.manager.last_kwargs["tank_type"] == "light_tank"
 
     def test_confirm_sends_weapon_types_list(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
-        scene._weapons_revealed = True
-        scene._hull_locked = True
+        scene = _make_scene(monkeypatch, unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._confirm()
         wt = scene.manager.last_kwargs["weapon_types"]
         assert isinstance(wt, list)
-        assert "standard_shell" in wt
+        assert len(wt) > 0
+        assert all(w in _ALL_FAKE_WEAPONS for w in wt)
 
     def test_confirm_excludes_none_slots(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_weapons=["standard_shell"])
-        scene._weapons_revealed = True
-        scene._hull_locked = True
-        # Slots 1 and 2 are None — weapon_types must not contain None
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round",
+                              "homing_missile", "cryo_round", "emp_blast"],
+        )
+        scene._lock_hull_and_reveal()
         scene._confirm()
         assert None not in scene.manager.last_kwargs["weapon_types"]
 
     def test_confirm_sends_correct_map_name(self, monkeypatch):
-        scene = _make_scene(monkeypatch)
-        scene._weapons_revealed = True
-        scene._hull_locked = True
-        scene._map_cursor = 2  # map_02 (index 1 in _MAP_LIST, after "random")
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round",
+                              "homing_missile", "cryo_round", "emp_blast"],
+        )
+        scene._lock_hull_and_reveal()
+        scene._map_cursor = 2  # map_02
         scene._confirm()
         assert scene.manager.last_kwargs["map_name"] == "map_02"
 
     def test_confirm_switches_to_scene_game(self, monkeypatch):
-        scene = _make_scene(monkeypatch)
-        scene._weapons_revealed = True
-        scene._hull_locked = True
+        scene = _make_scene(
+            monkeypatch,
+            unlocked_weapons=["standard_shell", "spread_shot", "bouncing_round",
+                              "homing_missile", "cryo_round", "emp_blast"],
+        )
+        scene._lock_hull_and_reveal()
         scene._confirm()
         assert scene.manager.last_switch == SCENE_GAME
 
@@ -890,8 +915,8 @@ class TestOpponentCountSelector:
         assert scene._opponent_idx == 0
 
     def test_ai_count_forwarded_on_confirm(self, monkeypatch):
-        scene = _make_scene(monkeypatch)
-        scene._weapons_revealed = True
+        scene = _make_scene(monkeypatch, unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         from game.scenes.loadout_scene import _OPPONENT_COUNTS
         scene._opponent_idx = 1  # count = 2
         scene._confirm()
@@ -980,7 +1005,7 @@ class TestWeaponRerollCount:
 
 
 # ---------------------------------------------------------------------------
-# 13. Ultimate reroll (v0.33)
+# 13. Ultimate reroll (v0.35 — R key in weapon panel, ultimate row focused)
 # ---------------------------------------------------------------------------
 
 
@@ -993,28 +1018,36 @@ class TestUltimateReroll:
         scene = _make_scene(monkeypatch)
         assert scene._rolled_ult_type is None
 
-    def test_r_in_hull_panel_sets_rolled_ult_type(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
-        scene._panel = LOADOUT_PANEL_HULL
-        scene._ult_rerolls_remaining = 1
+    def test_r_in_ult_row_sets_rolled_ult_type(self, monkeypatch):
+        """R in weapon panel with ultimate row focused rolls a new ult type."""
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = MAX_WEAPON_SLOTS  # ultimate row
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev)
         assert scene._rolled_ult_type is not None
-        # Must be a different tank type
         from game.scenes.loadout_scene import _TANK_ORDER
         assert scene._rolled_ult_type in _TANK_ORDER
         assert scene._rolled_ult_type != scene._selected_tank
 
-    def test_r_in_hull_decrements_ult_rerolls(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
-        scene._panel = LOADOUT_PANEL_HULL
+    def test_r_in_ult_row_decrements_ult_rerolls(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = MAX_WEAPON_SLOTS
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev)
         assert scene._ult_rerolls_remaining == 0
 
-    def test_second_r_in_hull_blocked(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
-        scene._panel = LOADOUT_PANEL_HULL
+    def test_second_r_in_ult_row_blocked(self, monkeypatch):
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
+        scene._panel = LOADOUT_PANEL_WEAPONS
+        scene._slot_focus = MAX_WEAPON_SLOTS
         ev = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
         scene.handle_event(ev)
         first_roll = scene._rolled_ult_type
@@ -1023,27 +1056,28 @@ class TestUltimateReroll:
         assert scene._rolled_ult_type == first_roll
         assert scene._ult_rerolls_remaining == 0
 
-    def test_tank_change_resets_rolled_ult(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank", "medium_tank"])
-        scene._panel = LOADOUT_PANEL_HULL
-        ev_r = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_r)
-        scene.handle_event(ev_r)
-        assert scene._rolled_ult_type is not None
-        # Change tank
-        ev_down = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_DOWN)
-        scene.handle_event(ev_down)
+    def test_esc_resets_rolled_ult(self, monkeypatch):
+        """ESC back to hull clears the rolled ult type."""
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
+        scene._rolled_ult_type = "heavy_tank"
+        ev_esc = types.SimpleNamespace(type=_pygame_stub.KEYDOWN, key=_pygame_stub.K_ESCAPE)
+        scene.handle_event(ev_esc)
         assert scene._rolled_ult_type is None
 
     def test_confirm_forwards_ult_override_when_set(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
-        scene._weapons_revealed = True
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._rolled_ult_type = "heavy_tank"
         scene._confirm()
         assert scene.manager.last_kwargs.get("ult_override") == "heavy_tank"
 
     def test_confirm_no_ult_override_when_not_rolled(self, monkeypatch):
-        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"])
-        scene._weapons_revealed = True
+        scene = _make_scene(monkeypatch, unlocked_tanks=["light_tank"],
+                            unlocked_weapons=_ALL_FAKE_WEAPONS)
+        scene._lock_hull_and_reveal()
         scene._rolled_ult_type = None
         scene._confirm()
         assert "ult_override" not in scene.manager.last_kwargs

@@ -1,8 +1,8 @@
 """
 tests/test_weapon_roller.py
 
-Tests for v0.25.5 random weapon rolls: WeaponRoller, weapon_weights.yaml config,
-AI random loadout, AI weapon cycling, and LoadoutScene re-roll.
+Tests for v0.35 category-guaranteed 4-slot weapon loadout: WeaponRoller,
+weapon_weights.yaml config, AI random loadout, and AI weapon cycling.
 """
 
 import random
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 from game.entities.tank import TankInput
 from game.systems.weapon_roller import WeaponRoller
 from game.utils.config_loader import load_yaml
-from game.utils.constants import WEAPON_WEIGHTS_CONFIG, WEAPONS_CONFIG
+from game.utils.constants import WEAPON_WEIGHTS_CONFIG, WEAPON_CATEGORIES, WEAPONS_CONFIG
 
 
 # ---------------------------------------------------------------------------
@@ -20,24 +20,56 @@ from game.utils.constants import WEAPON_WEIGHTS_CONFIG, WEAPONS_CONFIG
 # ---------------------------------------------------------------------------
 
 _FAKE_WEIGHTS = {
-    "spread_shot": 30,
-    "bouncing_round": 25,
-    "cryo_round": 20,
-    "poison_shell": 20,
-    "flamethrower": 18,
-    "emp_blast": 15,
+    "spread_shot":      30,
+    "bouncing_round":   25,
+    "cryo_round":       20,
+    "poison_shell":     20,
+    "flamethrower":     18,
+    "lava_gun":         18,
+    "emp_blast":        15,
     "grenade_launcher": 12,
-    "homing_missile": 10,
-    "railgun": 8,
-    "laser_beam": 6,
+    "homing_missile":   10,
+    "railgun":           8,
+    "laser_beam":        6,
+    "glue_gun":         15,
+    "concussion_blast": 12,
+    "standard_shell":   30,
+    "weapon_a":         50,
+    "weapon_b":          1,
 }
 
+_FAKE_WEAPON_CONFIGS = {
+    "standard_shell":   {"category": "basic"},
+    "spread_shot":      {"category": "basic"},
+    "bouncing_round":   {"category": "basic"},
+    "cryo_round":       {"category": "elemental"},
+    "poison_shell":     {"category": "elemental"},
+    "flamethrower":     {"category": "elemental"},
+    "lava_gun":         {"category": "elemental"},
+    "homing_missile":   {"category": "heavy"},
+    "grenade_launcher": {"category": "heavy"},
+    "railgun":          {"category": "heavy"},
+    "laser_beam":       {"category": "heavy"},
+    "emp_blast":        {"category": "tactical"},
+    "glue_gun":         {"category": "tactical"},
+    "concussion_blast": {"category": "tactical"},
+    "weapon_a":         {"category": "basic"},
+    "weapon_b":         {"category": "basic"},
+}
 
-def _roller_with(unlocked: list[str], weights: dict | None = None) -> WeaponRoller:
+_BASIC_WEAPONS    = {"standard_shell", "spread_shot", "bouncing_round"}
+_ELEMENTAL_WEAPONS = {"cryo_round", "poison_shell", "flamethrower", "lava_gun"}
+_HEAVY_WEAPONS    = {"homing_missile", "grenade_launcher", "railgun", "laser_beam"}
+_TACTICAL_WEAPONS = {"emp_blast", "glue_gun", "concussion_blast"}
+
+
+def _roller_with(unlocked: list[str], weights: dict | None = None,
+                 weapon_configs: dict | None = None) -> WeaponRoller:
     """Create a WeaponRoller with patched weights YAML."""
     w = weights if weights is not None else _FAKE_WEIGHTS
+    cfgs = weapon_configs if weapon_configs is not None else _FAKE_WEAPON_CONFIGS
     with patch("game.systems.weapon_roller.load_yaml", return_value=w):
-        return WeaponRoller(unlocked_weapons=unlocked)
+        return WeaponRoller(unlocked_weapons=unlocked, weapon_configs=cfgs)
 
 
 # ---------------------------------------------------------------------------
@@ -46,105 +78,100 @@ def _roller_with(unlocked: list[str], weights: dict | None = None) -> WeaponRoll
 
 class TestWeaponRoller(unittest.TestCase):
 
-    def test_slot_0_always_standard_shell(self):
-        roller = _roller_with(["standard_shell", "spread_shot", "bouncing_round"])
-        for _ in range(20):
-            self.assertEqual(roller.roll()[0], "standard_shell")
+    def test_roll_returns_four_elements(self):
+        roller = _roller_with(["standard_shell", "cryo_round", "homing_missile", "emp_blast"])
+        self.assertEqual(len(roller.roll()), 4)
 
-    def test_slot_1_from_pool(self):
-        pool = ["spread_shot", "bouncing_round", "cryo_round"]
-        roller = _roller_with(["standard_shell"] + pool)
+    def test_slot_0_is_basic_category(self):
+        roller = _roller_with(["standard_shell", "spread_shot", "cryo_round",
+                               "homing_missile", "emp_blast"])
         for _ in range(20):
-            self.assertIn(roller.roll()[1], pool)
+            self.assertIn(roller.roll()[0], _BASIC_WEAPONS)
 
-    def test_slot_2_from_pool(self):
-        pool = ["spread_shot", "bouncing_round", "cryo_round"]
-        roller = _roller_with(["standard_shell"] + pool)
+    def test_slot_1_is_elemental_category(self):
+        roller = _roller_with(["standard_shell", "cryo_round", "poison_shell",
+                               "homing_missile", "emp_blast"])
         for _ in range(20):
-            result = roller.roll()[2]
-            self.assertIn(result, pool)
+            self.assertIn(roller.roll()[1], _ELEMENTAL_WEAPONS)
 
-    def test_no_duplicates_in_loadout(self):
-        pool = ["spread_shot", "bouncing_round", "cryo_round", "poison_shell"]
-        roller = _roller_with(["standard_shell"] + pool)
+    def test_slot_2_is_heavy_category(self):
+        roller = _roller_with(["standard_shell", "cryo_round",
+                               "homing_missile", "railgun", "emp_blast"])
+        for _ in range(20):
+            self.assertIn(roller.roll()[2], _HEAVY_WEAPONS)
+
+    def test_slot_3_is_tactical_category(self):
+        roller = _roller_with(["standard_shell", "cryo_round",
+                               "homing_missile", "emp_blast", "glue_gun"])
+        for _ in range(20):
+            self.assertIn(roller.roll()[3], _TACTICAL_WEAPONS)
+
+    def test_fallback_when_category_empty(self):
+        """No elemental unlocked → fallback weapon used in slot 1."""
+        from game.systems.weapon_roller import _CATEGORY_FALLBACKS
+        roller = _roller_with(["standard_shell", "homing_missile", "emp_blast"])
+        for _ in range(10):
+            loadout = roller.roll()
+            self.assertEqual(loadout[1], _CATEGORY_FALLBACKS["elemental"])
+
+    def test_no_duplicates_across_categories(self):
+        """No weapon should appear more than once (categories are disjoint by design)."""
+        roller = _roller_with(
+            ["standard_shell", "spread_shot", "cryo_round", "poison_shell",
+             "homing_missile", "railgun", "emp_blast", "glue_gun"]
+        )
         for _ in range(50):
             loadout = roller.roll()
-            self.assertNotEqual(loadout[1], loadout[2])
-
-    def test_empty_pool_returns_nones(self):
-        roller = _roller_with(["standard_shell"])
-        loadout = roller.roll()
-        self.assertEqual(loadout, ["standard_shell", None, None])
-
-    def test_single_weapon_pool(self):
-        roller = _roller_with(["standard_shell", "spread_shot"])
-        loadout = roller.roll()
-        self.assertEqual(loadout[0], "standard_shell")
-        self.assertEqual(loadout[1], "spread_shot")
-        self.assertIsNone(loadout[2])
-
-    def test_standard_shell_excluded_from_pool(self):
-        roller = _roller_with(["standard_shell", "spread_shot", "bouncing_round"])
-        for _ in range(30):
-            loadout = roller.roll()
-            self.assertNotEqual(loadout[1], "standard_shell")
-            if loadout[2] is not None:
-                self.assertNotEqual(loadout[2], "standard_shell")
-
-    def test_pool_size_property(self):
-        roller = _roller_with(["standard_shell", "spread_shot", "bouncing_round", "cryo_round"])
-        self.assertEqual(roller.pool_size, 3)  # standard_shell excluded
+            self.assertEqual(len(loadout), len(set(loadout)),
+                             f"Duplicate weapon in loadout: {loadout}")
 
     def test_weighted_pick_respects_weights(self):
-        """With extreme weights, picks should heavily favor the high-weight weapon."""
-        weights = {"weapon_a": 1000, "weapon_b": 1}
-        roller = _roller_with(["standard_shell", "weapon_a", "weapon_b"], weights=weights)
-        picks = [roller.roll()[1] for _ in range(100)]
+        """Extreme weights: weapon_a (basic) should dominate slot 0."""
+        weights = {"weapon_a": 1000, "weapon_b": 1,
+                   "cryo_round": 10, "homing_missile": 10, "emp_blast": 10}
+        roller = _roller_with(
+            ["weapon_a", "weapon_b", "cryo_round", "homing_missile", "emp_blast"],
+            weights=weights,
+        )
+        picks = [roller.roll()[0] for _ in range(100)]
         a_count = picks.count("weapon_a")
         self.assertGreater(a_count, 80, f"weapon_a should dominate but got {a_count}/100")
 
-    def test_roll_returns_three_elements(self):
-        roller = _roller_with(["standard_shell", "spread_shot"])
-        self.assertEqual(len(roller.roll()), 3)
-
     def test_unknown_weapon_excluded(self):
-        roller = _roller_with(["standard_shell", "unknown_weapon", "spread_shot"])
-        self.assertEqual(roller.pool_size, 1)  # only spread_shot in pool
+        """Weapon with no category field is not placed in any slot."""
+        cfgs = dict(_FAKE_WEAPON_CONFIGS)
+        cfgs["mystery_gun"] = {}  # no category
+        roller = _roller_with(
+            ["standard_shell", "cryo_round", "homing_missile", "emp_blast", "mystery_gun"],
+            weapon_configs=cfgs,
+        )
+        for _ in range(20):
+            loadout = roller.roll()
+            self.assertNotIn("mystery_gun", loadout)
 
     def test_multiple_rolls_vary(self):
-        pool = list(_FAKE_WEIGHTS.keys())
-        roller = _roller_with(["standard_shell"] + pool)
+        """Large pool should produce different loadouts across many rolls."""
+        all_w = list(_FAKE_WEAPON_CONFIGS.keys())
+        roller = _roller_with(all_w)
         rolls = [tuple(roller.roll()) for _ in range(20)]
-        unique = set(rolls)
-        self.assertGreater(len(unique), 1, "Expected some variation across 20 rolls")
+        self.assertGreater(len(set(rolls)), 1, "Expected some variation across 20 rolls")
 
-    def test_utility_only_pool_rerolls_to_dps(self):
-        """When both random slots are utility-only, slot 1 should be replaced with a DPS weapon."""
-        # Pool has one DPS (spread_shot) and two utility (glue_gun, concussion_blast)
-        weights = {"glue_gun": 999, "concussion_blast": 999, "spread_shot": 1}
+    def test_pool_sizes_property(self):
         roller = _roller_with(
-            ["standard_shell", "glue_gun", "concussion_blast", "spread_shot"],
-            weights=weights,
+            ["standard_shell", "spread_shot", "cryo_round", "homing_missile", "emp_blast"]
         )
-        # Run many rolls — whenever both random slots would be utility,
-        # the DPS guarantee should replace slot 1 with spread_shot
-        from game.systems.weapon_roller import _DPS_WEAPONS
-        for _ in range(50):
-            loadout = roller.roll()
-            random_slots = [w for w in loadout[1:] if w is not None]
-            has_dps = any(w in _DPS_WEAPONS for w in random_slots)
-            self.assertTrue(has_dps, f"No DPS weapon in random slots: {loadout}")
+        sizes = roller.pool_sizes
+        self.assertEqual(sizes["basic"], 2)
+        self.assertEqual(sizes["elemental"], 1)
+        self.assertEqual(sizes["heavy"], 1)
+        self.assertEqual(sizes["tactical"], 1)
 
-    def test_mixed_pool_has_dps_in_random_slots(self):
-        """Normal mixed pool should always have at least one DPS in random slots."""
-        pool = list(_FAKE_WEIGHTS.keys())
-        roller = _roller_with(["standard_shell"] + pool)
-        from game.systems.weapon_roller import _DPS_WEAPONS
-        for _ in range(30):
-            loadout = roller.roll()
-            random_slots = [w for w in loadout[1:] if w is not None]
-            has_dps = any(w in _DPS_WEAPONS for w in random_slots)
-            self.assertTrue(has_dps, f"No DPS weapon in random slots: {loadout}")
+    def test_pool_size_deprecated_shim(self):
+        """pool_size shim returns sum of all category pools."""
+        roller = _roller_with(
+            ["standard_shell", "spread_shot", "cryo_round", "homing_missile", "emp_blast"]
+        )
+        self.assertEqual(roller.pool_size, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -158,12 +185,11 @@ class TestWeaponWeightsConfig(unittest.TestCase):
         self.assertIsInstance(weights, dict)
         self.assertGreater(len(weights), 0)
 
-    def test_all_non_standard_weapons_have_weights(self):
+    def test_all_weapons_have_weights(self):
+        """Every weapon in weapons.yaml must have an entry in weapon_weights.yaml."""
         weights = load_yaml(WEAPON_WEIGHTS_CONFIG)
         all_weapons = load_yaml(WEAPONS_CONFIG)
         for wtype in all_weapons:
-            if wtype == "standard_shell":
-                continue
             self.assertIn(wtype, weights, f"{wtype} missing from weapon_weights.yaml")
 
     def test_weights_are_positive_integers(self):
@@ -172,9 +198,10 @@ class TestWeaponWeightsConfig(unittest.TestCase):
             self.assertIsInstance(w, int, f"{wtype} weight is not int: {type(w)}")
             self.assertGreater(w, 0, f"{wtype} weight must be > 0")
 
-    def test_standard_shell_not_in_weights(self):
+    def test_standard_shell_in_weights(self):
+        """standard_shell is now a basic-category weapon and must appear in weights."""
         weights = load_yaml(WEAPON_WEIGHTS_CONFIG)
-        self.assertNotIn("standard_shell", weights)
+        self.assertIn("standard_shell", weights)
 
 
 # ---------------------------------------------------------------------------
@@ -183,22 +210,24 @@ class TestWeaponWeightsConfig(unittest.TestCase):
 
 class TestAIRandomLoadout(unittest.TestCase):
 
-    def test_ai_loadout_has_standard_shell_slot_0(self):
+    def test_ai_loadout_has_four_slots(self):
+        """WeaponRoller with all real weapons returns a 4-element loadout."""
         all_weapons = list(load_yaml(WEAPONS_CONFIG).keys())
-        roller = _roller_with(all_weapons)
-        for _ in range(20):
-            self.assertEqual(roller.roll()[0], "standard_shell")
+        roller = WeaponRoller(unlocked_weapons=all_weapons)
+        for _ in range(10):
+            self.assertEqual(len(roller.roll()), 4)
 
-    def test_ai_excludes_hitscan(self):
-        """When hitscan weapons are filtered out, laser_beam never appears."""
-        all_weapons = load_yaml(WEAPONS_CONFIG)
-        non_hitscan = [w for w in all_weapons if not all_weapons[w].get("hitscan", False)]
-        roller = _roller_with(non_hitscan)
-        for _ in range(50):
+    def test_ai_loadout_slots_match_categories(self):
+        """Each slot of a real-config roll comes from the correct category."""
+        all_weapons_cfg = load_yaml(WEAPONS_CONFIG)
+        roller = WeaponRoller(unlocked_weapons=list(all_weapons_cfg.keys()))
+        for _ in range(10):
             loadout = roller.roll()
-            for slot in loadout:
-                if slot is not None:
-                    self.assertNotEqual(slot, "laser_beam")
+            for idx, cat in enumerate(WEAPON_CATEGORIES):
+                weapon = loadout[idx]
+                actual_cat = all_weapons_cfg.get(weapon, {}).get("category", "")
+                self.assertEqual(actual_cat, cat,
+                                 f"Slot {idx} expected {cat} but got {weapon} ({actual_cat})")
 
     def test_ai_weapon_cycle_timer_ticks(self):
         from game.systems.ai_controller import AIController
@@ -274,18 +303,18 @@ class TestAIRandomLoadout(unittest.TestCase):
 class TestLoadoutReroll(unittest.TestCase):
 
     def test_initial_roll_on_enter(self):
-        """WeaponRoller always produces 3-element loadout."""
-        pool = ["spread_shot", "bouncing_round", "cryo_round"]
-        roller = _roller_with(["standard_shell"] + pool)
+        """WeaponRoller produces a 4-element loadout, slot 0 from basic category."""
+        roller = _roller_with(
+            ["standard_shell", "spread_shot", "cryo_round", "homing_missile", "emp_blast"]
+        )
         loadout = roller.roll()
-        self.assertEqual(len(loadout), 3)
-        self.assertEqual(loadout[0], "standard_shell")
-        self.assertIsNotNone(loadout[1])
+        self.assertEqual(len(loadout), 4)
+        self.assertIn(loadout[0], _BASIC_WEAPONS)
 
     def test_reroll_changes_loadout(self):
         """With a large enough pool, re-rolling should produce different results sometimes."""
-        pool = list(_FAKE_WEIGHTS.keys())
-        roller = _roller_with(["standard_shell"] + pool)
+        all_w = list(_FAKE_WEAPON_CONFIGS.keys())
+        roller = _roller_with(all_w)
         first = tuple(roller.roll())
         changed = False
         for _ in range(20):
@@ -302,11 +331,14 @@ class TestLoadoutReroll(unittest.TestCase):
         has_rerolled = True
         self.assertTrue(has_rerolled)
 
-    def test_slot_0_unchanged_after_reroll(self):
-        pool = list(_FAKE_WEIGHTS.keys())
-        roller = _roller_with(["standard_shell"] + pool)
+    def test_slot_0_always_basic_category_after_reroll(self):
+        """Slot 0 always comes from basic pool across many rolls."""
+        roller = _roller_with(
+            ["standard_shell", "spread_shot", "bouncing_round",
+             "cryo_round", "homing_missile", "emp_blast"]
+        )
         for _ in range(20):
-            self.assertEqual(roller.roll()[0], "standard_shell")
+            self.assertIn(roller.roll()[0], _BASIC_WEAPONS)
 
 
 if __name__ == "__main__":

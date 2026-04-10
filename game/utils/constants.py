@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.33.0"
+GAME_VERSION: str = "v0.36.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -92,17 +92,35 @@ ARENA_PADDING: int = 32                  # min distance from arena edge for spaw
 # Weapons / Bullets
 # ---------------------------------------------------------------------------
 DEFAULT_WEAPON_TYPE: str = "standard_shell"
-MAX_WEAPON_SLOTS: int = 3            # per-tank loadout slots (v0.16)
+MAX_WEAPON_SLOTS: int = 4            # per-tank loadout slots (v0.35)
+
+# Weapon categories (v0.35) — guaranteed one slot per category in every loadout
+WEAPON_CATEGORIES: list = ["basic", "elemental", "heavy", "tactical"]
+
+WEAPON_CATEGORY_LABELS: dict = {
+    "basic":     "Basic",
+    "elemental": "Elemental",
+    "heavy":     "Heavy",
+    "tactical":  "Tactical",
+}
+
+WEAPON_CATEGORY_COLORS: dict = {
+    "basic":     (180, 180, 185),   # neutral gray-white
+    "elemental": (80,  200, 120),   # toxic green
+    "heavy":     (220, 90,  50),    # orange-red
+    "tactical":  (100, 160, 240),   # cool blue
+}
 
 # Key constants for weapon cycling (v0.16)
 KEYBIND_CYCLE_NEXT: int = 9          # K_TAB  — cycle to next weapon slot
 KEYBIND_CYCLE_PREV: int = 113        # K_q    — cycle to previous weapon slot
 KEYBIND_CYCLE_NEXT_ALT: int = 101    # K_e    — alternate cycle-next binding
 
-# Direct slot-select keys (1 = slot 0, 2 = slot 1, 3 = slot 2)
+# Direct slot-select keys (1 = slot 0, 2 = slot 1, 3 = slot 2, 4 = slot 3)
 KEYBIND_SLOT_1: int = 49             # K_1
 KEYBIND_SLOT_2: int = 50             # K_2
 KEYBIND_SLOT_3: int = 51             # K_3
+KEYBIND_SLOT_4: int = 52             # K_4
 BULLET_RADIUS: int = 5                   # pixels — rendering and collision approximation
 BULLET_COLOR = (255, 220, 50)            # bright yellow; distinct from all tank colors
 BULLET_DEFAULT_MAX_RANGE: float = 1400.0 # fallback travel limit when not set in weapons.yaml

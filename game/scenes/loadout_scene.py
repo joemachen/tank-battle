@@ -72,6 +72,9 @@ from game.utils.constants import (
     TANK_STAT_MAX,
     ULTIMATES_CONFIG,
     WEAPON_CARD_COLORS,
+    WEAPON_CATEGORIES,
+    WEAPON_CATEGORY_COLORS,
+    WEAPON_CATEGORY_LABELS,
     WEAPON_STAT_MAX,
     WEAPON_WEIGHTS_CONFIG,
     WEAPONS_CONFIG,
@@ -341,11 +344,14 @@ class LoadoutScene(BaseScene):
                 self._tank_cursor = i
                 break
 
-        self._weapon_roller = WeaponRoller(list(self._unlocked_weapons))
+        self._weapon_roller = WeaponRoller(
+            list(self._unlocked_weapons),
+            weapon_configs=self._weapon_configs,
+        )
         self._rerolls_remaining = 3
         self._hull_locked = False
         self._weapons_revealed = False
-        self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
+        self._slot_selections = [None] * MAX_WEAPON_SLOTS
 
         get_audio_manager().play_music(MUSIC_MENU)
         log.info(
@@ -432,32 +438,39 @@ class LoadoutScene(BaseScene):
             self._tank_cursor = _TANK_ORDER.index(unlocked[ui])
             self._rolled_ult_type = None  # reset ult override on tank change
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key == pygame.K_r and self._ult_rerolls_remaining > 0:
-            # Reroll ultimate — pick a random tank type's ultimate (excluding current)
-            other_types = [t for t in _TANK_ORDER if t != self._selected_tank]
-            self._rolled_ult_type = random.choice(other_types)
-            self._ult_rerolls_remaining -= 1
-            get_audio_manager().play_sfx(SFX_REROLL)
 
     def _handle_weapons(self, key: int) -> None:
         if not self._weapons_revealed:
             return
+        _WEAPON_PANEL_ROWS = MAX_WEAPON_SLOTS + 1  # 4 weapon rows + 1 ultimate row
         if key in (pygame.K_UP, pygame.K_w):
-            self._slot_focus = (self._slot_focus - 1) % MAX_WEAPON_SLOTS
+            self._slot_focus = (self._slot_focus - 1) % _WEAPON_PANEL_ROWS
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
         elif key in (pygame.K_DOWN, pygame.K_s):
-            self._slot_focus = (self._slot_focus + 1) % MAX_WEAPON_SLOTS
+            self._slot_focus = (self._slot_focus + 1) % _WEAPON_PANEL_ROWS
             get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_LEFT, pygame.K_a) and self._slot_focus == 0:
-            self._cycle_slot(0, -1)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key in (pygame.K_RIGHT, pygame.K_d) and self._slot_focus == 0:
-            self._cycle_slot(0, +1)
-            get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
-        elif key == pygame.K_r and self._rerolls_remaining > 0:
-            self._roll_weapons()
-            self._rerolls_remaining -= 1
-            get_audio_manager().play_sfx(SFX_REROLL)
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            if self._slot_focus == 0:
+                self._cycle_slot(0, -1)
+                get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            if self._slot_focus == 0:
+                self._cycle_slot(0, 1)
+                get_audio_manager().play_sfx(SFX_UI_NAVIGATE)
+        elif key == pygame.K_r:
+            if self._slot_focus == MAX_WEAPON_SLOTS:
+                # Ultimate row focused — reroll ultimate
+                if self._ult_rerolls_remaining > 0:
+                    other_types = [t for t in _TANK_ORDER if t != self._selected_tank]
+                    self._rolled_ult_type = random.choice(other_types)
+                    self._ult_rerolls_remaining -= 1
+                    get_audio_manager().play_sfx(SFX_REROLL)
+            else:
+                # Weapon row focused — reroll all 4 weapon slots
+                if self._rerolls_remaining > 0:
+                    self._roll_weapons()
+                    self._rerolls_remaining -= 1
+                    get_audio_manager().play_sfx(SFX_REROLL)
 
     def _handle_map(self, key: int) -> None:
         if key in (pygame.K_UP, pygame.K_w):
@@ -505,9 +518,12 @@ class LoadoutScene(BaseScene):
         # Hint — context-sensitive
         font_hint = pygame.font.SysFont(None, 20)
         if not self._hull_locked:
-            hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     R  Reroll Ult     ESC  Back"
+            hint_text = "TAB/ENTER  Lock Hull     \u2191\u2193  Select     ESC  Back"
         elif self._panel == LOADOUT_PANEL_WEAPONS:
-            hint_text = "\u25c4\u25ba  Change Slot 1     \u2191\u2193  Select     R  Re-Roll     TAB  Panel     ENTER  Start     ESC  Back"
+            if self._slot_focus == MAX_WEAPON_SLOTS:
+                hint_text = "\u2191\u2193  Navigate     R  Reroll Ultimate     TAB  Panel     ENTER  Start     ESC  Back"
+            else:
+                hint_text = "\u2191\u2193  Navigate     R  Reroll Weapons     TAB  Panel     ENTER  Start     ESC  Back"
         elif self._panel == LOADOUT_PANEL_MAP:
             hint_text = "\u2191\u2193  Select Map     \u25c4\u25ba  Opponents     TAB  Panel     ENTER  Start     ESC  Unlock Hull"
         else:
@@ -594,46 +610,21 @@ class LoadoutScene(BaseScene):
         stat_y = div_y + 10
         self._draw_stat_bars(surface, cx + 12, stat_y, sel_cfg, _TANK_STATS, _norm_tank, bar_color)
 
-        # Ultimate ability description below stat bars (v0.28)
-        # If player rerolled, show the overridden ultimate; otherwise own tank's
-        ult_source = self._rolled_ult_type if self._rolled_ult_type else self._selected_tank
-        ult_cfg = self._ultimate_configs.get(ult_source, {})
-        ult_desc = ult_cfg.get("description", "")
-        tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 8
+        # Tip below stat bars — just show "Lock hull to reveal weapons"
         tip_font = pygame.font.SysFont(None, 18)
-        tip_max_w = _PANEL_W - 24
-        if ult_desc:
-            ult_color = tuple(ult_cfg.get("color", [200, 180, 60]))
-            ult_header = "[F] Ultimate:"
-            if self._rolled_ult_type:
-                ult_header += f" [{ult_source.replace('_', ' ').title()}]"
-            label_surf = tip_font.render(ult_header, True, ult_color)
-            surface.blit(label_surf, (cx + 12, tip_y))
-            tip_y += label_surf.get_height() + 2
-            for line in _wrap_text(ult_desc, tip_font, tip_max_w):
-                tip_surf = tip_font.render(line, True, (160, 160, 165))
-                surface.blit(tip_surf, (cx + 12, tip_y))
-                tip_y += tip_surf.get_height() + 2
-
-        # Ultimate reroll hint (v0.33)
-        ult_reroll_y = tip_y + 4
+        tip_y = stat_y + len(_TANK_STATS) * _STAT_ROW_H + 10
         if not self._hull_locked:
-            if self._ult_rerolls_remaining > 0:
-                hint_col = COLOR_NEON_PINK if focused else (130, 130, 135)
-                reroll_hint = tip_font.render(
-                    f"R — Reroll Ultimate  ({self._ult_rerolls_remaining} left)", True, hint_col
-                )
-            else:
-                reroll_hint = tip_font.render("Ult Reroll Used", True, _COLOR_DIM)
-            surface.blit(reroll_hint, (cx + 12, ult_reroll_y))
+            tip_surf = tip_font.render("ENTER to lock hull + reveal weapons", True, _COLOR_DIM)
+            surface.blit(tip_surf, (cx + 12, tip_y))
 
     def _draw_weapons_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
         focused = self._panel == LOADOUT_PANEL_WEAPONS
         self._draw_panel_chrome(surface, cx, cy, focused, "WEAPONS")
 
-        font_slot = pygame.font.SysFont(None, 24)
-        font_wep = pygame.font.SysFont(None, 26)
+        font_slot = pygame.font.SysFont(None, 22)
+        font_wep = pygame.font.SysFont(None, 24)
         font_rarity = pygame.font.SysFont(None, 16)
+        font_cat = pygame.font.SysFont(None, 18)
 
         # Subtitle when weapons not yet revealed
         if not self._weapons_revealed:
@@ -648,118 +639,159 @@ class LoadoutScene(BaseScene):
         animating = self._roll_anim_timer > 0 and self._weapons_revealed
 
         slot_row_y = cy + 40
-        slot_row_h = 52
+        slot_row_h = 48
 
+        # --- 4 weapon slot rows ---
         for i in range(MAX_WEAPON_SLOTS):
             is_focused_slot = focused and (i == self._slot_focus)
             wtype = self._slot_selections[i]
-            slot_num = f"{i + 1}"
+            cat = WEAPON_CATEGORIES[i] if i < len(WEAPON_CATEGORIES) else "basic"
+            cat_color = WEAPON_CATEGORY_COLORS.get(cat, COLOR_GRAY)
+            cat_label = WEAPON_CATEGORY_LABELS.get(cat, cat.title())
 
             if is_focused_slot:
                 hl_rect = pygame.Rect(cx + 6, slot_row_y - 2, _PANEL_W - 12, slot_row_h)
                 pygame.draw.rect(surface, (50, 50, 55), hl_rect, border_radius=4)
                 pygame.draw.rect(surface, COLOR_NEON_PINK, hl_rect, 1, border_radius=4)
 
-            # Slot number badge
-            badge_col = COLOR_NEON_PINK if is_focused_slot else (80, 80, 85)
-            num_surf = font_slot.render(slot_num, True, badge_col)
-            surface.blit(num_surf, (cx + 14, slot_row_y + (slot_row_h - num_surf.get_height()) // 2))
+            # Left accent bar in category color
+            pygame.draw.rect(surface, cat_color,
+                             pygame.Rect(cx + 6, slot_row_y - 2, 4, slot_row_h),
+                             border_radius=2)
 
-            # Determine display weapon (animation spins slots 2-3)
-            if animating and i > 0 and self._weapon_roller and self._weapon_roller.pool_size > 0:
-                display_wtype = random.choice(self._weapon_roller._pool)
+            # Category label
+            cat_surf = font_cat.render(f"[{cat_label}]", True, cat_color)
+            surface.blit(cat_surf, (cx + 14, slot_row_y + 4))
+
+            # Determine display weapon (animation spins during roll)
+            if animating and self._weapon_roller and self._weapon_roller.pool_size > 0:
+                cat_pool = self._weapon_roller._pools.get(cat, [])
+                display_wtype = random.choice(cat_pool) if cat_pool else wtype
             else:
                 display_wtype = wtype
 
             # Weapon name
-            if not self._weapons_revealed and i > 0:
+            if not self._weapons_revealed:
                 wlabel = "? ? ?"
-                wcolor = _COLOR_DIM
                 wname_col = (80, 80, 85)
             elif display_wtype:
                 wlabel = display_wtype.replace("_", " ").title()
-                wcolor = WEAPON_CARD_COLORS.get(display_wtype, COLOR_WHITE)
                 wname_col = COLOR_WHITE if is_focused_slot else (170, 170, 175)
             else:
                 wlabel = "— empty —"
-                wcolor = _COLOR_DIM
                 wname_col = (80, 80, 85)
 
             wname_surf = font_wep.render(wlabel, True, wname_col)
-            name_y = slot_row_y + 6
-            surface.blit(wname_surf, (cx + 34, name_y))
+            name_y = slot_row_y + 4 + cat_surf.get_height() + 1
+            surface.blit(wname_surf, (cx + 14, name_y))
 
-            # Arrow indicators for slot 0 (player-chosen) when focused
-            if i == 0 and is_focused_slot and self._weapons_revealed:
-                arr_font = pygame.font.SysFont(None, 22)
-                arr_col = COLOR_NEON_PINK
-                left_arr = arr_font.render("\u25c4", True, arr_col)
-                right_arr = arr_font.render("\u25ba", True, arr_col)
-                arr_y = name_y + (wname_surf.get_height() - left_arr.get_height()) // 2
-                surface.blit(left_arr, (cx + 34 + wname_surf.get_width() + 8, arr_y))
-                surface.blit(right_arr, (cx + 34 + wname_surf.get_width() + 8 + left_arr.get_width() + 6, arr_y))
-
-            # Rarity label below weapon name (slots 2-3 only, revealed + not animating)
-            if i > 0 and wtype and self._weapons_revealed and not animating:
+            # Rarity label — right-aligned, shown when revealed + not animating
+            if wtype and self._weapons_revealed and not animating:
                 w = weights.get(wtype, 10)
                 rarity_label, rarity_color = _get_rarity(w)
                 rarity_surf = font_rarity.render(rarity_label, True, rarity_color)
-                surface.blit(rarity_surf, (cx + 34, name_y + wname_surf.get_height() + 1))
-
-            # Colored dot — neon pink when focused, weapon color otherwise
-            if display_wtype or is_focused_slot:
-                dot_col = COLOR_NEON_PINK if is_focused_slot else wcolor
-                pygame.draw.circle(
-                    surface, dot_col,
-                    (cx + _PANEL_W - 24, slot_row_y + slot_row_h // 2), 5,
-                )
+                surface.blit(rarity_surf,
+                             (cx + _PANEL_W - rarity_surf.get_width() - 10,
+                              slot_row_y + (slot_row_h - rarity_surf.get_height()) // 2))
 
             slot_row_y += slot_row_h
 
-        # Re-roll prompt / hint
-        reroll_y = slot_row_y + 2
+        # --- Separator line between weapons and ultimate ---
+        sep_y = slot_row_y + 6
+        pygame.draw.line(surface, (60, 60, 65), (cx + 12, sep_y), (cx + _PANEL_W - 12, sep_y))
+        slot_row_y = sep_y + 6
+
+        # --- Ultimate row ---
+        ult_row_h = 48
+        is_ult_focused = focused and (self._slot_focus == MAX_WEAPON_SLOTS)
+        ult_source = self._rolled_ult_type if self._rolled_ult_type else self._selected_tank
+        ult_cfg = self._ultimate_configs.get(ult_source, {})
+        ult_name = ult_cfg.get("name", ult_source.replace("_", " ").title())
+        ult_desc = ult_cfg.get("description", "")
+        ult_color_raw = ult_cfg.get("color", [200, 180, 60])
+        ult_color = tuple(ult_color_raw)
+
+        if is_ult_focused:
+            ult_hl = pygame.Rect(cx + 6, slot_row_y - 2, _PANEL_W - 12, ult_row_h)
+            pygame.draw.rect(surface, (50, 50, 55), ult_hl, border_radius=4)
+            pygame.draw.rect(surface, COLOR_NEON_PINK, ult_hl, 1, border_radius=4)
+
+        # Left accent bar in ultimate color
+        pygame.draw.rect(surface, ult_color,
+                         pygame.Rect(cx + 6, slot_row_y - 2, 4, ult_row_h),
+                         border_radius=2)
+
+        # "[F]" label
+        f_surf = font_cat.render("[F]", True, ult_color)
+        surface.blit(f_surf, (cx + 14, slot_row_y + 4))
+
+        # Ultimate name
+        ult_name_col = COLOR_WHITE if is_ult_focused else (170, 170, 175)
+        ult_name_surf = font_wep.render(ult_name, True, ult_name_col)
+        surface.blit(ult_name_surf, (cx + 14, slot_row_y + 4 + f_surf.get_height() + 1))
+
+        slot_row_y += ult_row_h
+
+        # --- Reroll hint ---
+        reroll_y = slot_row_y + 4
         if self._weapons_revealed:
-            if self._rerolls_remaining > 0:
-                reroll_surf = font_slot.render(
-                    f"R — Re-Roll  ({self._rerolls_remaining} left)", True, COLOR_NEON_PINK
-                )
+            if is_ult_focused:
+                if self._ult_rerolls_remaining > 0:
+                    reroll_text = f"R — Reroll Ultimate  ({self._ult_rerolls_remaining} left)"
+                    reroll_surf = font_slot.render(reroll_text, True, COLOR_NEON_PINK)
+                else:
+                    reroll_surf = font_slot.render("Ult Reroll Used", True, _COLOR_DIM)
             else:
-                reroll_surf = font_slot.render("Re-Rolls Used", True, _COLOR_DIM)
+                if self._rerolls_remaining > 0:
+                    reroll_text = f"R — Reroll Weapons  ({self._rerolls_remaining} left)"
+                    reroll_surf = font_slot.render(reroll_text, True, COLOR_NEON_PINK)
+                else:
+                    reroll_surf = font_slot.render("Rerolls Used", True, _COLOR_DIM)
             surface.blit(reroll_surf, (cx + 14, reroll_y))
 
-        # Divider
-        div_y = reroll_y + 20 + 6
+        # --- Divider ---
+        div_y = reroll_y + 22
         pygame.draw.line(surface, (55, 55, 60), (cx + 12, div_y), (cx + _PANEL_W - 12, div_y))
 
-        # Stat bars for focused slot's weapon
-        focused_wtype = (
-            self._slot_selections[self._slot_focus]
-            if (focused and self._weapons_revealed) else None
-        )
+        # --- Stat / detail area ---
         stat_y = div_y + 10
-        if focused_wtype:
-            wcfg = self._weapon_configs.get(focused_wtype, {})
-            bar_col = WEAPON_CARD_COLORS.get(focused_wtype, COLOR_GREEN)
-            self._draw_stat_bars(surface, cx + 12, stat_y, wcfg, _WEAPON_STATS, _norm_weapon, bar_col)
-
-            # Weapon tip below stat bars
-            tip = wcfg.get("tips", "")
-            if tip:
+        if focused and self._weapons_revealed:
+            if self._slot_focus == MAX_WEAPON_SLOTS:
+                # Ultimate row focused — show description
                 tip_font = pygame.font.SysFont(None, 18)
                 tip_max_w = _PANEL_W - 24
-                tip_y = stat_y + len(_WEAPON_STATS) * _STAT_ROW_H + 8
-                for line in _wrap_text(tip, tip_font, tip_max_w):
-                    tip_surf = tip_font.render(line, True, (160, 160, 165))
-                    surface.blit(tip_surf, (cx + 12, tip_y))
-                    tip_y += tip_surf.get_height() + 2
-                # Cycling hint for slot 0 only
-                if self._slot_focus == 0:
-                    cyc_surf = tip_font.render("\u25c4 \u25ba to change weapon", True, COLOR_NEON_PINK)
-                    surface.blit(cyc_surf, (cx + 12, tip_y + 2))
-        else:
-            ph_font = pygame.font.SysFont(None, 22)
-            ph = ph_font.render("No weapon selected", True, _COLOR_DIM)
-            surface.blit(ph, (cx + 12, stat_y + 8))
+                if ult_desc:
+                    for line in _wrap_text(ult_desc, tip_font, tip_max_w):
+                        tip_surf = tip_font.render(line, True, (160, 160, 165))
+                        surface.blit(tip_surf, (cx + 12, stat_y))
+                        stat_y += tip_surf.get_height() + 2
+                if self._rolled_ult_type:
+                    src_text = f"Source: {ult_source.replace('_', ' ').title()}"
+                    src_surf = tip_font.render(src_text, True, ult_color)
+                    surface.blit(src_surf, (cx + 12, stat_y))
+            else:
+                # Weapon row focused — show stat bars + tip
+                focused_wtype = self._slot_selections[self._slot_focus]
+                if focused_wtype:
+                    wcfg = self._weapon_configs.get(focused_wtype, {})
+                    bar_col = WEAPON_CARD_COLORS.get(focused_wtype, COLOR_GREEN)
+                    self._draw_stat_bars(surface, cx + 12, stat_y, wcfg,
+                                         _WEAPON_STATS, _norm_weapon, bar_col)
+                    tip = wcfg.get("tips", "")
+                    if tip:
+                        tip_font = pygame.font.SysFont(None, 18)
+                        tip_max_w = _PANEL_W - 24
+                        tip_y = stat_y + len(_WEAPON_STATS) * _STAT_ROW_H + 8
+                        for line in _wrap_text(tip, tip_font, tip_max_w):
+                            tip_surf = tip_font.render(line, True, (160, 160, 165))
+                            surface.blit(tip_surf, (cx + 12, tip_y))
+                            tip_y += tip_surf.get_height() + 2
+                else:
+                    ph_font = pygame.font.SysFont(None, 22)
+                    ph = ph_font.render("No weapon selected", True, _COLOR_DIM)
+                    surface.blit(ph, (cx + 12, stat_y + 8))
+        elif not self._weapons_revealed:
+            pass  # nothing in stat area until hull is locked
 
     def _draw_map_panel(self, surface: pygame.Surface, cx: int, cy: int) -> None:
         focused = self._panel == LOADOUT_PANEL_MAP
@@ -900,7 +932,7 @@ class LoadoutScene(BaseScene):
         surface.blit(xp_s, (bar_x + _XP_BAR_W + 8, by))
 
     def _draw_confirm_button(self, surface: pygame.Surface) -> None:
-        valid = self._slot_selections[0] is not None
+        valid = self._weapons_revealed and any(w is not None for w in self._slot_selections)
         bg_col = (40, 90, 40) if valid else (50, 50, 55)
         border_col = COLOR_GREEN if valid else (80, 80, 85)
 
@@ -956,8 +988,17 @@ class LoadoutScene(BaseScene):
         choices: list[str | None] = []
         if can_empty:
             choices.append(None)
+
+        # Slot 0 is the player-chosen basic slot — restrict to the basic pool only.
+        if slot_idx == 0 and self._weapon_roller is not None:
+            allowed = set(self._weapon_roller.category_pool("basic"))
+        else:
+            allowed = None  # no category restriction for other slots
+
         for wname in _WEAPON_ORDER:
             if wname not in self._unlocked_weapons:
+                continue
+            if allowed is not None and wname not in allowed:
                 continue
             already_used = any(
                 self._slot_selections[j] == wname
@@ -1010,8 +1051,9 @@ class LoadoutScene(BaseScene):
         self._rerolls_remaining = 3
         self._ult_rerolls_remaining = 1
         self._rolled_ult_type = None
-        self._slot_selections = ["standard_shell"] + [None] * (MAX_WEAPON_SLOTS - 1)
+        self._slot_selections = [None] * MAX_WEAPON_SLOTS
         self._roll_anim_timer = 0.0
+        self._slot_focus = 0
         self._panel = LOADOUT_PANEL_HULL
 
     # ------------------------------------------------------------------
@@ -1041,10 +1083,10 @@ class LoadoutScene(BaseScene):
         if not self._weapons_revealed:
             log.debug("LoadoutScene: weapons not revealed — cannot confirm.")
             return
-        if self._slot_selections[0] is None:
-            log.debug("LoadoutScene: slot 0 empty — cannot confirm.")
-            return
         weapon_types = [w for w in self._slot_selections if w is not None]
+        if not weapon_types:
+            log.debug("LoadoutScene: no weapons selected — cannot confirm.")
+            return
         selected = _MAP_LIST[self._map_cursor]
         map_name = random.choice(_MAP_NAMES) if selected == "random" else selected
         tank_type = self._selected_tank
