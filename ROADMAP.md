@@ -35,11 +35,15 @@ are completed or plans change.
 | v0.28.0 | Ultimate system — UltimateCharge class, 4 abilities (Overdrive/Fortress/Barrage/Phantom), charge from damage/hits/passive, F key activation, AI ultimate usage, shield dome, artillery strike, cloak + homing exclusion, HUD charge bar, 4 SFX; also: HP doubling, passive regen, health float accumulator, ground pool self-damage, laser nerf/audio fix, boundary detonations, DPS weapon guarantee |
 | v0.32.0 | AI-vs-AI targeting + Watch Mode | make_nearest_enemy_getter factory, free-for-all targeting, Watch Mode on player death, opponent count selector, low-HP priority + target stickiness, center-seeking patrol, detection range 800px |
 | v0.33.0 | Quick fixes — AI hull colors by type, concussive blast knockback, random map option, weapon rerolls 3×, ultimate reroll UI |
+| v0.33.5 | Ultimate expansion — Lockdown + Disruptor ultimates, per-match random ult assignment, HUD charge bar polish, 959 tests |
+| v0.34.0 | AI weapon awareness — 14 weapon profiles, 5 aim modes (direct/loose/lead/wall_bounce/pool_place), range band management, utility scoring with hysteresis, 1034 tests |
+| v0.35.0 | 4-slot category-guaranteed loadout (Basic/Elemental/Heavy/Tactical), WeaponRoller rewrite, ultimate display moved to weapon panel, 1076 tests |
+| v0.36.0 | AI elemental awareness — _combo_bonus() + _setup_bonus() in weapon scoring, elemental_awareness per difficulty tier (0/0.5/1.0), 1123 tests |
 ---
 ## 🔨 In Progress
-| Branch                          | Milestone                                                          |
-|---------------------------------|--------------------------------------------------------------------|
-| feature/ultimate-expansion      | v0.33.5 — Ultimate expansion (6 ultimates, random assignment, rerolls) |
+| Branch                          | Milestone                                                                      |
+|---------------------------------|--------------------------------------------------------------------------------|
+| feature/ai-difficulty-tuning    | v0.37 — AI difficulty tuning pass: full review across all modes, maps, and opponent counts |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -69,10 +73,11 @@ the pickup/powerup system.*
 | Version | Milestone                  | Notes                                                                              |
 |---------|---------------------------|------------------------------------------------------------------------------------|
 | ~~v0.32~~ | ~~AI-vs-AI targeting~~  | ✅ Completed v0.32.0 — nearest_enemy_getter, Watch Mode, opponent selector, low-HP priority, stickiness, center-seeking patrol |
-| v0.34   | AI weapon awareness       | (was v0.33) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
-| v0.35   | AI elemental awareness    | (was v0.34) AI prioritizes targets with active status effects it can combo.        |
+| ~~v0.34~~ | ~~AI weapon awareness~~ | ✅ Completed v0.34.0 — 14 weapon profiles, 5 aim modes, range management, hysteresis switching |
+| ~~v0.35~~ | ~~4-slot category loadout~~ | ✅ Completed v0.35.0 — Basic/Elemental/Heavy/Tactical guaranteed slots, WeaponRoller rewrite (scope shifted from original AI elemental awareness plan) |
+| ~~v0.36~~ | ~~AI elemental awareness~~ | ✅ Completed v0.36.0 — _combo_bonus(), _setup_bonus(), elemental_awareness 0/0.5/1.0 per tier |
 | ~~v0.36~~ | ~~AI ultimate usage~~   | ✅ Shipped as part of v0.28.0 — offensive ults in ATTACK, defensive in EVADE, cloak detection |
-| v0.37   | AI difficulty tuning pass | (was v0.36) Full review across all modes, maps, and opponent counts.               |
+| v0.37   | AI difficulty tuning pass | Full review across all modes, maps, and opponent counts.               |
 ---
 ### Phase 6 — Progression & Campaign
 *Reason to keep playing. Bosses unlock into sandbox.*
@@ -163,4 +168,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.33.0 — quick fixes shipped; v0.33.5 ultimate expansion next on feature/ultimate-expansion*
+*Last updated: v0.36.0 — AI elemental awareness shipped; v0.37 AI difficulty tuning pass next on feature/ai-difficulty-tuning*

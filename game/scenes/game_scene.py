@@ -321,12 +321,12 @@ class GameplayScene(BaseScene):
             controller.set_owner(ai_tank)
             controller.set_obstacles_getter(live_obstacles)
             controller.set_pickups_getter(lambda: self._pickup_spawner.active_pickups)
-            # AI gets random loadout from all non-hitscan weapons (v0.25.5)
-            ai_weapon_types = [
-                w for w in self._weapon_configs
-                if not self._weapon_configs[w].get("hitscan", False)
-            ]
-            ai_roller = WeaponRoller(unlocked_weapons=ai_weapon_types)
+            # AI gets a 4-slot category-guaranteed loadout (v0.35)
+            ai_weapon_types = list(self._weapon_configs.keys())
+            ai_roller = WeaponRoller(
+                unlocked_weapons=ai_weapon_types,
+                weapon_configs=self._weapon_configs,
+            )
             ai_loadout = ai_roller.roll()
             ai_weapon_cfgs = [
                 self._weapon_configs[w] for w in ai_loadout

@@ -122,6 +122,7 @@ class HUD:
                 surface, weapon_slots, active_slot,
                 x=HUD_MARGIN, y=weapon_y,
                 slot_cooldowns=slot_cooldowns,
+                player_tank=player_tank,
             )
 
         # Combat effect indicators — between health bar and weapon slots
@@ -213,16 +214,19 @@ class HUD:
         x: int,
         y: int,
         slot_cooldowns: list | None = None,
+        player_tank=None,
     ) -> None:
         """
-        Render up to MAX_WEAPON_SLOTS weapon labels in a horizontal row.
-        Active slot is neon-pink; inactive slots are gray; empty slots show '---'.
-        Format:  [1: Standard Shell]  [2: Spread Shot]  [3: ---]
+        Render up to MAX_WEAPON_SLOTS weapon labels in a horizontal row,
+        followed by a separator dot and the ultimate label (v0.35).
+
+        Format: [1: Spread Shot] [2: Cryo] [3: Railgun] [4: Glue Gun]  ·  [F: Barrage]
+
+        Uses size-16 font for 4-slot rows to prevent overflow at 1280×720.
         Cooldown overlay darkens the label while weapon is recharging (v0.22).
         """
-        font = self._small_font
-        if font is None:
-            return
+        # Use size 16 for 4-slot rows to keep them on-screen
+        font = pygame.font.SysFont(None, 16)
 
         # Pad to MAX_WEAPON_SLOTS with None entries
         padded: list = list(weapon_slots) + [None] * (MAX_WEAPON_SLOTS - len(weapon_slots))
@@ -265,6 +269,22 @@ class HUD:
                 cx = dot_x + 6
             else:
                 cx += rendered.get_width() + 8
+
+        # Ultimate label appended after weapon slots (v0.35)
+        from game.systems.ultimate import UltimateCharge
+        ult = getattr(player_tank, 'ultimate', None) if player_tank else None
+        if isinstance(ult, UltimateCharge):
+            ult_cfg = getattr(ult, '_cfg', {}) if hasattr(ult, '_cfg') else {}
+            ult_name = ult_cfg.get("name", "Ultimate")
+            ult_color_raw = ult_cfg.get("color", [255, 200, 60])
+            ult_color = tuple(ult_color_raw)
+
+            sep = font.render("·", True, (80, 80, 85))
+            surface.blit(sep, (cx + 2, y))
+            cx += sep.get_width() + 6
+
+            ult_label = font.render(f"[F: {ult_name}]", True, ult_color)
+            surface.blit(ult_label, (cx, y))
 
     def _draw_combat_effects(
         self,
