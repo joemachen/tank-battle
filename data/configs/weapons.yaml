@@ -13,6 +13,7 @@
 
 standard_shell:
   type: standard_shell
+  category: basic
   damage: 25
   speed: 420
   fire_rate: 1.0
@@ -24,6 +25,7 @@ standard_shell:
 
 spread_shot:
   type: spread_shot
+  category: basic
   damage: 15
   speed: 380
   fire_rate: 0.8
@@ -37,6 +39,7 @@ spread_shot:
 
 bouncing_round:
   type: bouncing_round
+  category: basic
   damage: 20
   speed: 400
   fire_rate: 0.9
@@ -48,6 +51,7 @@ bouncing_round:
 
 homing_missile:
   type: homing_missile
+  category: heavy
   damage: 50
   speed: 240
   fire_rate: 0.4
@@ -60,6 +64,7 @@ homing_missile:
 
 grenade_launcher:
   type: grenade_launcher
+  category: heavy
   damage: 70
   speed: 280
   fire_rate: 0.25
@@ -73,6 +78,7 @@ grenade_launcher:
 
 cryo_round:
   type: cryo_round
+  category: elemental
   damage: 20
   speed: 360
   fire_rate: 0.7
@@ -84,6 +90,7 @@ cryo_round:
 
 poison_shell:
   type: poison_shell
+  category: elemental
   damage: 12
   speed: 350
   fire_rate: 0.8
@@ -95,6 +102,7 @@ poison_shell:
 
 flamethrower:
   type: flamethrower
+  category: elemental
   damage: 6
   speed: 300
   fire_rate: 6.0
@@ -108,6 +116,7 @@ flamethrower:
 
 emp_blast:
   type: emp_blast
+  category: tactical
   damage: 30
   speed: 300
   fire_rate: 0.3
@@ -121,6 +130,7 @@ emp_blast:
 
 railgun:
   type: railgun
+  category: heavy
   damage: 65
   speed: 800
   fire_rate: 0.2
@@ -133,6 +143,7 @@ railgun:
 
 laser_beam:
   type: laser_beam
+  category: heavy
   damage: 12
   speed: 0
   fire_rate: 0
@@ -150,6 +161,7 @@ laser_beam:
 
 glue_gun:
   type: glue_gun
+  category: tactical
   damage: 5
   speed: 320
   fire_rate: 0.5
@@ -167,6 +179,7 @@ glue_gun:
 
 lava_gun:
   type: lava_gun
+  category: elemental
   damage: 10
   speed: 280
   fire_rate: 0.4
@@ -184,6 +197,7 @@ lava_gun:
 
 concussion_blast:
   type: concussion_blast
+  category: tactical
   damage: 20
   speed: 500
   fire_rate: 0.6

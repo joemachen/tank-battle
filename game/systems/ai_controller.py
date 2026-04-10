@@ -39,6 +39,97 @@ from game.utils.stuck_detector import StuckDetector
 log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
+# Weapon profiles (v0.34) — per-weapon AI behavior overrides
+# ---------------------------------------------------------------------------
+# preferred_range: "close" | "medium" | "far" — drives engagement distance
+# aim_mode:        "direct" | "loose" | "lead" | "wall_bounce" | "pool_place"
+# fire_threshold:  max angle error (°) before AI will fire (scaled by accuracy)
+# jitter_scale:    multiplier on the base accuracy jitter
+_WEAPON_PROFILES: dict[str, dict] = {
+    "standard_shell":   {"preferred_range": "medium", "aim_mode": "direct",     "fire_threshold": 10.0, "jitter_scale": 1.0},
+    "spread_shot":      {"preferred_range": "close",  "aim_mode": "direct",     "fire_threshold": 12.0, "jitter_scale": 1.2},
+    "bouncing_round":   {"preferred_range": "medium", "aim_mode": "wall_bounce","fire_threshold": 15.0, "jitter_scale": 0.8},
+    "homing_missile":   {"preferred_range": "far",    "aim_mode": "loose",      "fire_threshold": 30.0, "jitter_scale": 0.5},
+    "grenade_launcher": {"preferred_range": "medium", "aim_mode": "lead",       "fire_threshold": 18.0, "jitter_scale": 0.9},
+    "cryo_round":       {"preferred_range": "medium", "aim_mode": "direct",     "fire_threshold": 10.0, "jitter_scale": 1.0},
+    "poison_shell":     {"preferred_range": "medium", "aim_mode": "direct",     "fire_threshold": 10.0, "jitter_scale": 1.0},
+    "flamethrower":     {"preferred_range": "close",  "aim_mode": "direct",     "fire_threshold": 12.0, "jitter_scale": 1.3},
+    "emp_blast":        {"preferred_range": "medium", "aim_mode": "lead",       "fire_threshold": 20.0, "jitter_scale": 0.8},
+    "railgun":          {"preferred_range": "far",    "aim_mode": "direct",     "fire_threshold":  3.0, "jitter_scale": 0.2},
+    "laser_beam":       {"preferred_range": "medium", "aim_mode": "direct",     "fire_threshold":  8.0, "jitter_scale": 0.6},
+    "glue_gun":         {"preferred_range": "medium", "aim_mode": "pool_place", "fire_threshold": 20.0, "jitter_scale": 1.0},
+    "lava_gun":         {"preferred_range": "medium", "aim_mode": "pool_place", "fire_threshold": 20.0, "jitter_scale": 1.0},
+    "concussion_blast": {"preferred_range": "medium", "aim_mode": "direct",     "fire_threshold": 12.0, "jitter_scale": 1.0},
+}
+
+# Pixel ranges for each preferred_range band
+_RANGE_BOUNDS: dict[str, tuple[float, float]] = {
+    "close":  (0.0,   200.0),
+    "medium": (180.0, 350.0),
+    "far":    (300.0, AI_ATTACK_RANGE),
+}
+
+# ---------------------------------------------------------------------------
+# Elemental awareness constants (v0.36)
+# ---------------------------------------------------------------------------
+
+# Maps weapon type → the elemental effect type it applies on hit
+_WEAPON_DAMAGE_TYPES: dict[str, str] = {
+    "cryo_round":    "ice",
+    "poison_shell":  "poison",
+    "flamethrower":  "fire",
+    "lava_gun":      "fire",
+    "emp_blast":     "electric",
+    # all other weapons apply no elemental effect
+}
+
+# Combo table: if 'requires' is active on target and we fire 'completes',
+# a high-value elemental reaction triggers.
+_ELEMENTAL_COMBOS: list[dict] = [
+    {"requires": "ice",    "completes": "fire",     "value": 0.60},  # steam_burst
+    {"requires": "poison", "completes": "fire",     "value": 0.50},  # accelerated_burn
+    {"requires": "ice",    "completes": "electric", "value": 0.70},  # deep_freeze
+]
+
+
+def get_weapon_profile(weapon_type: str) -> dict:
+    """Return AI behavior profile for weapon_type; falls back to standard_shell."""
+    return _WEAPON_PROFILES.get(weapon_type, _WEAPON_PROFILES["standard_shell"])
+
+
+def _nearest_arena_wall_point(origin: tuple, target_pos: tuple) -> tuple:
+    """Return a world-space point on the arena wall in the general direction of target_pos.
+
+    Used by the wall_bounce aim mode to give bouncing_round a meaningful
+    indirect-fire angle.  Finds which of the four walls is most directly
+    behind the target relative to the origin and returns a point 60 px
+    inside that wall at the target's lateral position.
+    """
+    from game.utils.constants import ARENA_WIDTH, ARENA_HEIGHT
+    ox, oy = origin
+    tx, ty = target_pos
+    dx = tx - ox
+    dy = ty - oy
+
+    # Ratios to each wall (treat zero-delta as very far to avoid division by zero)
+    t_left   = (-ox) / dx if dx < 0 else float("inf")
+    t_right  = (ARENA_WIDTH - ox) / dx if dx > 0 else float("inf")
+    t_top    = (-oy) / dy if dy < 0 else float("inf")
+    t_bottom = (ARENA_HEIGHT - oy) / dy if dy > 0 else float("inf")
+
+    t_min = min(t_left, t_right, t_top, t_bottom)
+
+    if t_min == t_left:
+        return (60.0, max(60.0, min(oy + dy * t_left, ARENA_HEIGHT - 60.0)))
+    if t_min == t_right:
+        return (ARENA_WIDTH - 60.0, max(60.0, min(oy + dy * t_right, ARENA_HEIGHT - 60.0)))
+    if t_min == t_top:
+        return (max(60.0, min(ox + dx * t_top, ARENA_WIDTH - 60.0)), 60.0)
+    # bottom wall
+    return (max(60.0, min(ox + dx * t_bottom, ARENA_WIDTH - 60.0)), ARENA_HEIGHT - 60.0)
+
+
+# ---------------------------------------------------------------------------
 # Obstacle-avoidance tuning (internal to AI — not exposed as difficulty params)
 # ---------------------------------------------------------------------------
 _LOOKAHEAD_PX: float = 130.0     # how far ahead to probe for obstacles
@@ -148,6 +239,8 @@ class AIController:
         self.aggression: float = float(config.get("aggression", 0.6))
         self.evasion_threshold: float = float(config.get("evasion_threshold", 0.40))
         self.low_hp_priority_weight: float = float(config.get("low_hp_priority_weight", 0.5))
+        self._weapon_switch_interval: float = float(config.get("weapon_switch_interval", 4.0))
+        self._elemental_awareness: float = float(config.get("elemental_awareness", 0.0))
 
         # Internal state
         self._reaction_timer: float = 0.0
@@ -256,11 +349,21 @@ class AIController:
                     self._recovery_direction, _POST_RECOVERY_IMMUNITY,
                 )
 
-        # Weapon cycling timer (v0.25.5) — AI switches weapons periodically
+        # Weapon switching — evaluate best slot on a configurable interval (v0.34)
         self._weapon_cycle_timer -= dt
         if self._weapon_cycle_timer <= 0:
-            self._weapon_cycle_timer = random.uniform(4.0, 8.0)
-            self._pending_weapon_cycle = random.choice([-1, 1])
+            self._weapon_cycle_timer = random.uniform(
+                self._weapon_switch_interval * 0.6, self._weapon_switch_interval
+            )
+            slots = getattr(self._owner, "weapon_slots", []) if self._owner else []
+            if len(slots) > 1:
+                best = self._select_best_weapon_slot()
+                current = self._owner.active_slot
+                if best != current:
+                    n = len(self._owner.weapon_slots)
+                    fwd = (best - current) % n
+                    bwd = (current - best) % n
+                    self._pending_weapon_cycle = 1 if fwd <= bwd else -1
 
     # ------------------------------------------------------------------
     # Controller interface (called by Tank.update each frame)
@@ -365,7 +468,7 @@ class AIController:
 
         if health_ratio <= self.evasion_threshold:
             self._transition(AIState.EVADE)
-        elif dist <= AI_ATTACK_RANGE:
+        elif dist <= self._effective_attack_range:
             self._transition(AIState.ATTACK)
         elif dist <= AI_DETECTION_RANGE:
             self._transition(AIState.PURSUE)
@@ -435,20 +538,71 @@ class AIController:
                          turret_angle=turret_angle)
 
     def _attack_input(self, target) -> TankInput:
-        """Aim and fire; accuracy introduces angular jitter. Turret points at target."""
+        """Aim and fire with weapon-aware angle, threshold, and range management (v0.34)."""
         if self._owner is None or target is None:
             return TankInput()
-        desired_angle = angle_to(self._owner.position, target.position)
-        # Accuracy jitter: lower accuracy → larger random offset
-        jitter = (1.0 - self.accuracy) * random.uniform(-30, 30)
-        desired_angle += jitter
-        # Turret snaps to the jittered aim angle
-        turret_angle = desired_angle
-        diff = angle_difference(self._owner.angle, desired_angle)
+        active_wep = getattr(self._owner, "active_weapon", None) or {}
+        wtype = active_wep.get("type", "standard_shell") if isinstance(active_wep, dict) else "standard_shell"
+        profile = get_weapon_profile(wtype)
+        jitter_scale = profile["jitter_scale"]
+        # fire_threshold scales with accuracy so difficulty tiers still differentiate
+        fire_threshold = profile["fire_threshold"] * self.accuracy
+
+        turret_angle = self._compute_aim_angle(target, profile["aim_mode"], active_wep)
+        jitter = (1.0 - self.accuracy) * random.uniform(-30, 30) * jitter_scale
+        turret_angle += jitter
+        diff = angle_difference(self._owner.angle, turret_angle)
         rotate = 1.0 if diff > 2 else (-1.0 if diff < -2 else 0.0)
-        fire = abs(diff) < 10 and random.random() < self.aggression
-        return TankInput(throttle=0.0, rotate=rotate, fire=fire,
+        fire = abs(diff) < fire_threshold and random.random() < self.aggression
+
+        # Range management: hold position in the weapon's preferred distance band
+        dist = distance(self._owner.position, target.position)
+        lo, hi = _RANGE_BOUNDS[profile["preferred_range"]]
+        if dist < lo:
+            throttle = -0.4   # too close — back off slightly
+        elif dist > hi:
+            throttle = 0.5    # too far — close in
+        else:
+            throttle = 0.0    # in the sweet spot — stand still to aim
+
+        return TankInput(throttle=throttle, rotate=rotate, fire=fire,
                          turret_angle=turret_angle)
+
+    def _compute_aim_angle(self, target, aim_mode: str, weapon_cfg: dict) -> float:
+        """Return a turret angle (degrees) for the given aim mode.
+
+        Modes:
+          direct      — straight line to target (existing behavior)
+          loose       — same as direct; wide fire_threshold handles homing tolerance
+          lead        — predict target position using vx/vy and weapon speed
+          wall_bounce — aim at the nearest arena wall in the target's direction
+          pool_place  — aim ahead of target's velocity vector
+        """
+        if aim_mode == "lead":
+            dist = distance(self._owner.position, target.position)
+            speed = max(float(weapon_cfg.get("speed", 280)), 1.0)
+            travel_time = dist / speed
+            lead_x = target.x + getattr(target, "vx", 0.0) * travel_time
+            lead_y = target.y + getattr(target, "vy", 0.0) * travel_time
+            return angle_to(self._owner.position, (lead_x, lead_y))
+        if aim_mode == "wall_bounce":
+            wall_pt = _nearest_arena_wall_point(self._owner.position, target.position)
+            return angle_to(self._owner.position, wall_pt)
+        if aim_mode == "pool_place":
+            return self._pool_aim_angle(target)
+        # "direct" and "loose" both aim straight at the target
+        return angle_to(self._owner.position, target.position)
+
+    def _pool_aim_angle(self, target) -> float:
+        """Aim ahead of the target's movement vector for ground pool weapons."""
+        spd = math.hypot(getattr(target, "vx", 0.0), getattr(target, "vy", 0.0))
+        if spd > 20.0:
+            lead_t = 1.5
+            aim_x = target.x + (target.vx / spd) * min(spd * lead_t, 180.0)
+            aim_y = target.y + (target.vy / spd) * min(spd * lead_t, 180.0)
+        else:
+            aim_x, aim_y = target.x, target.y
+        return angle_to(self._owner.position, (aim_x, aim_y))
 
     def _evade_input(self, target) -> TankInput:
         """Retreat away from the target. Turret keeps watching the player while fleeing.
@@ -597,6 +751,126 @@ class AIController:
         turret = self._owner.angle if self._owner else 0.0
         return TankInput(throttle=throttle, rotate=rotate, fire=False,
                          turret_angle=turret)
+
+    # ------------------------------------------------------------------
+    # Weapon awareness helpers (v0.34)
+    # ------------------------------------------------------------------
+
+    @property
+    def _effective_attack_range(self) -> float:
+        """Dynamic ATTACK-state trigger distance based on the equipped weapon.
+
+        Returns the midpoint of the weapon's preferred distance band, clamped
+        to AI_ATTACK_RANGE so the original state-machine boundary is never
+        exceeded (existing tests stay green).
+        """
+        if self._owner is None:
+            return AI_ATTACK_RANGE
+        active_wep = getattr(self._owner, "active_weapon", None)
+        if not isinstance(active_wep, dict):
+            return AI_ATTACK_RANGE
+        wtype = active_wep.get("type", "standard_shell")
+        lo, hi = _RANGE_BOUNDS[get_weapon_profile(wtype)["preferred_range"]]
+        return min((lo + hi) / 2.0, AI_ATTACK_RANGE)
+
+    def _combo_bonus(self, weapon_type: str, target) -> float:
+        """Return a [0, awareness] bonus when weapon_type would complete an elemental combo.
+
+        Reads active combat effects on the target and checks whether firing
+        weapon_type (which applies a specific damage type) would trigger any
+        of the reactions in _ELEMENTAL_COMBOS.  Scaled by
+        self._elemental_awareness so easy AI always returns 0.
+        """
+        if self._elemental_awareness <= 0.0:
+            return 0.0
+        dmg_type = _WEAPON_DAMAGE_TYPES.get(weapon_type, "")
+        if not dmg_type:
+            return 0.0
+        active = set(getattr(target, "combat_effects", {}).keys()) if target else set()
+        best = 0.0
+        for combo in _ELEMENTAL_COMBOS:
+            if combo["completes"] == dmg_type and combo["requires"] in active:
+                best = max(best, combo["value"])
+        return best * self._elemental_awareness
+
+    def _setup_bonus(self, weapon_type: str, target) -> float:
+        """Return a small bonus for establishing a first elemental effect on a clean target.
+
+        If the target has no active combat effects and weapon_type applies an
+        elemental effect, a setup bonus is granted so the AI prefers to start
+        status-effect chains rather than only exploiting existing ones.
+        Scaled by self._elemental_awareness.
+        """
+        if self._elemental_awareness <= 0.0:
+            return 0.0
+        dmg_type = _WEAPON_DAMAGE_TYPES.get(weapon_type, "")
+        if not dmg_type:
+            return 0.0
+        if target is None:
+            return 0.0
+        active = set(getattr(target, "combat_effects", {}).keys())
+        if dmg_type in active:
+            return 0.0  # effect already applied — no setup value
+        return 0.15 * self._elemental_awareness
+
+    def _score_weapon_slot(self, slot_index: int, target, dist: float) -> float:
+        """Return a utility score for equipping slot_index right now.
+
+        Higher score = better fit for the current combat situation.
+        Pure of any random — testable without mocking randomness.
+        """
+        if self._owner is None:
+            return 0.0
+        slots = getattr(self._owner, "weapon_slots", [])
+        if slot_index >= len(slots):
+            return 0.0
+        slot = slots[slot_index]
+        wtype = slot.get("type", "standard_shell") if isinstance(slot, dict) else "standard_shell"
+        profile = get_weapon_profile(wtype)
+        lo, hi = _RANGE_BOUNDS[profile["preferred_range"]]
+
+        # Range fitness: 1.0 when dist is inside [lo, hi], decays linearly outside
+        range_mid = (lo + hi) / 2.0
+        range_half = max((hi - lo) / 2.0, 1.0)
+        range_fitness = max(0.0, 1.0 - abs(dist - range_mid) / range_half)
+
+        # Cooldown penalty: weapons on cooldown are less desirable
+        cooldowns = getattr(self._owner, "slot_cooldowns", [])
+        cd = cooldowns[slot_index] if slot_index < len(cooldowns) else 0.0
+        cooldown_penalty = min(1.0, cd / 2.0)  # 2 s+ cooldown = full penalty
+
+        # AoE bonus: prefer area weapons when the AI is healthy enough to stand firm
+        aoe_bonus = 0.0
+        owner_hp = getattr(self._owner, "health_ratio", 1.0)
+        if wtype in ("grenade_launcher", "emp_blast") and owner_hp > 0.5:
+            aoe_bonus = 0.15
+
+        # Elemental bonuses (v0.36): combo completion + setup incentive
+        combo = self._combo_bonus(wtype, target)
+        setup = self._setup_bonus(wtype, target)
+
+        score = range_fitness * (1.0 - cooldown_penalty) + aoe_bonus + combo + setup
+        return min(2.0, max(0.0, score))
+
+    def _select_best_weapon_slot(self) -> int:
+        """Return the slot index with the highest utility score.
+
+        Hysteresis of 0.05 prevents switching for marginal improvements.
+        Returns the current active slot when no slot meaningfully beats it.
+        """
+        if self._owner is None:
+            return 0
+        target = self._target_getter()
+        dist = distance(self._owner.position, target.position) if target else 400.0
+        current = getattr(self._owner, "active_slot", 0)
+        best_score = self._score_weapon_slot(current, target, dist)
+        best_slot = current
+        for i in range(len(getattr(self._owner, "weapon_slots", []))):
+            s = self._score_weapon_slot(i, target, dist)
+            if s > best_score + 0.05:
+                best_score = s
+                best_slot = i
+        return best_slot
 
     # ------------------------------------------------------------------
     # Obstacle avoidance helper (Layer 3)

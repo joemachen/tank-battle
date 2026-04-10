@@ -36,11 +36,14 @@ are completed or plans change.
 | v0.32.0 | AI-vs-AI targeting + Watch Mode | make_nearest_enemy_getter factory, free-for-all targeting, Watch Mode on player death, opponent count selector, low-HP priority + target stickiness, center-seeking patrol, detection range 800px |
 | v0.33.0 | Loadout polish — 3× weapon rerolls, 1× ultimate reroll with UI, opponent count moved to map panel, AI hull colors by tank type |
 | v0.33.5 | Ultimate expansion — 6-ability pool (overdrive/fortress/barrage/phantom/lockdown/disruptor), UltimateRoller, 3× ult rerolls, category colors, AI conditions, Lockdown VFX windup + gravity field, Disruptor EMP ring |
+| v0.34.0 | AI weapon awareness — 14 weapon profiles, 5 aim modes (direct/loose/lead/wall_bounce/pool_place), range band management, utility scoring with hysteresis, 1034 tests |
+| v0.35.0 | 4-slot category-guaranteed loadout (Basic/Elemental/Heavy/Tactical), WeaponRoller rewrite, basic-only slot 0 cycling, 1076 tests |
+| v0.36.0 | AI elemental awareness — _combo_bonus() + _setup_bonus() in weapon scoring, elemental_awareness per difficulty tier (0/0.5/1.0), 1123 tests |
 ---
 ## 🔨 In Progress
-| Branch                          | Milestone                                                |
-|---------------------------------|----------------------------------------------------------|
-| feature/ai-weapon-awareness     | v0.34 — AI weapon awareness |
+| Branch                          | Milestone                                                                      |
+|---------------------------------|--------------------------------------------------------------------------------|
+| feature/ai-difficulty-tuning    | v0.37 — AI difficulty tuning pass: full review across all modes, maps, and opponent counts |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -70,41 +73,42 @@ the pickup/powerup system.*
 | Version | Milestone                  | Notes                                                                              |
 |---------|---------------------------|------------------------------------------------------------------------------------|
 | ~~v0.32~~ | ~~AI-vs-AI targeting~~  | ✅ Completed v0.32.0 — nearest_enemy_getter, Watch Mode, opponent selector, low-HP priority, stickiness, center-seeking patrol |
-| v0.33   | AI weapon awareness       | (was v0.31) AI behavior adapts to its equipped weapon type (e.g. bouncing round = indirect fire angles). |
-| v0.34   | AI elemental awareness    | (was v0.32) AI prioritizes targets with active status effects it can combo.        |
-| ~~v0.35~~ | ~~AI ultimate usage~~   | ✅ Shipped as part of v0.28.0 — offensive ults in ATTACK, defensive in EVADE, cloak detection |
-| v0.35   | AI difficulty tuning pass | (was v0.34) Full review across all modes, maps, and opponent counts.               |
+| ~~v0.34~~ | ~~AI weapon awareness~~ | ✅ Completed v0.34.0 — 14 weapon profiles, 5 aim modes, range management, hysteresis switching |
+| ~~v0.35~~ | ~~4-slot category loadout~~ | ✅ Completed v0.35.0 — Basic/Elemental/Heavy/Tactical guaranteed slots, WeaponRoller rewrite (scope shifted from original AI elemental awareness plan) |
+| ~~v0.36~~ | ~~AI elemental awareness~~ | ✅ Completed v0.36.0 — _combo_bonus(), _setup_bonus(), elemental_awareness 0/0.5/1.0 per tier |
+| ~~v0.36~~ | ~~AI ultimate usage~~   | ✅ Shipped as part of v0.28.0 — offensive ults in ATTACK, defensive in EVADE, cloak detection |
+| v0.37   | AI difficulty tuning pass | Full review across all modes, maps, and opponent counts.               |
 ---
 ### Phase 6 — Progression & Campaign
 *Reason to keep playing. Bosses unlock into sandbox.*
 | Version | Milestone                       | Notes                                                                                                                             |
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| v0.37   | Full progression screen         | (was v0.35) Level, XP bar, visual unlock tree showing what's coming next.                                                         |
-| v0.38   | Match history + stats           | (was v0.36) Win/loss record, accuracy, damage dealt/taken per match.                                                              |
-| v0.39   | Achievement system              | (was v0.37) Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                          |
-| v0.40   | Boss tank encounters            | (was v0.38) Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
-| v0.41   | Campaign mode                   | (was v0.39) Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/. |
-| v0.42   | Sandbox unlocks from campaign   | (was v0.40) Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                       |
+| v0.38   | Full progression screen         | (was v0.37) Level, XP bar, visual unlock tree showing what's coming next.                                                         |
+| v0.39   | Match history + stats           | (was v0.38) Win/loss record, accuracy, damage dealt/taken per match.                                                              |
+| v0.40   | Achievement system              | (was v0.39) Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                          |
+| v0.41   | Boss tank encounters            | (was v0.40) Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
+| v0.42   | Campaign mode                   | (was v0.41) Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/. |
+| v0.43   | Sandbox unlocks from campaign   | (was v0.42) Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                       |
 ---
 ### Phase 7 — Online Multiplayer
 *The biggest lift on the roadmap. Significant infrastructure work.*
 *See architecture notes below before starting this phase.*
 | Version | Milestone                    | Notes                                                                                                                                                                                    |
 |---------|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.43   | Network architecture design  | (was v0.41) Choose model: peer-to-peer vs authoritative server. Recommendation: authoritative server (server owns state, clients send inputs only). Library candidates: python-socketio or Twisted. Write a design doc before any code. |
-| v0.44   | Input serialization          | (was v0.42) TankInput is already a clean dataclass — serializes trivially. This is the lucky part of the existing architecture.                                                          |
-| v0.45   | Game state sync              | (was v0.43) Server broadcasts world state each tick. Clients render received state. Lag compensation and client-side prediction are the hard parts.                                       |
-| v0.46   | Lobby + matchmaking          | (was v0.44) Room creation, join by code, player ready system.                                                                                                                            |
-| v0.47   | Online sandbox mode          | (was v0.45) 1v1 and free-for-all online. Campaign and progression stay local.                                                                                                            |
-| v0.48   | Online progression sync      | (was v0.46) Cloud save, cross-device profile.                                                                                                                                            |
+| v0.44   | Network architecture design  | (was v0.43) Choose model: peer-to-peer vs authoritative server. Recommendation: authoritative server (server owns state, clients send inputs only). Library candidates: python-socketio or Twisted. Write a design doc before any code. |
+| v0.45   | Input serialization          | (was v0.44) TankInput is already a clean dataclass — serializes trivially. This is the lucky part of the existing architecture.                                                          |
+| v0.46   | Game state sync              | (was v0.45) Server broadcasts world state each tick. Clients render received state. Lag compensation and client-side prediction are the hard parts.                                       |
+| v0.47   | Lobby + matchmaking          | (was v0.46) Room creation, join by code, player ready system.                                                                                                                            |
+| v0.48   | Online sandbox mode          | (was v0.47) 1v1 and free-for-all online. Campaign and progression stay local.                                                                                                            |
+| v0.49   | Online progression sync      | (was v0.48) Cloud save, cross-device profile.                                                                                                                                            |
 ---
 ### Phase 8 — Polish & Stretch
 | Version | Milestone                        | Notes                                                                                                                                                                                                                                                                      |
 |---------|----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.49   | Particle effects + tank tracks   | (was v0.47) Muzzle flash, bullet impact, explosion, status effect visuals. Tank tracks: emit track mark sprites at fixed intervals behind moving tanks, fade over ~3 seconds using alpha decay, stored in bounded deque. Gives Wii Play Tanks style trail effect.           |
-| v0.50   | Sprite art — toy/wooden aesthetic | (was v0.48) Replace placeholder rects with toy tank sprites. Reference: Wii Play Tanks. Chunky plastic tank bodies, wooden/material-appropriate obstacle textures, soft drop shadows under tanks and obstacles to sell "sitting on a table" feel. Material types (wood, brick, stone, steel) visually distinct. Asset-only change — no logic impact. |
-| v0.51   | Local multiplayer                | (was v0.49) Second human player on same keyboard or controller.                                                                                                                                                                                                            |
-| v0.52   | Controller support               | (was v0.50) Gamepad input via pygame joystick API. InputHandler abstraction makes this clean.                                                                                                                                                                              |
+| v0.50   | Particle effects + tank tracks   | (was v0.49) Muzzle flash, bullet impact, explosion, status effect visuals. Tank tracks: emit track mark sprites at fixed intervals behind moving tanks, fade over ~3 seconds using alpha decay, stored in bounded deque. Gives Wii Play Tanks style trail effect.           |
+| v0.51   | Sprite art — toy/wooden aesthetic | (was v0.50) Replace placeholder rects with toy tank sprites. Reference: Wii Play Tanks. Chunky plastic tank bodies, wooden/material-appropriate obstacle textures, soft drop shadows under tanks and obstacles to sell "sitting on a table" feel. Material types (wood, brick, stone, steel) visually distinct. Asset-only change — no logic impact. |
+| v0.52   | Local multiplayer                | (was v0.51) Second human player on same keyboard or controller.                                                                                                                                                                                                            |
+| v0.53   | Controller support               | (was v0.52) Gamepad input via pygame joystick API. InputHandler abstraction makes this clean.                                                                                                                                                                              |
 ---
 ## 💡 Backlog
 *Unscheduled ideas and deferred feedback. Revisit during relevant phases.*
@@ -114,7 +118,6 @@ the pickup/powerup system.*
 - Gravity well — slow-moving orb that pulls nearby bullets and tanks toward it, detonates after 3s
 - Mine layer — drops invisible mine at tank position, detonates on enemy contact
 - EMP redesign — current EMP deals electric AoE damage; redesign as area-denial: disables all movement and weapons for tanks within radius X for Y seconds (no damage). Needs new status effect type.
-- Concussive blast knockback increase — current knockback too weak; should push targets ~half the arena width at point blank. Tune force scalar in weapons.yaml.
 
 ### Pickups
 - Ghost tank decoy — spawns AI-controlled duplicate of player tank with its own HP (~40); attracts homing missiles as a valid target; moves in random patrol; visual match to player tank
@@ -128,18 +131,12 @@ the pickup/powerup system.*
 
 ### Maps
 - Expand to 6 total maps (currently 3)
-- Random map option in LoadoutScene — alongside manual selection, a "Random" card that picks a map at match start
 - Map themes to target: castle/medieval, wild west, space, fast food
 - Chokepoints and skinny pathways — current maps are too open; new maps should force close-quarters encounters
 - Partial destruction on stone walls — stone obstacles transition through damage states (full wall → rubble/half-wall → cleared) instead of binary alive/dead; rubble provides partial cover and opens new sightlines mid-match (Battlefield-style)
 
 ### AI
 - AI retreat-to-cover — during EVADE, pathfind toward nearest obstacle for cover instead of fleeing in a straight line to a corner
-- AI difficulty visual differentiation — easy/medium/hard AI tanks should render in distinct hull colors in-game (currently all red regardless of difficulty)
-
-### UI / Feel
-- Map selection random option — "Random" entry in the map picker alongside named maps
-- AI tank hull colors by difficulty — color coding so players can read the threat level of each opponent at a glance
 ---
 ## ⚠️ Architecture Notes
 ### Turret system (v0.15) decouples aim from movement
@@ -171,4 +168,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.32.0 — AI-vs-AI targeting + Watch Mode shipped; v0.33 AI weapon awareness next*
+*Last updated: v0.36.0 — AI elemental awareness shipped; v0.37 AI difficulty tuning pass next on feature/ai-difficulty-tuning*
