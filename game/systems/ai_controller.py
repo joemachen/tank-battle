@@ -69,6 +69,28 @@ _RANGE_BOUNDS: dict[str, tuple[float, float]] = {
     "far":    (300.0, AI_ATTACK_RANGE),
 }
 
+# ---------------------------------------------------------------------------
+# Elemental awareness constants (v0.36)
+# ---------------------------------------------------------------------------
+
+# Maps weapon type → the elemental effect type it applies on hit
+_WEAPON_DAMAGE_TYPES: dict[str, str] = {
+    "cryo_round":    "ice",
+    "poison_shell":  "poison",
+    "flamethrower":  "fire",
+    "lava_gun":      "fire",
+    "emp_blast":     "electric",
+    # all other weapons apply no elemental effect
+}
+
+# Combo table: if 'requires' is active on target and we fire 'completes',
+# a high-value elemental reaction triggers.
+_ELEMENTAL_COMBOS: list[dict] = [
+    {"requires": "ice",    "completes": "fire",     "value": 0.60},  # steam_burst
+    {"requires": "poison", "completes": "fire",     "value": 0.50},  # accelerated_burn
+    {"requires": "ice",    "completes": "electric", "value": 0.70},  # deep_freeze
+]
+
 
 def get_weapon_profile(weapon_type: str) -> dict:
     """Return AI behavior profile for weapon_type; falls back to standard_shell."""
@@ -218,6 +240,7 @@ class AIController:
         self.evasion_threshold: float = float(config.get("evasion_threshold", 0.40))
         self.low_hp_priority_weight: float = float(config.get("low_hp_priority_weight", 0.5))
         self._weapon_switch_interval: float = float(config.get("weapon_switch_interval", 4.0))
+        self._elemental_awareness: float = float(config.get("elemental_awareness", 0.0))
 
         # Internal state
         self._reaction_timer: float = 0.0
@@ -689,8 +712,48 @@ class AIController:
         lo, hi = _RANGE_BOUNDS[get_weapon_profile(wtype)["preferred_range"]]
         return min((lo + hi) / 2.0, AI_ATTACK_RANGE)
 
+    def _combo_bonus(self, weapon_type: str, target) -> float:
+        """Return a [0, awareness] bonus when weapon_type would complete an elemental combo.
+
+        Reads active combat effects on the target and checks whether firing
+        weapon_type (which applies a specific damage type) would trigger any
+        of the reactions in _ELEMENTAL_COMBOS.  Scaled by
+        self._elemental_awareness so easy AI always returns 0.
+        """
+        if self._elemental_awareness <= 0.0:
+            return 0.0
+        dmg_type = _WEAPON_DAMAGE_TYPES.get(weapon_type, "")
+        if not dmg_type:
+            return 0.0
+        active = set(getattr(target, "combat_effects", {}).keys()) if target else set()
+        best = 0.0
+        for combo in _ELEMENTAL_COMBOS:
+            if combo["completes"] == dmg_type and combo["requires"] in active:
+                best = max(best, combo["value"])
+        return best * self._elemental_awareness
+
+    def _setup_bonus(self, weapon_type: str, target) -> float:
+        """Return a small bonus for establishing a first elemental effect on a clean target.
+
+        If the target has no active combat effects and weapon_type applies an
+        elemental effect, a setup bonus is granted so the AI prefers to start
+        status-effect chains rather than only exploiting existing ones.
+        Scaled by self._elemental_awareness.
+        """
+        if self._elemental_awareness <= 0.0:
+            return 0.0
+        dmg_type = _WEAPON_DAMAGE_TYPES.get(weapon_type, "")
+        if not dmg_type:
+            return 0.0
+        if target is None:
+            return 0.0
+        active = set(getattr(target, "combat_effects", {}).keys())
+        if dmg_type in active:
+            return 0.0  # effect already applied — no setup value
+        return 0.15 * self._elemental_awareness
+
     def _score_weapon_slot(self, slot_index: int, target, dist: float) -> float:
-        """Return a [0, 1] utility score for equipping slot_index right now.
+        """Return a utility score for equipping slot_index right now.
 
         Higher score = better fit for the current combat situation.
         Pure of any random — testable without mocking randomness.
@@ -721,7 +784,12 @@ class AIController:
         if wtype in ("grenade_launcher", "emp_blast") and owner_hp > 0.5:
             aoe_bonus = 0.15
 
-        return min(1.0, max(0.0, range_fitness * (1.0 - cooldown_penalty) + aoe_bonus))
+        # Elemental bonuses (v0.36): combo completion + setup incentive
+        combo = self._combo_bonus(wtype, target)
+        setup = self._setup_bonus(wtype, target)
+
+        score = range_fitness * (1.0 - cooldown_penalty) + aoe_bonus + combo + setup
+        return min(2.0, max(0.0, score))
 
     def _select_best_weapon_slot(self) -> int:
         """Return the slot index with the highest utility score.

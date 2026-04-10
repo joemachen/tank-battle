@@ -16,6 +16,7 @@ easy:
   evasion_threshold: 0.20
   low_hp_priority_weight: 0.0    # easy AI ignores HP — pure nearest targeting
   weapon_switch_interval: 6.0    # seconds between weapon evaluations
+  elemental_awareness: 0.0       # easy AI ignores status effects entirely
 
 medium:
   reaction_time: 0.40
@@ -24,6 +25,7 @@ medium:
   evasion_threshold: 0.35
   low_hp_priority_weight: 0.5    # medium AI somewhat prefers wounded targets
   weapon_switch_interval: 3.0
+  elemental_awareness: 0.5       # medium AI partially exploits combo opportunities
 
 hard:
   reaction_time: 0.15
@@ -32,3 +34,4 @@ hard:
   evasion_threshold: 0.55
   low_hp_priority_weight: 1.2    # hard AI aggressively hunts low-HP targets
   weapon_switch_interval: 1.5    # hard AI re-evaluates weapons more frequently
+  elemental_awareness: 1.0       # hard AI always seeks best elemental combos
