@@ -680,7 +680,8 @@ class LoadoutScene(BaseScene):
 
             # Determine display weapon (animation spins slots 2-3)
             if animating and i > 0 and self._weapon_roller and self._weapon_roller.pool_size > 0:
-                display_wtype = random.choice(self._weapon_roller._pool)
+                all_weapons = [w for pool in self._weapon_roller._pools.values() for w in pool]
+                display_wtype = random.choice(all_weapons) if all_weapons else wtype
             else:
                 display_wtype = wtype
 

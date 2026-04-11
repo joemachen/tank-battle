@@ -30,6 +30,7 @@ from game.utils.constants import (
     COLOR_GREEN,
     COLOR_WHITE,
     COLOR_YELLOW,
+    MATCH_HISTORY_MAX_STORED,
     MUSIC_GAME_OVER,
     SCENE_MENU,
     SCREEN_HEIGHT,
@@ -64,6 +65,30 @@ _COLOR_XP = COLOR_YELLOW
 _COLOR_BAR_BG = (50, 50, 55)
 _COLOR_BAR_FILL = COLOR_GREEN
 _COLOR_LEVELUP = (255, 210, 60)
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper — extracted for testability
+# ---------------------------------------------------------------------------
+
+def _append_history_entry(profile: dict, result: MatchResult) -> None:
+    """Append a history record for *result* to *profile* (mutates in-place).
+
+    Caps stored entries at MATCH_HISTORY_MAX_STORED, dropping the oldest.
+    """
+    entry = {
+        "won":          result.won,
+        "kills":        result.kills,
+        "accuracy":     round(result.accuracy, 3),
+        "damage_dealt": result.damage_dealt,
+        "damage_taken": result.damage_taken,
+        "time_elapsed": round(result.time_elapsed, 1),
+        "xp_earned":    result.xp_earned,
+        "level_after":  int(profile.get("level", 1)),
+    }
+    history = list(profile.get("match_history", []))
+    history.append(entry)
+    profile["match_history"] = history[-MATCH_HISTORY_MAX_STORED:]
 
 
 class GameOverScene(BaseScene):
@@ -110,6 +135,7 @@ class GameOverScene(BaseScene):
         self._old_xp = int(profile.get("xp", 0))
 
         new_profile, new_unlocks = self._progression.apply_match_result(profile, result)
+        _append_history_entry(new_profile, result)
         self._save_manager.save_profile(new_profile)
 
         self._new_level = int(new_profile.get("level", 1))

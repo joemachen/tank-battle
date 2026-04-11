@@ -12,7 +12,7 @@ SCREEN_WIDTH: int = 1280
 SCREEN_HEIGHT: int = 720
 FPS: int = 60
 TITLE: str = "Tank Battle"
-GAME_VERSION: str = "v0.37.0"
+GAME_VERSION: str = "v0.38.0"
 
 # ---------------------------------------------------------------------------
 # Main Menu
@@ -513,6 +513,9 @@ MAX_PROFILES: int = 4             # number of save slots
 # ---------------------------------------------------------------------------
 # Persistence defaults
 # ---------------------------------------------------------------------------
+MATCH_HISTORY_MAX_STORED: int = 50    # entries kept in profile JSON
+MATCH_HISTORY_MAX_DISPLAY: int = 20   # entries shown in history tab
+
 DEFAULT_PROFILE: dict = {
     "xp": 0,
     "level": 1,
