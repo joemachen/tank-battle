@@ -37,6 +37,7 @@ from game.utils.constants import (
     MUSIC_MENU,
     SCENE_LOADOUT,
     SCENE_PROFILE_SELECT,
+    SCENE_PROGRESSION,
     SCENE_SETTINGS,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -57,7 +58,7 @@ _TITLE_Y: int = 155                # title centre y (pixels from top)
 _TITLE_FONT_SIZE: int = 112
 _TITLE_SLIDE_OFFSET: int = 70      # pixels above final pos at animation start
 
-_ITEMS: list[str] = ["PLAY", "SETTINGS", "SWITCH PROFILE", "QUIT"]
+_ITEMS: list[str] = ["PLAY", "PROGRESSION", "SETTINGS", "SWITCH PROFILE", "QUIT"]
 _ITEM_FONT_SIZE: int = 52
 _ITEMS_Y_START: int = 320          # centre y of first item
 _ITEMS_SPACING: int = 64
@@ -158,6 +159,8 @@ class MainMenuScene(BaseScene):
         get_audio_manager().play_sfx(SFX_UI_CONFIRM)
         if item == "PLAY":
             self._fade.start()
+        elif item == "PROGRESSION":
+            self.manager.switch_to(SCENE_PROGRESSION)
         elif item == "SETTINGS":
             self.manager.switch_to(SCENE_SETTINGS)
         elif item == "SWITCH PROFILE":
@@ -276,7 +279,7 @@ class MainMenuScene(BaseScene):
         # "Playing as: Name" — subtle, just below the XP bar
         if getattr(self, "_profile_name", ""):
             name_s = font.render(f"Playing as:  {self._profile_name}", True, COLOR_GRAY)
-            surface.blit(name_s, (_BADGE_MARGIN, SCREEN_HEIGHT - 10))
+            surface.blit(name_s, (_BADGE_MARGIN, SCREEN_HEIGHT - name_s.get_height() - 4))
 
     def _draw_version(self, surface: pygame.Surface) -> None:
         font = pygame.font.SysFont(None, 20)

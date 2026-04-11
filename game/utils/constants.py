@@ -457,6 +457,7 @@ SCENE_MAP_SELECT: str = "map_select"        # deprecated v0.17.5 — use SCENE_L
 SCENE_GAME: str = "game"
 SCENE_SETTINGS: str = "settings"
 SCENE_GAME_OVER: str = "game_over"
+SCENE_PROGRESSION: str = "progression"
 
 # ---------------------------------------------------------------------------
 # Loadout Screen (v0.17.5)

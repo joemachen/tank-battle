@@ -26,6 +26,7 @@ from game.scenes.game_scene import GameplayScene
 from game.scenes.loadout_scene import LoadoutScene
 from game.scenes.menu_scene import MainMenuScene
 from game.scenes.profile_select_scene import ProfileSelectScene
+from game.scenes.progression_scene import ProgressionScene
 from game.scenes.settings_scene import SettingsScene
 from game.utils.constants import (
     FPS,
@@ -34,6 +35,7 @@ from game.utils.constants import (
     SCENE_LOADOUT,
     SCENE_MENU,
     SCENE_PROFILE_SELECT,
+    SCENE_PROGRESSION,
     SCENE_SETTINGS,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -74,6 +76,7 @@ class GameEngine:
         sm.register(SCENE_SETTINGS, SettingsScene(sm))
         sm.register(SCENE_GAME_OVER, GameOverScene(sm))
         sm.register(SCENE_PROFILE_SELECT, ProfileSelectScene(sm))
+        sm.register(SCENE_PROGRESSION, ProgressionScene(sm))
         # SaveManager auto-creates a default profile on first run, so the
         # game always opens directly to the main menu.
         sm.switch_to(SCENE_MENU)
