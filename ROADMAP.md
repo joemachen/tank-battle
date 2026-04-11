@@ -39,11 +39,12 @@ are completed or plans change.
 | v0.34.0 | AI weapon awareness — 14 weapon profiles, 5 aim modes (direct/loose/lead/wall_bounce/pool_place), range band management, utility scoring with hysteresis, 1034 tests |
 | v0.35.0 | 4-slot category-guaranteed loadout (Basic/Elemental/Heavy/Tactical), WeaponRoller rewrite, basic-only slot 0 cycling, 1076 tests |
 | v0.36.0 | AI elemental awareness — _combo_bonus() + _setup_bonus() in weapon scoring, elemental_awareness per difficulty tier (0/0.5/1.0), 1123 tests |
+| v0.37.0 | Full progression screen — level display, XP bar, scrollable unlock tree (all tanks + weapons in level order), next-unlock highlight, 1161 tests |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                                      |
 |---------------------------------|--------------------------------------------------------------------------------|
-| feature/ai-difficulty-tuning    | v0.37 — AI difficulty tuning pass: full review across all modes, maps, and opponent counts |
+| feature/match-history           | v0.38 — Match history + stats: win/loss record, accuracy, damage dealt/taken per match |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -83,12 +84,12 @@ the pickup/powerup system.*
 *Reason to keep playing. Bosses unlock into sandbox.*
 | Version | Milestone                       | Notes                                                                                                                             |
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| v0.38   | Full progression screen         | (was v0.37) Level, XP bar, visual unlock tree showing what's coming next.                                                         |
-| v0.39   | Match history + stats           | (was v0.38) Win/loss record, accuracy, damage dealt/taken per match.                                                              |
-| v0.40   | Achievement system              | (was v0.39) Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                          |
-| v0.41   | Boss tank encounters            | (was v0.40) Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
-| v0.42   | Campaign mode                   | (was v0.41) Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/. |
-| v0.43   | Sandbox unlocks from campaign   | (was v0.42) Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                       |
+| ~~v0.37~~ | ~~Full progression screen~~  | ✅ Completed v0.37.0 — level display, XP bar, scrollable unlock tree                                                             |
+| v0.38   | Match history + stats           | Win/loss record, accuracy, damage dealt/taken per match.                                                                          |
+| v0.39   | Achievement system              | Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                                      |
+| v0.40   | Boss tank encounters            | Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
+| v0.41   | Campaign mode                   | Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/.           |
+| v0.42   | Sandbox unlocks from campaign   | Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                                   |
 ---
 ### Phase 7 — Online Multiplayer
 *The biggest lift on the roadmap. Significant infrastructure work.*
@@ -168,4 +169,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.36.0 — AI elemental awareness shipped; v0.37 AI difficulty tuning pass next on feature/ai-difficulty-tuning*
+*Last updated: v0.37.0 — Full progression screen shipped; v0.38 match history + stats next on feature/match-history*
