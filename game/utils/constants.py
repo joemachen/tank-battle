@@ -262,6 +262,7 @@ TANKS_CONFIG: str = "data/configs/tanks.yaml"
 WEAPONS_CONFIG: str = "data/configs/weapons.yaml"
 AI_DIFFICULTY_CONFIG: str = "data/configs/ai_difficulty.yaml"
 XP_TABLE_CONFIG: str = "data/progression/xp_table.yaml"
+ACHIEVEMENTS_CONFIG: str = "data/configs/achievements.yaml"
 
 # ---------------------------------------------------------------------------
 # Audio
@@ -525,6 +526,7 @@ DEFAULT_PROFILE: dict = {
     "wins": 0,
     "losses": 0,
     "match_history": [],
+    "achievements": [],
 }
 
 # ---------------------------------------------------------------------------

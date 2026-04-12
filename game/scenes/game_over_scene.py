@@ -24,6 +24,7 @@ from game.scenes.base_scene import BaseScene
 from game.systems.match_calculator import MatchResult
 from game.systems.progression_manager import ProgressionManager
 from game.ui.audio_manager import get_audio_manager
+from game.systems.achievement_system import AchievementSystem
 from game.utils.constants import (
     COLOR_BG,
     COLOR_GRAY,
@@ -36,6 +37,8 @@ from game.utils.constants import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
 )
+
+_achievement_system = AchievementSystem()
 from game.utils.logger import get_logger
 from game.utils.save_manager import SaveManager
 
@@ -65,6 +68,7 @@ _COLOR_XP = COLOR_YELLOW
 _COLOR_BAR_BG = (50, 50, 55)
 _COLOR_BAR_FILL = COLOR_GREEN
 _COLOR_LEVELUP = (255, 210, 60)
+_COLOR_ACHIEVEMENT = (255, 200, 60)   # warm gold for toast
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +109,7 @@ class GameOverScene(BaseScene):
         self._old_xp: int = 0
         self._new_xp: int = 0
         self._new_unlocks: list[str] = []
+        self._new_achievements: list[str] = []
         # XP count-up animation
         self._xp_timer: float = 0.0
 
@@ -141,6 +146,10 @@ class GameOverScene(BaseScene):
         self._new_level = int(new_profile.get("level", 1))
         self._new_xp = int(new_profile.get("xp", 0))
         self._new_unlocks = new_unlocks
+
+        new_profile, self._new_achievements = _achievement_system.apply_to_profile(new_profile)
+        if self._new_achievements:
+            self._save_manager.save_profile(new_profile)
 
         get_audio_manager().play_music(MUSIC_GAME_OVER, loop=False)
         log.info(
@@ -184,6 +193,8 @@ class GameOverScene(BaseScene):
         self._draw_level_bar(surface)
         if self._new_unlocks:
             self._draw_unlock(surface)
+        if self._new_achievements:
+            self._draw_achievements_toast(surface)
         self._draw_hint(surface)
 
     # ------------------------------------------------------------------
@@ -275,6 +286,20 @@ class GameOverScene(BaseScene):
         names = ",  ".join(uid.replace("_", " ").title() for uid in self._new_unlocks)
         label = font.render(f"UNLOCKED:  {names}", True, _COLOR_VICTORY)
         surface.blit(label, label.get_rect(center=(_CX, _UNLOCK_Y)))
+
+    def _draw_achievements_toast(self, surface: pygame.Surface) -> None:
+        name_font = pygame.font.SysFont(None, 24)
+        desc_font = pygame.font.SysFont(None, 18)
+        y = _UNLOCK_Y + 30 if self._new_unlocks else _UNLOCK_Y
+        for aid in self._new_achievements:
+            defn = _achievement_system.get_definition(aid)
+            if defn is None:
+                continue
+            label = name_font.render(f"\u2605 Achievement Unlocked: {defn['name']}", True, _COLOR_ACHIEVEMENT)
+            surface.blit(label, label.get_rect(center=(_CX, y)))
+            desc = desc_font.render(defn["description"], True, (150, 150, 158))
+            surface.blit(desc, desc.get_rect(center=(_CX, y + 20)))
+            y += 52
 
     def _draw_hint(self, surface: pygame.Surface) -> None:
         font = pygame.font.SysFont(None, 26)

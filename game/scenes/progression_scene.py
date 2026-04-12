@@ -1,11 +1,12 @@
 """
 game/scenes/progression_scene.py
 
-ProgressionScene — full progression screen, v0.38.
+ProgressionScene — full progression screen, v0.39.
 
-Two-tab layout:
-  UNLOCKS  — scrollable unlock tree (tanks + weapons in level order)
-  HISTORY  — last 20 matches, newest first
+Three-tab layout:
+  UNLOCKS      — scrollable unlock tree (tanks + weapons in level order)
+  HISTORY      — last 20 matches, newest first
+  ACHIEVEMENTS — all 10 achievements, earned in gold / locked dimmed
 
 Navigation:
   LEFT / RIGHT   — switch tabs
@@ -20,6 +21,7 @@ from game.scenes.base_scene import BaseScene
 from game.systems.progression_manager import ProgressionManager
 from game.ui.audio_manager import get_audio_manager
 from game.utils.config_loader import load_yaml
+from game.systems.achievement_system import AchievementSystem
 from game.utils.constants import (
     COLOR_BG,
     COLOR_GRAY,
@@ -68,7 +70,15 @@ _TAB_ACTIVE_BG: tuple = (40, 42, 55)
 _TAB_INACTIVE_BG: tuple = (25, 27, 35)
 _TAB_INACTIVE_LABEL: tuple = (100, 100, 110)
 _TAB_FONT_SIZE: int = 20
-_TABS: list[str] = ["UNLOCKS", "HISTORY"]
+_TABS: list[str] = ["UNLOCKS", "HISTORY", "ACHIEVEMENTS"]
+
+_ACHIEVEMENT_ROW_H: int = 56
+_ACHIEVEMENT_ACCENT_W: int = 4
+_COLOR_ACHIEVEMENT_GOLD: tuple = (220, 180, 50)
+_COLOR_ACHIEVEMENT_LOCKED_NAME: tuple = (80, 80, 90)
+_COLOR_ACHIEVEMENT_LOCKED_DESC: tuple = (60, 60, 70)
+_COLOR_ACHIEVEMENT_DESC: tuple = (130, 130, 140)
+_COLOR_SUMMARY: tuple = (130, 130, 140)
 
 _ROW_H: int = 38
 _ROW_BG_A: tuple = (22, 24, 30)
@@ -182,6 +192,10 @@ class ProgressionScene(BaseScene):
         self._history_scroll: int = 0
         self._history_max_scroll: int = 0
         self._match_history: list[dict] = []
+        self._achievements_scroll: int = 0
+        self._achievements_max_scroll: int = 0
+        self._earned_achievements: set[str] = set()
+        self._achievement_defs: list[dict] = []
         self._total_matches: int = 0
         self._wins: int = 0
         self._losses: int = 0
@@ -272,6 +286,11 @@ class ProgressionScene(BaseScene):
             _MARGIN_X, viewport_top, SCREEN_WIDTH - 2 * _MARGIN_X, viewport_h
         )
 
+        # Achievements
+        _ach_sys = AchievementSystem()
+        self._achievement_defs = _ach_sys.all_definitions()
+        self._earned_achievements = set(profile.get("achievements", []))
+
         # Scroll limits
         total_unlock_h = len(self._rows) * _ROW_H
         self._max_scroll = max(0, total_unlock_h - viewport_h)
@@ -280,10 +299,14 @@ class ProgressionScene(BaseScene):
         total_history_h = display_count * _HISTORY_ROW_H
         self._history_max_scroll = max(0, total_history_h - viewport_h)
 
+        total_ach_h = len(self._achievement_defs) * _ACHIEVEMENT_ROW_H
+        self._achievements_max_scroll = max(0, total_ach_h - viewport_h)
+
         # Reset state on re-enter
         self._active_tab = 0
         self._scroll_offset = 0
         self._history_scroll = 0
+        self._achievements_scroll = 0
 
         # Auto-scroll unlocks so first locked row is near top
         first_locked = self._first_locked_index()
@@ -328,9 +351,12 @@ class ProgressionScene(BaseScene):
         if self._active_tab == 0:
             step = _ROW_H * direction
             self._scroll_offset = max(0, min(self._max_scroll, self._scroll_offset + step))
-        else:
+        elif self._active_tab == 1:
             step = _HISTORY_ROW_H * direction
             self._history_scroll = max(0, min(self._history_max_scroll, self._history_scroll + step))
+        else:
+            step = _ACHIEVEMENT_ROW_H * direction
+            self._achievements_scroll = max(0, min(self._achievements_max_scroll, self._achievements_scroll + step))
 
     # ------------------------------------------------------------------
     # Update
@@ -350,8 +376,10 @@ class ProgressionScene(BaseScene):
         self._draw_tab_bar(surface)
         if self._active_tab == 0:
             self._draw_unlock_tree(surface)
-        else:
+        elif self._active_tab == 1:
             self._draw_history_tab(surface)
+        else:
+            self._draw_achievements_tab(surface)
         self._draw_hint_bar(surface)
 
     # ------------------------------------------------------------------
@@ -536,6 +564,61 @@ class ProgressionScene(BaseScene):
             # LVL N — right-aligned
             lvl_surf = stat_font.render(f"LVL {entry.get('level_after', 1)}", True, stat_color)
             surface.blit(lvl_surf, lvl_surf.get_rect(midright=(vp.right - 8, mid_y)))
+
+        surface.set_clip(None)
+
+    def _draw_achievements_tab(self, surface: pygame.Surface) -> None:
+        vp = self._viewport_rect
+        earned_count = len(self._earned_achievements)
+        total_count = len(self._achievement_defs)
+
+        # Non-scrolling summary line
+        summary_font = self._hint_font
+        prefix = summary_font.render(f"{earned_count} / {total_count} ", True, COLOR_WHITE)
+        suffix_text = "achievements earned"
+        suffix = summary_font.render(suffix_text, True, _COLOR_SUMMARY)
+        summary_y = vp.top
+        surface.blit(prefix, (vp.left, summary_y))
+        surface.blit(suffix, (vp.left + prefix.get_width(), summary_y))
+        summary_h = prefix.get_height() + 6
+
+        # Scrollable area starts below summary line
+        vp_scroll = pygame.Rect(vp.left, vp.top + summary_h, vp.width, vp.height - summary_h)
+        surface.set_clip(vp_scroll)
+
+        for i, defn in enumerate(self._achievement_defs):
+            row_y = vp_scroll.top + i * _ACHIEVEMENT_ROW_H - self._achievements_scroll
+            if row_y + _ACHIEVEMENT_ROW_H < vp_scroll.top or row_y > vp_scroll.bottom:
+                continue
+
+            is_earned = defn["id"] in self._earned_achievements
+            bg_color = _ROW_BG_A if i % 2 == 0 else _ROW_BG_B
+            pygame.draw.rect(surface, bg_color, pygame.Rect(vp.left, row_y, vp.width, _ACHIEVEMENT_ROW_H))
+
+            x = vp.left
+            if is_earned:
+                pygame.draw.rect(surface, _COLOR_ACHIEVEMENT_GOLD,
+                                 pygame.Rect(x, row_y, _ACHIEVEMENT_ACCENT_W, _ACHIEVEMENT_ROW_H))
+                icon_color = _COLOR_ACHIEVEMENT_GOLD
+                icon = "\u2605"  # ★
+                name_color = COLOR_WHITE
+                desc_color = _COLOR_ACHIEVEMENT_DESC
+            else:
+                icon_color = (70, 70, 80)
+                icon = "\u00b7"  # ·
+                name_color = _COLOR_ACHIEVEMENT_LOCKED_NAME
+                desc_color = _COLOR_ACHIEVEMENT_LOCKED_DESC
+
+            x = vp.left + _ACHIEVEMENT_ACCENT_W + 10
+            icon_surf = self._list_font.render(icon, True, icon_color)
+            surface.blit(icon_surf, icon_surf.get_rect(midleft=(x, row_y + 10 + self._list_font.get_height() // 2)))
+            x += icon_surf.get_width() + 8
+
+            name_surf = self._list_font.render(defn["name"], True, name_color)
+            surface.blit(name_surf, (x, row_y + 10))
+
+            desc_surf = self._tag_font.render(defn["description"], True, desc_color)
+            surface.blit(desc_surf, (x, row_y + 32))
 
         surface.set_clip(None)
 
