@@ -41,11 +41,12 @@ are completed or plans change.
 | v0.36.0 | AI elemental awareness — _combo_bonus() + _setup_bonus() in weapon scoring, elemental_awareness per difficulty tier (0/0.5/1.0), 1123 tests |
 | v0.37.0 | Full progression screen — level display, XP bar, scrollable unlock tree (all tanks + weapons in level order), next-unlock highlight, 1161 tests |
 | v0.38.0 | Match history + stats — History tab in Progression screen, last 20 matches newest-first, W/L/Matches profile bar, 1178 tests |
+| v0.39.0 | Achievement system — 10 YAML-defined achievements, 7 condition types, GameOverScene toast, Progression ACHIEVEMENTS tab, 1202 tests |
 ---
 ## 🔨 In Progress
 | Branch                          | Milestone                                                                      |
 |---------------------------------|--------------------------------------------------------------------------------|
-| feature/achievements            | v0.39 — Achievement system: cosmetic milestone achievements (first kill, 10 wins, etc.) |
+| feature/boss-tanks              | v0.40 — Boss tank encounters: unique high-HP bosses with signature ultimates and specialized AI |
 ---
 ### Phase 3 — Elemental Weapon System
 *Requires a new damage pipeline. The material damage_filters field in
@@ -87,7 +88,7 @@ the pickup/powerup system.*
 |---------|---------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | ~~v0.37~~ | ~~Full progression screen~~  | ✅ Completed v0.37.0 — level display, XP bar, scrollable unlock tree                                                             |
 | ~~v0.38~~ | ~~Match history + stats~~    | ✅ Completed v0.38.0 — History tab, last 20 matches newest-first, W/L/Matches totals                                             |
-| v0.39   | Achievement system              | Cosmetic milestone achievements (first kill, 10 wins, etc.).                                                                      |
+| ~~v0.39~~ | ~~Achievement system~~       | ✅ Completed v0.39.0 — 10 achievements, 7 condition types, toast + Progression tab                                               |
 | v0.40   | Boss tank encounters            | Unique high-HP boss tanks with signature ultimates and specialized AI. Defined in data/configs/bosses.yaml. Defeating a boss unlocks it as a playable tank in sandbox mode. |
 | v0.41   | Campaign mode                   | Linear story missions with escalating difficulty and boss fights gated by progression. Narrative text in data/campaign/.           |
 | v0.42   | Sandbox unlocks from campaign   | Bosses and campaign-exclusive tanks/weapons available in free play after unlock.                                                   |
@@ -170,4 +171,4 @@ Ultimate charge state is a cheat vector if resolved client-side.
 Design the UltimateCharge class in Phase 4 with this in mind — keep
 charge state as plain data that can be owned by a server later.
 
-*Last updated: v0.38.0 — Match history + stats shipped; v0.39 achievement system next on feature/achievements*
+*Last updated: v0.39.0 — Achievement system shipped; v0.40 boss tank encounters next on feature/boss-tanks*
