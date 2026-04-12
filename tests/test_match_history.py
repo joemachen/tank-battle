@@ -200,12 +200,14 @@ class TestProgressionSceneTabState(unittest.TestCase):
             scene.handle_event(self._keydown(pygame.K_LEFT))
         self.assertEqual(scene._active_tab, 0)
 
-    def test_tab_wrap_right_from_history(self) -> None:
+    def test_tab_wrap_right_from_last_tab(self) -> None:
+        # RIGHT from the last tab (ACHIEVEMENTS = 2) should stay at 2
         scene = self._make_scene()
         with patch("game.scenes.progression_scene.get_audio_manager"):
-            scene.handle_event(self._keydown(pygame.K_RIGHT))
-            scene.handle_event(self._keydown(pygame.K_RIGHT))
-        self.assertEqual(scene._active_tab, 1)
+            scene.handle_event(self._keydown(pygame.K_RIGHT))  # → 1
+            scene.handle_event(self._keydown(pygame.K_RIGHT))  # → 2
+            scene.handle_event(self._keydown(pygame.K_RIGHT))  # → stays at 2
+        self.assertEqual(scene._active_tab, 2)
 
 
 if __name__ == "__main__":

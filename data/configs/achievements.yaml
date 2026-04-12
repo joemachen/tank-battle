@@ -1,0 +1,60 @@
+achievements:
+  - id: first_blood
+    name: "First Blood"
+    description: "Win your first match."
+    condition_type: wins_gte
+    condition_value: 1
+
+  - id: veteran
+    name: "Veteran"
+    description: "Win 10 matches."
+    condition_type: wins_gte
+    condition_value: 10
+
+  - id: centurion
+    name: "Centurion"
+    description: "Win 100 matches."
+    condition_type: wins_gte
+    condition_value: 100
+
+  - id: trigger_happy
+    name: "Trigger Happy"
+    description: "Play 50 matches."
+    condition_type: matches_gte
+    condition_value: 50
+
+  - id: sharpshooter
+    name: "Sharpshooter"
+    description: "Finish a match with 80% accuracy or higher."
+    condition_type: accuracy_gte_in_any_match
+    condition_value: 0.80
+
+  - id: perfectionist
+    name: "Perfectionist"
+    description: "Finish a match with 100% accuracy."
+    condition_type: accuracy_gte_in_any_match
+    condition_value: 1.0
+
+  - id: berserker
+    name: "Berserker"
+    description: "Deal 1000 damage in a single match."
+    condition_type: damage_dealt_gte_in_any_match
+    condition_value: 1000
+
+  - id: untouchable
+    name: "Untouchable"
+    description: "Win a match without taking any damage."
+    condition_type: win_with_damage_taken_lte
+    condition_value: 0
+
+  - id: exterminator
+    name: "Exterminator"
+    description: "Get 3 kills in a single match."
+    condition_type: kills_gte_in_any_match
+    condition_value: 3
+
+  - id: max_level
+    name: "Tank Commander"
+    description: "Reach the maximum level."
+    condition_type: level_gte
+    condition_value: 21
